@@ -1,0 +1,6 @@
+INPUT            = ark
+RECURSIVE        = YES
+FILE_PATTERNS    = *.py
+EXTRACT_ALL      = YES
+OUTPUT_DIRECTORY       = docs          # or docs, build/doc, /absolute/path
+CREATE_SUBDIRS         = YES          # keeps html, xml, latex in sub-folders

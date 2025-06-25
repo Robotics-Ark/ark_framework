@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ark"
+version = "0.1"
+dependencies = [
+    "lcm",
+    "colorlog",
+    "opencv-python",
+    "gymnasium",
+    "matplotlib",
+    "pandas",
+    "numpy==1.24.3",
+    "pybullet",
+    "PyYAML",
+    "typer",
+    "mermaid-py",
+    "networkx",
+    "scipy"
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages]
+find = {include = ["ark", "arktypes", "arktypes.*"]}
+
+[project.scripts]
+ark = "ark.cli:main"
