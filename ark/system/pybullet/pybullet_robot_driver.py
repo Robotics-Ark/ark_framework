@@ -248,7 +248,7 @@ class BulletRobotDriver(SimRobotDriver):
     ##     control     ##
     #####################
 
-    def pass_joint_group_control_cmd(self, control_mode: str, joints: List[str], cmd: Dict[str, float], **kwargs) -> None:
+    def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
         '''
         Sends control commands to a group of joints, applying the specified control mode (position, velocity, or torque).
 
@@ -264,11 +264,7 @@ class BulletRobotDriver(SimRobotDriver):
         Raises:
             ValueError: If the number of joints does not match the number of commands in `cmd`, or if an invalid control mode is provided.
         '''
-        
-        if len(joints) != len(cmd):
-            log.error("Number of joints and commands do not match.")
-            return
-        idx = [self.actuated_joints[joint] for joint in joints]
+        idx = [self.actuated_joints[joint] for joint in cmd.keys()]
         
         kwargs = {motor_control_kwarg[control_mode]: list(cmd.values())}
         if control_mode == ControlType.POSITION.value:

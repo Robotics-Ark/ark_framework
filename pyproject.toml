@@ -17,7 +17,6 @@ dependencies = [
     "PyYAML",
     "typer",
     "mermaid-py",
-    "networkx",
     "scipy"
 ]
 

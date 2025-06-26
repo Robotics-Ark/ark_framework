@@ -61,14 +61,8 @@ class RobotDriver(ComponentDriver):
     #####################
 
     @abstractmethod
-    # TODO rename this to be position in the name
-    def pass_joint_group_control_cmd(self, joints: List[str], cmd: Dict[str, float]) -> None:
+    def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
         pass
-
-    # @abstractmethod
-    def pass_cartesian_position_control_cmd(self, joints: List[str], cmd: Dict[str, float]) -> None:
-        pass
-
 
 
 

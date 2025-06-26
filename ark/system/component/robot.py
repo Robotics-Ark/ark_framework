@@ -251,15 +251,27 @@ class Robot(SimToRealComponent):
         self.create_service(self.reset_service_name, robot_init_t, flag_t, self.reset_component)
         
         if not self.sim:
+            # runs if the robot is real
             try:
                 self.freq = self.robot_config["frequency"]
             except:
                 log.warning(f"No frequency provided for robot '{self.name}', using default 240Hz !")
                 self.freq = 240
             self.create_stepper(self.freq, self.step_component)
+            self.create_stepper(self.freq, self.control_robot)
             
         print(self._all_actuated_joints)
+    
+    @abstractmethod
+    def control_robot(self) -> None:
+        """
+        Controls the robot based on the current joint group command.
         
+        This method should be implemented by subclasses to define specific behavior 
+        for controlling the robot.
+        """
+        print("No call")
+
     @abstractmethod
     def pack_data(self) -> None:
         """
@@ -270,13 +282,15 @@ class Robot(SimToRealComponent):
         """
 
     @abstractmethod
-    def get_robot_data(self) -> Any:
+    def get_state(self) -> Any:
         """
         Get the data from the robot.
 
         This method should be implemented by subclasses to define specific behavior 
         for getting data from the robot.
         """
+
+    
 
 
     #####################
@@ -324,10 +338,8 @@ class Robot(SimToRealComponent):
     #####################
     ##     control     ##
     #####################
-
-    @robot_joint_control
-    def control_joint_group(self, control_mode: str, joints: List[str], cmd: Dict[str, float], **kwargs) -> None:
-        self._driver.pass_joint_group_control_cmd(control_mode, joints, cmd, **kwargs)
+    def control_joint_group(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
+        self._driver.pass_joint_group_control_cmd(control_mode, cmd, **kwargs)
 
     #####################
     ##      misc.      ##
@@ -378,6 +390,6 @@ class Robot(SimToRealComponent):
     
     
     def step_component(self):
-        data = self.get_robot_data()
+        data = self.get_state()
         packed = self.pack_data(data)
         self.component_multi_publisher.publish(packed)
