@@ -7,3 +7,29 @@ __pycache__/
 *.csv
 *.csv.bak
 *.egg-info
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore virtual environment directories
+venv/
+.env
+# Ignore logs
+logs/
+*.log
+
+# Ignore coverage reports
+.coverage
+htmlcov/
+# Ignore build directories
+build/
+dist/
+*.egg
+# Ignore IDE specific files
+.idea/
+.vscode/
+# Ignore system files
+.DS_Store
+Thumbs.db
+# Ignore configuration files
+*.cfg
+*.ini
