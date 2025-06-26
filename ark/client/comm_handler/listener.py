@@ -51,7 +51,7 @@ class Listener(Subscriber):
         This method is invoked by the parent `Subscriber` class when a new message is received.
         It locks the mutex to safely store the received message in the instance.
 
-        @param t: The time stamp when the message was recieved in nanoseconds.
+        @param t: The time stamp when the message was received in nanoseconds.
         @param channel_name: The name of the channel to subscribe to.
         @param msg: The received message.
         """
