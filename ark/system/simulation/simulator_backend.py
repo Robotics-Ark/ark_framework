@@ -144,6 +144,7 @@ class SimulatorBackend(ABC):
         for robot in self.robot_ref:
             if not self.robot_ref[robot]._is_suspended:
                 self.robot_ref[robot].step_component()
+                self.robot_ref[robot].control_robot()
         for obj in self.object_ref:
             self.object_ref[obj].step_component()
         for sensor in self.sensor_ref:

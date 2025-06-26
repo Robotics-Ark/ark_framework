@@ -49,7 +49,11 @@ class MultiChannelPublisher(MultiCommHandler):
             channel_name = publisher.channel_name
             channel_type = publisher.channel_type
             try: 
+                if channel_name not in messages_to_publish:
+                    # log.warning(f"Channel '{channel_name}' not found in messages to publish.")
+                    continue
                 message = messages_to_publish[channel_name]
+
                 if not isinstance(message, channel_type):
                     raise TypeError(
                         f"Incorrect message type for channel '{channel_name}'. "

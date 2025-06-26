@@ -6,9 +6,6 @@ from ark.tools.ark_graph import ark_graph
 from ark.tools import launcher
 # from ark.tools.image_viewer import image_viewer
 
-
-
-
 app = typer.Typer()
 
 app.add_typer(registry.app, name="registry")
