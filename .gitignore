@@ -1,0 +1,9 @@
+# Ignore Python bytecode files
+*.pyc
+__pycache__/
+
+# ignore data
+*.pkl
+*.csv
+*.csv.bak
+*.egg-info
