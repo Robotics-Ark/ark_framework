@@ -54,13 +54,13 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
         class_ = getattr(module, class_names[0])
         sys.path.pop(0)
-        
+
         drivers = class_.PYBULLET_DRIVER
         class_names.remove("Drivers")
 
     # Retrieve the class from the module (has to be list of one)
     class_ = getattr(module, class_names[0])
-        
+
 
     if len(class_names) != 1:
         raise ValueError(f"Expected exactly two class definition in {file_path}, but found {len(class_names)}.")
@@ -75,10 +75,10 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     # Retrieve the class from the module (has to be list of one)
     class_ = getattr(module, class_names[0])
     sys.path.pop(0)
-    
+
     # Return the class
     return class_, drivers
-    
+
 
 
 
@@ -90,20 +90,38 @@ class PyBulletBackend(SimulatorBackend):
         self.client = self._connect_pybullet(self.global_config)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-        # Render images from Pybullet
-        self.render_config = self.global_config["simulator"].get("render", {})
-        self.render = self.render_config.get("enabled", False)
-        if self.render:
+        # Render images from Pybullet and save
+        self.save_render_config = self.global_config["simulator"].get("save_render", None)
+        if self.save_render_config is not None:
             self._rendered_time = -1.0
-            self.render_path = Path(self.render_config.get("render_path", "render"))
-            self.render_path.mkdir(parents=True, exist_ok=True)
+            self.save_path = Path(self.save_render_config.get("save_path", "output/save_render"))
+            self.save_path.mkdir(parents=True, exist_ok=True)
 
             # Remove existing files
-            remove_existing = self.render_config.get("remove_existing", False)   
+            remove_existing = self.save_render_config.get("remove_existing", True)
             if remove_existing:
-                for child in self.render_path.iterdir():
+                for child in self.save_path.iterdir():
                     if child.is_file():
                         child.unlink()
+
+            # Get config
+            default_extrinsics = {
+                "look_at": [0, 0, 1.0],
+                "distance": 3,
+                "azimuth": 0,
+                "elevation": 0
+            }
+            default_intrinsics = {
+                "width": 640,
+                "height": 480,
+                "field_of_view": 60,
+                "near_plane": 0.1,
+                "far_plane": 100.0
+            }
+            self.save_interval = self.save_render_config.get("save_interval", 1 / 30)
+            self.overwrite_file = self.save_render_config.get("overwrite_file", False)
+            self.extrinsics = self.save_render_config.get("extrinsics", default_extrinsics)
+            self.intrinsics = self.save_render_config.get("intrinsics", default_intrinsics)
 
         for additional_urdf_dir in self.global_config["simulator"]['config'].get("urdf_dirs", []):
             self.client.setAdditionalSearchPath(additional_urdf_dir)
@@ -117,13 +135,13 @@ class PyBulletBackend(SimulatorBackend):
         # Setup robots
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
-                self.add_robot(robot_name, 
+                self.add_robot(robot_name,
                             robot_config)
 
         # Setup objects
         if self.global_config.get("objects", None):
             for obj_name, obj_config in self.global_config["objects"].items():
-                self.add_sim_component(obj_name, 
+                self.add_sim_component(obj_name,
                                     obj_config)
 
         # Sensors have to be set up last, as e.g. cameras might need
@@ -131,13 +149,13 @@ class PyBulletBackend(SimulatorBackend):
         if self.global_config.get("sensors", None):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name,
-                                sensor_config)   
+                                sensor_config)
         self.ready = True
-    
-    
+
+
     def is_ready(self) -> bool:
-        return self.ready    
-            
+        return self.ready
+
 
     def _connect_pybullet(self, config: dict[str, Any]):
         kwargs = dict(options="")
@@ -147,23 +165,23 @@ class PyBulletBackend(SimulatorBackend):
         connection_mode_str = config["simulator"]["config"]["connection_mode"].upper()
         connection_mode = getattr(p, connection_mode_str)
         return BulletClient(connection_mode, **kwargs)
-    
-    
+
+
     def set_gravity(self, gravity: tuple[float]) -> None:
         self.client.setGravity(gravity[0], gravity[1], gravity[2])
-        
-        
+
+
     def set_time_step(self, time_step: float) -> None:
         """Set the simulation timestep."""
         self.client.setTimeStep(time_step)
         self._time_step = time_step
-        
-        
+
+
     ##########################################################
     ####            ROBOTS, SENSORS AND OBJECTS           ####
     ##########################################################
-    
-    def add_robot(self, 
+
+    def add_robot(self,
                   name: str,
                   robot_config: Dict[str, Any]):
         class_path = Path(robot_config["class_dir"])
@@ -177,19 +195,19 @@ class PyBulletBackend(SimulatorBackend):
         robot = RobotClass(name = name,
                            global_config = self.global_config,
                            driver = driver)
-        
+
         self.robot_ref[name] = robot
 
     def add_sim_component(self,
                           name: str,
-                          obj_config: Dict[str, Any],   
+                          obj_config: Dict[str, Any],
                           ) -> None:
             """! Add object to the simulator."""
-            sim_component = PyBulletMultiBody(name=name, 
-                                              client=self.client, 
+            sim_component = PyBulletMultiBody(name=name,
+                                              client=self.client,
                                               global_config=self.global_config)
-            self.object_ref[name] = sim_component        
-        
+            self.object_ref[name] = sim_component
+
     def add_sensor(self,
                    name: str,
                    sensor_config: Dict[str, Any]
@@ -202,18 +220,18 @@ class PyBulletBackend(SimulatorBackend):
 
         SensorClass, DriverClass = import_class_from_directory(class_path)
         DriverClass = DriverClass.value
-        
+
         attached_body_id = None
         if sensor_config["sim_config"].get("attach", None):
-            
+
             print(self.global_config["objects"].keys())
             # search through robots and objects to find attach link if needed
             if sensor_config["sim_config"]["attach"]["parent_name"] in self.global_config["robots"].keys():
                 attached_body_id = self.robot_ref[sensor_config["sim_config"]["attach"]["parent_name"]]._driver.ref_body_id
-            elif sensor_config["sim_config"]["attach"]["parent_name"] in self.global_config["objects"].keys(): 
+            elif sensor_config["sim_config"]["attach"]["parent_name"] in self.global_config["objects"].keys():
                 attached_body_id = self.object_ref[sensor_config["sim_config"]["attach"]["parent_name"]].ref_body_id
             else:
-                log.error(f"Parent to attach sensor " + name + " to does not exist !")     
+                log.error(f"Parent to attach sensor " + name + " to does not exist !")
         driver = DriverClass(name,
                              sensor_config,
                              attached_body_id,
@@ -222,11 +240,11 @@ class PyBulletBackend(SimulatorBackend):
                              driver = driver,
                              global_config = self.global_config,
                              )
-    
+
         self.sensor_ref[name] = sensor
 
     def remove(self, name: str) -> None:
-        # TODO remove 
+        # TODO remove
         """! Remove an object from the simulator by name."""
         if name in self.robot_ref:
             self.robot_ref[name].shutdown()
@@ -245,7 +263,7 @@ class PyBulletBackend(SimulatorBackend):
 
     #######################################
     ####          SIMULATION           ####
-    ####################################### 
+    #######################################
 
     def _all_available(self):
         for robot in self.robot_ref:
@@ -255,7 +273,7 @@ class PyBulletBackend(SimulatorBackend):
             if self.object_ref[obj]._is_suspended:
                 return False
         return True
-    
+
     def step(self) -> None:
         """Advance the simulation by one timestep."""
         if self._all_available():
@@ -263,28 +281,25 @@ class PyBulletBackend(SimulatorBackend):
             self.client.stepSimulation()
             self._simulation_time += self._time_step
 
-            if self.render:
-                if (self._simulation_time - self._rendered_time) > self.render_config["render_interval"]:
-                    self.render_image()
+            if self.save_render_config is not None:
+                if (self._simulation_time - self._rendered_time) > self.save_interval:
+                    self.save_render()
                     self._rendered_time = self._simulation_time
 
         else:
             log.panda("Did not step")
             pass
-    def render_image(self):
+
+    def save_render(self):
         """ Renders an image given camera parameters """
-
-        extrinsics = self.render_config["extrinsics"]
-        intrinsics = self.render_config["intrinsics"]
-
         # Calculate camera extrinsic matrix
-        look_at = extrinsics["look_at"]
-        azimuth = math.radians(extrinsics["azimuth"])
-        distance = extrinsics["distance"]
+        look_at = self.extrinsics["look_at"]
+        azimuth = math.radians(self.extrinsics["azimuth"])
+        distance = self.extrinsics["distance"]
 
         x = look_at[0] + distance * math.cos(azimuth)
         y = look_at[1] + distance * math.sin(azimuth)
-        z = look_at[2] + extrinsics["elevation"]
+        z = look_at[2] + self.extrinsics["elevation"]
 
         view_matrix =p.computeViewMatrix(
             cameraEyePosition=[x, y, z],
@@ -293,14 +308,14 @@ class PyBulletBackend(SimulatorBackend):
         )
 
         # Calculate intrinsic matrix
-        width = intrinsics["width"]
-        height = intrinsics["height"]
+        width = self.intrinsics["width"]
+        height = self.intrinsics["height"]
         aspect = width / height
         projection_matrix = p.computeProjectionMatrixFOV(
-            fov=intrinsics["field_of_view"], 
-            aspect=aspect, 
-            nearVal=intrinsics["near_plane"], 
-            farVal=intrinsics["far_plane"]
+            fov=self.intrinsics["field_of_view"],
+            aspect=aspect,
+            nearVal=self.intrinsics["near_plane"],
+            farVal=self.intrinsics["far_plane"]
         )
 
         # Render the image
@@ -312,8 +327,12 @@ class PyBulletBackend(SimulatorBackend):
         # Save image
         bgra = cv2.cvtColor(rgba, cv2.COLOR_RGB2BGR)
         time_us = int(1e6 * self._simulation_time)
-        render_path = self.render_path / f"{time_us}.png" 
-        cv2.imwrite(str(render_path), bgra)
+
+        if self.overwrite_file:
+            save_path = self.save_path / "render.png"
+        else:
+            save_path = self.save_path / f"{time_us}.png"
+        cv2.imwrite(str(save_path), bgra)
 
     def reset_simulator(self) -> None:
         """Reset the entire simulator state (i.e., scene, objects, etc.)."""
@@ -322,16 +341,16 @@ class PyBulletBackend(SimulatorBackend):
         self._simulation_time = 0.0
         self.initialize()
 
-        if self.render:
+        if self.save_render_config is not None:
             self._rendered_time = -1.0
 
         log.ok("Simulator reset complete.")
-        
+
     def get_current_time(self) -> float:
         """Get the current simulation time."""
         # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12438
         return self._simulation_time
-    
+
     def shutdown_backend(self):
         self.client.disconnect()
         for robot in self.robot_ref:

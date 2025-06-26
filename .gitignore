@@ -1,0 +1,19 @@
+# Ignore Python bytecode files
+*.pyc
+__pycache__/
+
+# ignore data
+*.pkl
+*.csv
+*.csv.bak
+*.egg-info
+
+
+examples/diffusion_policy/data/expert_demonstrations
+test_examples/
+render
+
+.arklogs/
+ark/tools/ark_graph/Graph.md
+ark/tools/ark_graph/mermaid.png
+ark/tools/ark_graph/ros_rqt_graph_layout.png
