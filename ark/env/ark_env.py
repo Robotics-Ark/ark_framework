@@ -102,8 +102,9 @@ class ArkEnv(Env, InstanceNode, ABC):
     
     def reset(self):
         '''
-        return obs, terminated, truncated
-        @rtype: Tuple[Any, bool, bool]
+        Returns a tuple (obs, info) where ``info`` contains termination and
+        truncation data.
+        @rtype: Tuple[Any, Any]
         '''
         #self.suspend_node()
         self.reset_objects()
