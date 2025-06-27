@@ -100,7 +100,13 @@ class Registry(EndPoint):
                     continue  # Continue with the next request
 
     def _recvall(self, conn, n):
-        """Helper function to receive n bytes or return None if EOF is hit."""
+        """!
+        Receive ``n`` bytes from a connection.
+
+        @param conn: Socket connection.
+        @param n: Number of bytes to receive.
+        @return: The received bytes or ``None`` if EOF is hit.
+        """
         data = bytearray()
         while len(data) < n:
             packet = conn.recv(n - len(data))
@@ -110,6 +116,12 @@ class Registry(EndPoint):
         return bytes(data)
 
     def _handle_request(self, request):
+        """!
+        Handle an incoming registry request.
+
+        @param request: Parsed request dictionary.
+        @return: Response dictionary to send back to the client.
+        """
         req_type = request.get("type")
         if req_type == "REGISTER":
             service_name = request.get("service_name")
@@ -150,7 +162,11 @@ class Registry(EndPoint):
             return {"status": "ERROR", "message": "Unknown request type"}
 
     def _stop(self):
-        """Stop the server and wait for the thread to finish."""
+        """!
+        Stop the server and wait for the serving thread to finish.
+
+        @return: ``None``
+        """
         log.info("Shutting down server...")
         # Shutdown the info service
         if self.get_info_service:
@@ -166,7 +182,11 @@ class Registry(EndPoint):
         log.info("Registry Server stopped.")
 
     def start(self):
-        """Start the server and monitor for errors."""
+        """!
+        Start the server and monitor for errors.
+
+        This method blocks until the server stops or encounters a fatal error.
+        """
         
         try:
             # Initialize thread to serve requests
@@ -194,12 +214,17 @@ def start(
     registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
     registry_port: int = typer.Option(1234, "--port", help="The port for the registry server.")
 ):
-    """Starts the Registry server with specified host and port."""
+    """!
+    Start the Registry server with the specified host and port.
+
+    @param registry_host: Host address for the registry server.
+    @param registry_port: Port for the registry server.
+    """
     server = Registry(registry_host=registry_host, registry_port=registry_port)
     server.start()
 
 def main():
-    """Entry point for the CLI."""
+    """! Entry point for the CLI. """
     app()  # Initializes the Typer CLI
 
 if __name__ == "__main__":

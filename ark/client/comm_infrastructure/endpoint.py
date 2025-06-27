@@ -12,16 +12,11 @@ import os
 class EndPoint:
 
     def __init__(self, global_config) -> None:
-        """
-        Initializes an Endpoint object to interact with the registry and set up LCM communication.
+        """!
+        Initialize an Endpoint object for interacting with the registry and
+        setting up LCM communication.
 
-        Parameters:
-        - registry_host (str): The host address of the registry. Default is "127.0.0.1" (localhost).
-        - registry_port (int): The port number for the registry. Default is 1234.
-        - lcm_network_bounces (int): The Time To Live (TTL) value for LCM multicast messages. Default is 1.
-
-        This constructor sets up the registry host and port as instance variables,
-        and configures the LCM system using a multicast address and the provided TTL.
+        @param global_config: Global configuration containing network settings.
         """
         
         # self.network_config = {
@@ -38,33 +33,16 @@ class EndPoint:
 
 
     def _load_network_config(self, global_config: str | Path | dict | None) -> None:
-        """
-        Loads and updates the network configuration for the current instance from the provided input.
+        """!
+        Load and update the network configuration from the given input.
 
-        This method accepts a string representing the path to a YAML file, a `Path` object pointing
-        to a YAML file, a dictionary containing network configuration data, or `None`. It then attempts
-        to extract and store the 'network' configuration in `self.network_config`. If the file or
-        configuration is missing or invalid, default system settings are used and logged appropriately.
+        This method accepts a string path, a :class:`Path` object, a dictionary
+        or ``None``. The resulting configuration is stored in
+        ``self.network_config``.
 
-        Args:
-            global_config (str | Path | dict | None):
-                - If a string or `Path`, it should point to a valid YAML configuration file containing a
-                'network' key.
-                - If a dictionary, it should include a 'network' key with relevant configuration values.
-                - If `None`, the method will log a warning and use default settings.
-
-        Returns:
-            None or dict:
-                - In most cases, the method updates `self.network_config` in place and returns `None`.
-                - If the YAML file cannot be read, an empty dictionary `{}` is returned early,
-                signaling an error in reading the file.
-
-        Raises:
-            None: This function does not explicitly raise any exceptions. Errors are logged instead.
-
-        Side Effects:
-            - Modifies the `self.network_config` attribute of the instance.
-            - Logs warnings or errors if configuration data is missing or invalid.
+        @param global_config: Path to a YAML file, a dictionary containing the
+            network configuration, or ``None`` to use defaults.
+        @return: ``None``. ``self.network_config`` is updated in place.
         """
         self.network_config = {}
         # extract network part of the global config 

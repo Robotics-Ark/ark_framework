@@ -22,17 +22,17 @@ class Service(CommHandler):
         port: int = None,
         is_default = False
     ):
-        """
+        """!
         Initialize the service.
 
-        :param name: Name of the service.
-        :param req_type: Request message class with encode/decode methods.
-        :param resp_type: Response message class with encode/decode methods.
-        :param callback: Function to handle the request and return a response.
-        :param registry_host: Host of the registry server.
-        :param registry_port: Port of the registry server.
-        :param host: Host to bind the service. If None, binds to the local network interface.
-        :param port: Port to bind the service. If None, a random free port is chosen.
+        @param name: Name of the service.
+        @param req_type: Request message class with ``encode``/``decode``.
+        @param resp_type: Response message class with ``encode``/``decode``.
+        @param callback: Callback handling the request.
+        @param registry_host: Registry server host.
+        @param registry_port: Registry server port.
+        @param host: Optional host to bind the service.
+        @param port: Optional port to bind the service.
         """
         self.service_name = name
         self.comm_type = "Service"
@@ -51,7 +51,11 @@ class Service(CommHandler):
         self.registered = self.register_with_registry()
 
     def _get_local_ip(self) -> str:
-        """Get the local IP address of the machine."""
+        """!
+        Get the local IP address of the machine.
+
+        @return: Detected local IP address.
+        """
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0)
         try:
@@ -64,13 +68,21 @@ class Service(CommHandler):
         return local_ip
 
     def _find_free_port(self) -> int:
-        """Find a free port to bind the service."""
+        """!
+        Find a free port to bind the service.
+
+        @return: Available port number.
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.host, 0))
             return s.getsockname()[1]
 
     def register_with_registry(self):
-        """Register the service with the registry server."""
+        """!
+        Register the service with the registry server.
+
+        @return: ``True`` on success, ``False`` otherwise.
+        """
         registration = {
             "type": "REGISTER",
             "service_name": self.service_name,
@@ -111,7 +123,9 @@ class Service(CommHandler):
         return True
 
     def _serve(self):
-        """Serve incoming service requests."""
+        """!
+        Serve incoming service requests.
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.host, self.port))
             s.listen()
@@ -153,7 +167,13 @@ class Service(CommHandler):
                         log.error(f"Service: Error handling request: {e}")
 
     def _recvall(self, conn, n):
-        """Helper function to receive n bytes or return None if EOF is hit."""
+        """!
+        Helper function to receive ``n`` bytes from a socket.
+
+        @param conn: Socket connection.
+        @param n: Number of bytes to read.
+        @return: Received bytes or ``None`` on EOF.
+        """
         data = bytearray()
         while len(data) < n:
             packet = conn.recv(n - len(data))
@@ -179,7 +199,9 @@ class Service(CommHandler):
         return super().restart()
 
     def suspend(self):
-        """Shut down the service and deregister from the registry."""
+        """!
+        Shut down the service and deregister from the registry.
+        """
         if self.deregister_from_registry():
             self._stop_event.set()  # Stop the serving thread
             self.thread.join()  # Wait for the serving thread to terminate
@@ -188,7 +210,11 @@ class Service(CommHandler):
             print("Service shutdown un-gracefully.")
 
     def deregister_from_registry(self) -> bool:
-        """Deregister the service from the registry server and validate the response."""
+        """!
+        Deregister the service from the registry server and validate the response.
+
+        @return: ``True`` if deregistration succeeded.
+        """
         deregistration = {
             "type": "DEREGISTER",
             "service_name": self.service_name,
@@ -245,23 +271,16 @@ class Service(CommHandler):
 
 
 def send_service_request(registry_host, registry_port, service_name: str, request: object, response_type: type, timeout: int = 1) -> Any:
-        """
-        Sends a request to a service discovered from a registry.
+        """!
+        Send a request to a service discovered from a registry.
 
-        This method first discovers the target service by querying the registry,
-        then sends a request to the discovered service, and returns the response.
-
-        Args:
-            registry_host (str): The host address of the service registry.
-            registry_port (int): The port of the service registry.
-            service_name (str): The name of the service to be discovered.
-            request (object): The request object to be sent to the discovered service.
-
-        Returns:
-            Any: The response from the service.
-
-        Raises:
-            Exception: If there is an error during discovery or while calling the service.
+        @param registry_host: Host address of the service registry.
+        @param registry_port: Port of the service registry.
+        @param service_name: Name of the service to discover.
+        @param request: Request object to send.
+        @param response_type: Expected response type.
+        @param timeout: Timeout in seconds.
+        @return: The response from the service.
         """
         # TODO timeout addition
         try:
@@ -275,23 +294,15 @@ def send_service_request(registry_host, registry_port, service_name: str, reques
         pass
 
 def __call_service(service_host: str, service_port: int, request, response_type: type) -> Any:
-    """
-    Calls a specific service with the given request and receives a response.
+    """!
+    Call a specific service with the given request and return the response.
 
-    This method establishes a socket connection with the service, sends the request,
-    and waits for the response. It then decodes the response and returns it.
-
-    Args:
-        service_host (str): The host address of the service.
-        service_port (int): The port of the service.
-        request (object): The request to send to the service.
-        response_type (type): The expected type of the response.
-
-    Returns:
-        Any: The response from the service, decoded into the specified response type.
-
-    Raises:
-        RuntimeError: If there is an error while sending the request or receiving the response.
+    @param service_host: Host address of the service.
+    @param service_port: Port of the service.
+    @param request: Request to send to the service.
+    @param response_type: Expected response type.
+    @return: The decoded response object.
+    @raises RuntimeError: If communication fails.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # Connect to the service
@@ -322,22 +333,12 @@ def __call_service(service_host: str, service_port: int, request, response_type:
         return response
 
 def __recvall(conn: socket.socket, n: int) -> bytes:
-    """
-    Receives `n` bytes of data from the socket connection.
+    """!
+    Receive ``n`` bytes from a socket connection.
 
-    This helper function reads from the socket in chunks until `n` bytes
-    are received. If EOF (End of File) is encountered before `n` bytes are
-    received, it returns None.
-
-    Args:
-        conn (socket.socket): The socket connection to receive data from.
-        n (int): The number of bytes to receive.
-
-    Returns:
-        bytes: The received data as a byte string.
-
-    Raises:
-        None: Returns None if the connection is closed before receiving `n` bytes.
+    @param conn: Socket connection to read from.
+    @param n: Number of bytes to receive.
+    @return: Bytes received or ``None`` if EOF is reached.
     """
     data = bytearray()
     while len(data) < n:
@@ -349,22 +350,14 @@ def __recvall(conn: socket.socket, n: int) -> bytes:
     return bytes(data)
 
 def __discover_service(registry_host: str, registry_port: int, service_name: str):
-    """
-    Discovers the host and port of a service by querying the service registry.
+    """!
+    Discover the host and port of a service by querying the registry.
 
-    This method sends a discovery request to the registry and receives the
-    host and port details of the requested service.
-
-    Args:
-        registry_host (str): The host address of the registry.
-        registry_port (int): The port of the registry.
-        service_name (str): The name of the service to be discovered.
-
-    Returns:
-        tuple: A tuple containing the host and port of the discovered service.
-
-    Raises:
-        RuntimeError: If there is an error during the discovery process.
+    @param registry_host: Host address of the registry.
+    @param registry_port: Port of the registry.
+    @param service_name: Name of the service to discover.
+    @return: ``(host, port)`` tuple of the discovered service.
+    @raises RuntimeError: If discovery fails.
     """
     discovery_request = {"type": "DISCOVER", "service_name": service_name}
     try:
