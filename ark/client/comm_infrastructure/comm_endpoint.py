@@ -87,7 +87,12 @@ class CommEndpoint(EndPoint):
             sys.exit(1)
 
     def check_registration(self):
-        # check if defulat services are registered
+        """!
+        Check whether all default services have been registered.
+
+        @return: ``True`` if all services are registered, ``False`` otherwise.
+        """
+        # check if default services are registered
         n_service_channels = 0
         n_service_channels_registered = 0
         for ch in self._comm_handlers:
@@ -107,8 +112,13 @@ class CommEndpoint(EndPoint):
             return True
         
     def _load_config_section(self, global_config: Union[str, Dict[str, Any], Path], name: str, type: str) -> Dict:
-        """
-        Load the configuration section for the component returns the Dictionary
+        """!
+        Load the configuration section for a component.
+
+        @param global_config: Global configuration source.
+        @param name: Name of the component.
+        @param type: Section type within the configuration file.
+        @return: Dictionary containing the configuration for the component.
         """
 
         if isinstance(global_config, str):
@@ -276,11 +286,23 @@ class CommEndpoint(EndPoint):
         return pub
     
     def create_multi_channel_publisher(self, channels):
+        """!
+        Create a publisher that manages multiple channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @return: The created :class:`MultiChannelPublisher` instance.
+        """
         multi_pub = MultiChannelPublisher(channels, self._lcm)
         self._multi_comm_handlers.append(multi_pub)
         return multi_pub
     
-    def create_multi_channel_listener(self, channels): 
+    def create_multi_channel_listener(self, channels):
+        """!
+        Create listeners for multiple channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @return: The created :class:`MultiChannelListener` instance.
+        """
         multi_listeners = MultiChannelListener(channels, lcm_instance=self._lcm)
         self._multi_comm_handlers.append(multi_listeners)
         return multi_listeners
@@ -317,12 +339,22 @@ class CommEndpoint(EndPoint):
         return sub
     
     def create_service(self, service_name: str, request_type: type, response_type: type, callback: callable, is_default_service = False):
-        service = Service(name= service_name, 
-                          req_type= request_type, 
-                          resp_type= response_type, 
-                          callback= callback, 
-                          registry_host= self.registry_host, 
-                          registry_port= self.registry_port, 
+        """!
+        Create and register a service.
+
+        @param service_name: Name of the service.
+        @param request_type: Message type of the request.
+        @param response_type: Message type of the response.
+        @param callback: Callback invoked to handle the request.
+        @param is_default_service: Mark service as an internal default.
+        @return: The created :class:`Service` instance.
+        """
+        service = Service(name= service_name,
+                          req_type= request_type,
+                          resp_type= response_type,
+                          callback= callback,
+                          registry_host= self.registry_host,
+                          registry_port= self.registry_port,
                           is_default= is_default_service)
         self._comm_handlers.append(service)
         return service
