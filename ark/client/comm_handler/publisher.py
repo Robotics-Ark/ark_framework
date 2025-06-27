@@ -58,6 +58,9 @@ class Publisher(CommHandler):
         log.ok(f"suspended publisher {self}")
 
     def get_info(self):
+        """!
+        Return a dictionary describing this publisher.
+        """
        info = {
             "comms_type": "Publisher",
             "channel_name": self.channel_name,

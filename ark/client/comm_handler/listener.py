@@ -72,13 +72,24 @@ class Listener(Subscriber):
         return msg
     
     def suspend(self):
+        """!
+        Suspend the listener and clear any cached message.
+
+        @return: ``None``
+        """
         self.empty_data()
         return super().suspend()
     
     def empty_data(self):
+        """!
+        Clear the stored message.
+        """
         self._msg = None
 
     def get_info(self):
+        """!
+        Return a dictionary describing this listener.
+        """
         info  = {
             "comms_type": "Listener",
             "channel_name": self.channel_name,
