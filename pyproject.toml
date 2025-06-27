@@ -13,11 +13,11 @@ dependencies = [
     "matplotlib",
     "pandas",
     "numpy==1.24.3",
-    "pybullet",
     "PyYAML",
     "typer",
     "mermaid-py",
-    "scipy"
+    "scipy",
+    "pybullet; sys_platform == 'linux'"
 ]
 
 [project.optional-dependencies]
