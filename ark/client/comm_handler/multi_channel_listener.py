@@ -10,10 +10,16 @@ from ark.client.comm_handler.multi_comm_handler import MultiCommHandler
 from typing import List
 import copy
 
-class MultiChannelListener(MultiCommHandler): 
+class MultiChannelListener(MultiCommHandler):
     def __init__(
         self, channels: List, lcm_instance: LCM) -> None:
-        
+        """!
+        Initialize listeners for multiple channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @param lcm_instance: LCM instance used for communication.
+        """
+
         super().__init__()
 
         self.data = {}
