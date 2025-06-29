@@ -1,3 +1,6 @@
+"""@file pybullet_robot_driver.py
+@brief Robot driver handling PyBullet specific commands.
+"""
 
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -17,17 +20,20 @@ motor_control_kwarg = {
 }
 
 class BulletRobotDriver(SimRobotDriver):
-    """
-    TODO
-    # handles specifics for the PyBullet simulator, interacts with the PyBullet API
-    """
+    """Robot driver that interfaces with the PyBullet simulation."""
 
     def __init__(self,
                  component_name = str,
-                 component_config: Dict[str, Any] = None, 
+                 component_config: Dict[str, Any] = None,
                  client: Any = None,
                  ) -> None:
-        
+        """!Create a robot driver for PyBullet.
+
+        @param component_name Name of the robot component.
+        @param component_config Configuration dictionary for the robot.
+        @param client Bullet client instance.
+        @return ``None``
+        """
         super().__init__(component_name, component_config, True)
 
         self.client = client
@@ -121,6 +127,12 @@ class BulletRobotDriver(SimRobotDriver):
        
 
     def load_robot(self, base_position = None, base_orientation = None, q_init=None) -> None:
+        """!Load the robot model into the simulator.
+
+        @param base_position Optional base position ``[x, y, z]``.
+        @param base_orientation Optional base orientation as quaternion.
+        @param q_init Optional list of initial joint positions.
+        """
         kwargs = {}
 
         kwargs["useFixedBase"] = self.config.get("use_fixed_base", 1)
@@ -180,26 +192,20 @@ class BulletRobotDriver(SimRobotDriver):
     #####################
 
     def check_torque_status(self) -> bool:
-        '''
-        Checks the torque status of the simulated robot.
+        """!Return ``True`` as simulated robots are always torqued.
 
-        Since the robot is simulated in Bullet, it is always torqued.
-
-        Returns:
-            bool: Always returns True, indicating the robot is torqued.
-        '''
+        @return Always ``True`` in simulation.
+        @rtype bool
+        """
         return True  # simulated robot is always torqued in bullet
 
     def pass_joint_positions(self, joints: List[str]) -> Dict[str, float]:
-        '''
-        Retrieves the current joint positions for the specified joints.
+        """!Return the current joint positions.
 
-        Args:
-            joints (List[str]): A list of joint names for which the positions are to be retrieved.
-
-        Returns:
-            Dict[str, float]: A dictionary where the key is the joint name, and the value is the joint's position.
-        '''
+        @param joints List of joint names.
+        @return Dictionary from joint name to position.
+        @rtype Dict[str, float]
+        """
         pos = {}
         idx = [self.actuated_joints[joint] for joint in joints]
         # Iterate over each joint index and corresponding joint state to fill dictionaries
@@ -209,15 +215,12 @@ class BulletRobotDriver(SimRobotDriver):
         return pos
 
     def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
-        '''
-        Retrieves the current joint velocities for the specified joints.
+        """!Return the current joint velocities.
 
-        Args:
-            joints (List[str]): A list of joint names for which the velocities are to be retrieved.
-
-        Returns:
-            Dict[str, float]: A dictionary where the key is the joint name, and the value is the joint's velocity.
-        '''
+        @param joints List of joint names.
+        @return Dictionary from joint name to velocity.
+        @rtype Dict[str, float]
+        """
         vel = {}
         idx = [self.actuated_joints[joint] for joint in joints]
         # Iterate over each joint index and corresponding joint state to fill dictionaries
@@ -227,15 +230,12 @@ class BulletRobotDriver(SimRobotDriver):
         return vel
 
     def pass_joint_efforts(self, joints: List[str]) -> Dict[str, float]:
-        '''
-        Retrieves the current joint efforts (applied forces) for the specified joints.
+        """!Return the current joint efforts.
 
-        Args:
-            joints (List[str]): A list of joint names for which the efforts are to be retrieved.
-
-        Returns:
-            Dict[str, float]: A dictionary where the key is the joint name, and the value is the joint's applied effort (force).
-        '''
+        @param joints List of joint names.
+        @return Dictionary from joint name to effort.
+        @rtype Dict[str, float]
+        """
         eff = {}
         idx = [self.actuated_joints[joint] for joint in joints]
         # Iterate over each joint index and corresponding joint state to fill dictionaries
@@ -249,21 +249,13 @@ class BulletRobotDriver(SimRobotDriver):
     #####################
 
     def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
-        '''
-        Sends control commands to a group of joints, applying the specified control mode (position, velocity, or torque).
+        """!Send a control command to a group of joints.
 
-        Args:
-            control_mode (str): The control mode to apply to the joints. Must be one of 'position', 'velocity', or 'torque'.
-            joints (List[str]): A list of joint names that will be controlled.
-            cmd (Dict[str, float]): A dictionary where each key is a joint name, and the corresponding value is the control command 
-                                    (position, velocity, or torque) for that joint.
-
-        Returns:
-            None: This function doesn't return a value. It applies the control command to the specified joints.
-
-        Raises:
-            ValueError: If the number of joints does not match the number of commands in `cmd`, or if an invalid control mode is provided.
-        '''
+        @param control_mode One of ``position``, ``velocity`` or ``torque``.
+        @param cmd Mapping from joint names to command values.
+        @param kwargs Additional keyword arguments forwarded to PyBullet.
+        @return ``None``
+        """
         idx = [self.actuated_joints[joint] for joint in cmd.keys()]
         
         kwargs = {motor_control_kwarg[control_mode]: list(cmd.values())}
@@ -287,14 +279,20 @@ class BulletRobotDriver(SimRobotDriver):
     ##      misc.      ##
     #####################
 
-    def sim_reset(self, 
+    def sim_reset(self,
                   base_pos : List[float],
                   base_orn : List[float],
                   q_init : List[float]) -> None:
+        """!Reset the robot in the simulator.
 
+        @param base_pos New base position.
+        @param base_orn New base orientation quaternion.
+        @param q_init List of joint positions after the reset.
+        """
         # delete the robot
         self.client.removeBody(self.ref_body_id)
         self.load_robot(base_position=base_pos, base_orientation=base_orn, q_init=q_init)
 
         log.ok("Reset robot " + self.component_name + " completed.")
         return 
+
