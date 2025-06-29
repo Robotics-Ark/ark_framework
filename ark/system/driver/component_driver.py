@@ -1,4 +1,11 @@
 
+"""! Base component driver definitions.
+
+This module contains the :class:`ComponentDriver` abstract base class used by
+all ARK drivers. It includes helper functionality for loading configuration
+files and common attributes shared by concrete drivers.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from pathlib import Path
@@ -19,18 +26,17 @@ class ComponentDriver(ABC):
             for the component. Defaults to None.
     """
 
-    def __init__(self, 
-                 component_name: str, 
+    def __init__(self,
+                 component_name: str,
                  component_config: Any = None,
                  sim: bool = True,
                  ) -> None:
-        """
-        Initializes the ComponentDriver.
+        """! Initialize the driver.
 
-        Args:
-            component_name (str): The name of the component using this driver.
-            component_config (Dict[str, Any], optional): Configuration settings 
-                for the component using this driver. Defaults to None.
+        @param component_name Name of the component using this driver.
+        @param component_config Path or dictionary with configuration for the
+               component using this driver.
+        @param sim Set to ``True`` if running in simulation mode.
         """
         self.component_name = component_name
         
@@ -42,6 +48,18 @@ class ComponentDriver(ABC):
 
 
     def _load_single_section(self, component_config, component_name):
+        """! Load the configuration of a single component from a YAML file.
+
+        This helper parses a global configuration file and extracts the
+        subsection corresponding to ``component_name``.
+
+        @param component_config Path to a YAML file or a ``Path`` object
+               pointing to the configuration file.
+        @param component_name Name of the component whose configuration should
+               be loaded.
+        @return Dictionary containing the configuration for the component.
+        """
+
         # handle path object vs string
         if isinstance(component_config, str):
             component_config = Path(component_config)
@@ -78,12 +96,18 @@ class ComponentDriver(ABC):
         return section_config
     
     def is_sim(self):
+        """! Return whether this driver is running in simulation mode.
+
+        @return ``True`` if the driver targets a simulator, ``False`` otherwise.
+        """
+
         return self.sim
 
     @abstractmethod
     def shutdown_driver(self) -> None:
-        """
-        Abstract method to shut down the driver. This should handle resource 
-        cleanup, closing connections, and other shutdown procedures.
+        """! Shut down the driver and release all resources.
+
+        Concrete drivers should override this method to close connections or
+        stop any background tasks started by the driver.
         """
         pass
