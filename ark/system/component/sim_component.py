@@ -1,4 +1,6 @@
 
+"""Base classes for simulation objects."""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
@@ -8,17 +10,17 @@ from arktypes import flag_t, rigid_body_state_t
     
     
 class SimComponent(BaseComponent, ABC):
-    """
-    TODO
-    """
+    """Base class for simulated rigid bodies."""
 
 
-    def __init__(self, 
-                 name: str,  
+    def __init__(self,
+                 name: str,
                  global_config: Dict[str, Any] = None
                  ) -> None:
-        """
-        TODO
+        """Create a simulation component.
+
+        @param name  Name of the object.
+        @param global_config  Global configuration dictionary.
         """
         super().__init__(name = name, 
                          global_config = global_config)
@@ -33,6 +35,7 @@ class SimComponent(BaseComponent, ABC):
 
   
     def step_component(self):
+        """Gather object state and publish it if required."""
         if self.publish_ground_truth:
             data = self.get_object_data()
             packed = self.pack_data(data)
@@ -40,21 +43,11 @@ class SimComponent(BaseComponent, ABC):
         
     @abstractmethod
     def pack_data(self) -> None:
-        """
-        Packs the data to be sent to the client.
-
-        This method should be implemented by subclasses to define specific behavior 
-        for packing data to be sent to the client.
-        """
+        """Pack object data into the message format."""
 
     @abstractmethod
     def get_object_data(self) -> Any:
-        """
-        Get the data from the object.
-
-        This method should be implemented by subclasses to define specific behavior 
-        for getting data from the object.
-        """
+        """Retrieve the current state of the simulated object."""
 
     
     
