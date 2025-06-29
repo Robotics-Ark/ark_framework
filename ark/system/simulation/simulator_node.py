@@ -1,6 +1,14 @@
+"""Simulation node base implementation.
+
+This module provides :class:`SimulatorNode` which serves as the entry point
+for launching and controlling a simulator instance.  It loads a global
+configuration, instantiates the desired backend and offers utilities for
+managing the simulation lifecycle.  Concrete simulations should derive from
+this class and implement :func:`initialize_scene` and :func:`step`.
+"""
 
 from pathlib import Path
-from abc import ABC, abstractmethod 
+from abc import ABC, abstractmethod
 from typing import Dict, Any
 import os
 import yaml
@@ -14,7 +22,25 @@ import pdb
 
 
 class SimulatorNode(BaseNode, ABC):
+    """Base class for simulator nodes.
+
+    A :class:`SimulatorNode` wraps a simulation backend and exposes LCM
+    services for stepping and resetting the simulation.  Subclasses are
+    expected to implement :func:`initialize_scene` to construct the initial
+    environment and :func:`step` to execute custom logic on every simulation
+    tick.
+    """
+
     def __init__(self, global_config):
+        """!Construct the simulator node.
+
+        The constructor loads the global configuration, instantiates the
+        backend and sets up basic services for stepping and resetting the
+        simulator.
+
+        @param global_config Path to the configuration YAML file or a loaded
+               configuration dictionary.
+        """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
 
@@ -43,7 +69,16 @@ class SimulatorNode(BaseNode, ABC):
         
         
     def _load_config(self, global_config) -> None:
-        
+        """!Load and merge the global configuration.
+
+        The configuration may either be provided as a path to a YAML file or
+        already loaded into a dictionary.  Included sub-configurations for
+        robots, sensors and objects are resolved and merged.
+
+        @param global_config Path to the configuration file or configuration
+               dictionary.
+        """
+
         if not global_config:
             raise ValueError("Please provide a global configuration file.")
         
@@ -93,15 +128,17 @@ class SimulatorNode(BaseNode, ABC):
 
 
     def _load_section(self, cfg: dict[str, Any], config_path: str, section_name: str) -> dict[str, Any]:
-        """
-        Generic function to load a section from the config (e.g., robots, sensors, or objects).
-        It handles both inline configurations and paths to external YAML files.
+        """!Load a sub‑configuration section.
 
-        @param cfg: The main configuration dictionary.
-        @param config_path: The path to the main configuration file.
-        @param section_name: The name of the section to load (e.g., "robots", "sensors", or "objects").
+        Sections may either be specified inline within the main configuration
+        file or given as paths to external YAML files.  The returned dictionary
+        maps component names to their configuration dictionaries.
 
-        @return: A dictionary containing the loaded configuration for the specified section.
+        @param cfg The top level configuration dictionary.
+        @param config_path Absolute path to the loaded configuration file.
+        @param section_name Name of the section to load (``"robots"``,
+               ``"sensors"`` or ``"objects"``).
+        @return Dictionary containing the merged configuration for the section.
         """
         # { "name" : { ... } },
         #   "name" : { ... } } 
@@ -127,30 +164,33 @@ class SimulatorNode(BaseNode, ABC):
 
     
     def _reset_backend(self, channel, msg):
+        """!Service callback resetting the backend."""
         self.backend.reset_simulator()
         return flag_t()
     
 
     def _step_simulation(self) -> None:
+        """!Advance the simulation by one step and call :func:`step`."""
         self.step()
         self.backend.step()
 
     @abstractmethod 
     def initialize_scene(self) -> None:
+        """!Create the initial simulation scene."""
         pass
     
     @abstractmethod
     def step(self) -> None:
-        # enables custom behavior like printing out information etc.
+        """!Hook executed every simulation step."""
         pass
 
     # OVERRIDE
     def spin(self) -> None:
-        """!
-        Runs the node’s main loop, handling LCM messages continuously until the node is finished.
+        """!Run the node's main loop.
 
-        The loop calls `self._lcm.handle()` to process incoming messages. If an OSError is encountered,
-        the loop will stop and the node will shut down.
+        The loop processes incoming LCM messages and forwards control to the
+        backend for spinning all components.  It terminates when an
+        ``OSError`` occurs or :attr:`_done` is set to ``True``.
         """
         while not self._done:
             try:
@@ -162,7 +202,6 @@ class SimulatorNode(BaseNode, ABC):
 
     # OVERRIDE
     def kill_node(self) -> None:
-        # kill driver (close ports, ...)
+        """!Shut down the node and the underlying backend."""
         self.backend.shutdown_backend()
-        # kill all communication
         super().kill_node()

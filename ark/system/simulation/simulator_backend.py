@@ -1,3 +1,4 @@
+"""Abstract interface for simulation backends."""
 
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -11,17 +12,18 @@ from ark.system.component.sim_component import SimComponent
 
     
 class SimulatorBackend(ABC):
-    """
-    TODO
-    Handles global simulator stuff
+    """Base class for all simulator backends.
+
+    The backend manages robots, sensors and other simulated components and
+    exposes a minimal interface for stepping and resetting the simulation
+    environment.
     """
 
     def __init__(self, global_config: Dict[str, Any]) -> None:
-        """
-        Initializes the simulator with the given configuration.
+        """!Create and initialize the backend.
 
-        Args:
-            config (dict): The configuration dictionary for the simulator initialization.
+        @param global_config Dictionary describing the complete simulator
+               configuration.
         """
         self.robot_ref: Dict[str, Robot] = {}  # Key is robot name, value is config dict
         self.object_ref: Dict[str, SimComponent] = {}  # Key is object name, value is config dict
@@ -33,7 +35,7 @@ class SimulatorBackend(ABC):
         self.ready = True
         
     def is_ready(self) -> bool:
-        """Returns whether the simulator is ready for interaction."""
+        """!Check if the backend finished initialization."""
         return self.ready
 
     #########################
@@ -42,28 +44,21 @@ class SimulatorBackend(ABC):
 
     @abstractmethod
     def initialize(self) -> None:
-        """
-        Initialize the simulator with the given configuration.
-
-        Args:
-            config (dict): The configuration dictionary.
-        """
+        """!Initialize the simulator implementation."""
         ...
     
     @abstractmethod
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
-        """
-        Set the gravity in the simulator environment.
+        """!Set the gravity vector used by the simulator.
 
-        Args:
-            gravity (tuple): A tuple (x, y, z) representing the gravity vector.
+        @param gravity Tuple ``(x, y, z)`` representing the gravity vector.
         """
         ...
 
 
     @abstractmethod
     def reset_simulator(self) -> None:
-        """Reset the entire simulator state, including scene and objects."""
+        """!Reset the entire simulator state."""
         ...
 
     @abstractmethod
@@ -72,12 +67,10 @@ class SimulatorBackend(ABC):
         name: str,
         global_config: dict[str, Any],
     ) -> None:
-        """
-        Add a robot to the simulator.
+        """!Add a robot to the simulation.
 
-        Args:
-            name (str): The name of the robot.
-            config (dict): Configuration parameters for the robot.
+        @param name Name of the robot.
+        @param global_config Configuration dictionary for the robot.
         """
         ...
 
@@ -88,13 +81,11 @@ class SimulatorBackend(ABC):
         sensor_type: SensorType,
         global_config: dict[str, Any],
     ) -> None:
-        """
-        Add a sensor to the simulator.
+        """!Add a sensor to the simulation.
 
-        Args:
-            name (str): The name of the sensor.
-            sensor_type (SensorType): The type of sensor (e.g., CAMERA, FORCE_TORQUE).
-            config (dict): Configuration parameters for the sensor.
+        @param name Name of the sensor.
+        @param sensor_type Type of the sensor.
+        @param global_config Configuration dictionary for the sensor.
         """
         ...
     
@@ -105,42 +96,36 @@ class SimulatorBackend(ABC):
         type: str,
         global_config: dict[str, Any],
     ) -> None:
-        """
-        Add an object to the simulator.
+        """!Add a generic simulation object.
 
-        Args:
-            name (str): The name of the object.
-            type (str): The type of object (e.g., "cube", "sphere").
-            config (dict): Configuration parameters for the object.
+        @param name Name of the object.
+        @param type Type identifier (e.g. ``"cube"``).
+        @param global_config Configuration dictionary for the object.
         """
         ...
 
 
     @abstractmethod
     def remove(self, name: str) -> None:
-        """
-        Remove a robot, sensor, or object from the simulator.
+        """!Remove a robot, sensor or object by name.
 
-        Args:
-            name (str): The name of the object to remove.
+        @param name Name of the component to remove.
         """
         ...
 
     @abstractmethod
     def step(self) -> None:
-        """Advance the simulator by one time step."""
+        """!Advance the simulator by one timestep."""
         ...
         
     @abstractmethod
     def shutdown_backend(self) -> None:
-        """Shutdown the simulator, cleaning up resources."""
+        """!Shut down the simulator and free resources."""
         pass
 
         
     def _step_sim_components(self) -> None:
-        """
-     
-        """
+        """!Step all registered components."""
         for robot in self.robot_ref:
             if not self.robot_ref[robot]._is_suspended:
                 self.robot_ref[robot].step_component()
@@ -152,10 +137,7 @@ class SimulatorBackend(ABC):
 
 
     def _spin_sim_components(self) -> None:
-        """
-        TODO
-
-        """
+        """!Spin components in manual mode."""
         for robot in self.robot_ref:
             self.robot_ref[robot].manual_spin()
         for obj in self.object_ref:
