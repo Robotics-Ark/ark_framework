@@ -1,4 +1,11 @@
 
+"""! Driver layer for sensors.
+
+Provides abstract classes for generic sensors and concrete drivers like cameras
+or LiDARs used in simulation.  Implementations expose sensor data retrieval in a
+backend agnostic fashion.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List
@@ -10,6 +17,8 @@ import numpy as np
 
 
 class SensorType(Enum):
+    """! Supported sensor device categories."""
+
     CAMERA = "camera"
     FORCE_TORQUE = "force_torque"
     
@@ -22,12 +31,12 @@ class SensorDriver(ComponentDriver, ABC):
     (driver will handle differences between real systems)
     """
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any] = None,
                  sim: bool = True,
                  ) -> None:
-        # TOOD
+        """! Initialise the sensor driver with optional configuration."""
         super().__init__(component_name, component_config, sim)
 
 
@@ -37,16 +46,17 @@ class CameraDriver(SensorDriver, ABC):
     ...
     """
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any] = None,
                  sim: bool = True,
                  ) -> None:
-        # TOOD
+        """! Initialise a generic camera driver."""
         super().__init__(component_name, component_config, sim)
         
     @abstractmethod
     def get_images(self) -> Dict[str, np.ndarray]:
+        """! Retrieve all configured image streams."""
         ...
 
 class LiDARDriver(SensorDriver, ABC):

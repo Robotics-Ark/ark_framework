@@ -39,10 +39,11 @@ for i, joint in enumerate(root.findall('joint')):
     joint_details.append(joint_info)
 
 def format_number(value):
+    """! Format numeric strings with four decimals, leave others unchanged."""
     try:
-        return f"{float(value):.4f}"  # Limit to 4 decimal places
+        return f"{float(value):.4f}"
     except ValueError:
-        return value  # Return the value as-is if it's not a number
+        return value
 
 # Print out the formatted joint details with adjusted spacing
 print(f"{'Index':<6}{'Joint Name':<20}{'Type':<18}{'Parent Link':<25}{'Child Link':<25}{'Lower Limit':<15}{'Upper Limit':<15}{'Effort Limit':<15}{'Velocity Limit':<15}")

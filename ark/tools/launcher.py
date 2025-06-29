@@ -1,4 +1,11 @@
 
+"""! Simple launcher for spawning ARK nodes from YAML configuration files.
+
+This script can execute multiple Python scripts or modules based on a launch
+file description.  It handles process management and optional log file
+creation.
+"""
+
 import sys
 import yaml
 import os
@@ -301,6 +308,7 @@ def start(launch_file: str):
     ark_launch(launch_file)
 
 def main():
+    """! Entry point for the Typer CLI."""
     app()
 
 if __name__ == '__main__':

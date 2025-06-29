@@ -1,4 +1,11 @@
 
+"""! Definitions of action and observation spaces used by :class:`ArkEnv`.
+
+The classes in this module provide a lightweight wrapper over LCM communication
+to publish actions and receive observations from the ARK backend.  They are
+designed to be subclassed for custom packing and unpacking logic.
+"""
+
 from lcm import LCM
 from abc import ABC, abstractmethod
 
@@ -45,24 +52,25 @@ class ActionSpace(Space):
     """
 
     def __init__(self, action_channels: List, action_packing: Callable, lcm_instance: LCM):
+        """! Create publishers for action channels and store packing callback."""
         self.action_space_publisher = MultiChannelPublisher(action_channels, lcm_instance)
         self.action_packing = action_packing
         self.messages_to_publish = None
 
 
     def pack_and_publish(self, action: Any):
+        """! Pack an action and publish it on all configured channels."""
         messages_to_publish = self.pack_message(action)
         self.action_space_publisher.publish(messages_to_publish)
     
 
     def pack_message(self, action: Any) -> Dict[str, Any]:
         """!
-        Abstract method to pack the action into a message format suitable for LCM.
+        Pack the action into a message format suitable for LCM.
 
-        @param action: The action to be packed into a message.
-        @type action: Any
-        @return: The packed LCM message.
-        @type: Dict
+        @param action The raw action to be packed.
+        @return Packed LCM messages keyed by channel name.
+        @rtype Dict
         """
 
         return self.action_packing(action)
@@ -83,47 +91,46 @@ class ObservationSpace(Space):
 
     def __init__(
         self, observation_channels: List, observation_unpacking: Callable, lcm_instance: LCM):
+        """! Create listeners for observation channels and store unpack callback."""
         self.observation_space_listener = MultiChannelListener(observation_channels, lcm_instance)
         self.observation_unpacking = observation_unpacking
         self.is_ready = False
 
     def unpack_message(self, observation_dict: Dict) -> Any:
-        '''
-        input: a dictionary containg the channel and then message recived on that channel
-        returns: Any
-        '''
+        """!
+        Convert the raw observation dictionary into the desired format.
+
+        @param observation_dict Mapping from channel names to received messages.
+        @return Decoded observation.
+        @rtype Any
+        """
         obs = self.observation_unpacking(observation_dict)
         return obs
 
     def check_readiness(self):
+        """! Update ``is_ready`` based on whether all channels received data."""
         lcm_dictionary = self.observation_space_listener.get()
         self.is_ready = not any(value is None for value in lcm_dictionary.values())
         
     def wait_until_observation_space_is_ready(self):
-        # Continuously check if the observation space is ready
+        """! Block until all observation channels have received at least one message."""
         while not self.is_ready:
             log.warning('Observation space is getting checked')
-            # Perform any necessary steps to check readiness
             self.check_readiness()
-
-            # Pause briefly before checking again
             time.sleep(0.05)
-
             if not self.is_ready:
                 log.warning('Observation space is still not ready. Retrying...')
 
     def empty_data(self):
-        """!
-        Empties the data dictionary.
-        """
+        """! Empties the data dictionary."""
         self.observation_space_listener.empty_data()
 
     def get_observation(self) -> Any:
         """!
-        Retrieves the current observation from the space.
+        Retrieve the current observation from the space.
 
-        @return: The current observation.
-        @rtype: Any
+        @return The current observation.
+        @rtype Any
         """
         assert self.is_ready, 'Observation space is not ready. Call wait_until_observation_space_is_ready() first.'
         

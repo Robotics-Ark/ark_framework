@@ -1,4 +1,12 @@
 
+"""! Base class for sensor components.
+
+Sensors extend :class:`SimToRealComponent` and provide hooks for reading data
+from either simulation or real hardware.  Concrete sensor classes implement
+`get_sensor_data` and `pack_data` to publish measurements to the rest of the
+system.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -52,12 +60,12 @@ class Sensor(SimToRealComponent, ABC):
 
     @abstractmethod
     def get_sensor_data(self) -> Any:
-        """Simulate the sensor's behavior."""
+        """! Simulate the sensor's behavior."""
         
 
     @abstractmethod
     def pack_data(self, data: Any):
-        """Pack the sensor data into a lcm_type to be published."""
+        """! Pack the sensor data into a lcm_type to be published."""
         
 
     # # OVERRIDE
@@ -68,9 +76,11 @@ class Sensor(SimToRealComponent, ABC):
     #     super().shutdown()
 
     def reset_component(self) -> None:
+        """! Reset the sensor state if required by the implementation."""
         pass
 
     def step_component(self):
+        """! Acquire sensor data and publish it over the network."""
         data = self.get_sensor_data()
         packed = self.pack_data(data)
         self.component_multi_publisher.publish(packed)

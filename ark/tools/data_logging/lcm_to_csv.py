@@ -1,4 +1,10 @@
 
+"""! Utility for converting LCM log files to CSV.
+
+The :class:`LCMLogParser` class reads binary LCM logs and outputs a
+tabular representation that can be easily analysed with pandas.
+"""
+
 import struct
 import pandas as pd
 import argparse
@@ -8,21 +14,24 @@ LCM_SYNC_WORD = 0xEDA1DA01  # The sync word for LCM log events
 
 
 class LCMLogParser:
+    """! Parse binary LCM log files into convenient CSV form."""
+
     def __init__(self, input_filename, channel_config):
-        """
+        """!
         Initialize the LCM log parser.
 
-        :param input_filename: Path to the LCM log file.
-        :param channel_config: A list of tuples (channel_name, lcm_message_type) for decoding.
+        @param input_filename Path to the LCM log file.
+        @param channel_config List of tuples ``(channel, lcm_type)`` for decoding.
         """
         self.input_filename = input_filename
         self.channel_config = {channel: message_type for channel, message_type in channel_config}
         self.df = None
         
     def parse(self):
-        """
+        """!
         Parse the LCM log file into a Pandas DataFrame.
-        :return: Pandas DataFrame containing the parsed and decoded data.
+
+        @return Pandas DataFrame containing the parsed and decoded data.
         """
         events = []
 
@@ -95,6 +104,7 @@ class LCMLogParser:
         print(f"Data has been saved to {output_filepath}")
         
     def get_dataframe(self):
+        """! Return the parsed log as a DataFrame, parsing if necessary."""
         if self.df is None:
             self.df = self.parse()
         return self.df

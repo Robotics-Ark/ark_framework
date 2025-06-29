@@ -1,4 +1,10 @@
 
+"""! Bridge node translating between ARK messages and ROS topics.
+
+`ArkRosBridge` subscribes to configured ROS topics and ARK channels, converting
+messages in both directions using user provided translator callbacks.
+"""
+
 import yaml
 from ark.tools.log import log
 from functools import partial
@@ -10,11 +16,14 @@ from arktypes import string_t
 import rospy
 
 __doc__ = (
-    """ARK to ROS translator"""
+    """! ARK to ROS translator"""
 )
 
 class ArkRosBridge(BaseNode):
+    """! Bridge between ROS topics and ARK communication channels."""
+
     def __init__(self, mapping_table, node_name="ARK_ROS_Bridge", global_config=None):
+        """! Bridge configured ROS topics to ARK channels and vice versa."""
         super().__init__(node_name, global_config=global_config)
         self.ros_to_ark_mapping = []
 
@@ -123,6 +132,7 @@ class ArkRosBridge(BaseNode):
     
     @staticmethod
     def get_cli_doc():
+        """! Return CLI documentation string."""
         return __doc__
     
     def shutdown(self) -> None:

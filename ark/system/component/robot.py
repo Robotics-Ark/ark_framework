@@ -1,4 +1,12 @@
 
+"""! Robot component definitions.
+
+This module contains the :class:`Robot` base class which wraps a robot driver
+and exposes common utilities for reading state, controlling joint groups and
+resetting the robot.  Decorators simplify mapping from high level commands to
+driver specific calls.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, Tuple, List, Union
@@ -15,7 +23,10 @@ from arktypes import flag_t, robot_init_t
 
 
 def robot_joint_control(func):
+    """! Decorator forwarding joint group control arguments to the driver."""
+
     def wrapper(self, group_name: str, target: Dict[str, float], **kwargs):
+        """! Internal wrapper used by :func:`robot_joint_control`."""
         # Ensure the class instance has 'joint_groups' and the necessary structure
         if not hasattr(self, 'joint_groups'):
             raise AttributeError("The class must have 'joint_groups' attribute.")
@@ -35,7 +46,10 @@ def robot_joint_control(func):
     return wrapper
 
 def robot_control(func):
+    """! Decorator resolving joint group information for high level commands."""
+
     def wrapper(self, group_name: str, target: Dict[str, float], **kwargs):
+        """! Internal wrapper used by :func:`robot_control`."""
         # Ensure the class instance has 'joint_groups' and the necessary structure
         if not hasattr(self, 'joint_groups'):
             raise AttributeError("The class must have 'joint_groups' attribute.")
@@ -53,7 +67,9 @@ def robot_control(func):
     return wrapper
 
 class ControlType(Enum):
-    POSITION = "position" 
+    """! Modes of controlling robot joints."""
+
+    POSITION = "position"
     VELOCITY = "velocity"
     TORQUE = "torque"
     FIXED = "fixed"
@@ -61,19 +77,16 @@ class ControlType(Enum):
 
 
 class Robot(SimToRealComponent):
-    """
-    TODO
-    This class should handle all config related stuff, e.g. joint groups
+    """!
+    Base robot component handling configuration and driver interfacing.
     """
 
 
-    def __init__(self, name: str, 
+    def __init__(self, name: str,
                        global_config: Union[str, Dict[str, Any], Path],
                        driver: RobotDriver,
                        ) -> None:
-        """
-    
-        """
+        """! Create a robot component and parse its configuration."""
         super().__init__(name=name, 
                          global_config=global_config,
                          driver=driver)
@@ -298,39 +311,47 @@ class Robot(SimToRealComponent):
     #####################
     
     def get_joint_limits(self) -> Dict[str, Dict[str, float]]:
+        """! Return joint limit information for all actuated joints."""
         actuated_info = {joint: info for joint, info in self.joint_infos.items() if info["actuated"]}
-        return {joint: {"lower_limit": float(info.get("lower_limit", "inf")), 
+        return {joint: {"lower_limit": float(info.get("lower_limit", "inf")),
                         "upper_limit": float(info.get("upper_limit", "inf")),
                         "effort_limit": float(info.get("effort_limit", "inf")),
                         "velocity_limit": float(info.get("velocity_limit", "inf"))}
                 for joint, info in actuated_info.items()}
 
     def _get_joint_group_indices(self, joint_group: str) -> Tuple[List[float], List[float]]:
-        """Get indices of the joint group"""
+        """! Return joint and actuated joint indices for ``joint_group``."""
         return list(self.joint_groups[joint_group]["joints"].values()), list(self.joint_groups[joint_group]["actuated_joints"].values())
 
     def is_torqued(self) -> bool:
+        """! Check whether the robot is actively torque controlled."""
         return self._driver.check_torque_status()
 
     def get_joint_positions(self) -> Dict[str, float]:
+        """! Retrieve positions of all actuated joints."""
         return self._driver.pass_joint_positions(self._all_actuated_joints)
         # return self._driver.pass_joint_positions(self._all_actuated_joints)
 
     def get_joint_velocities(self) -> Dict[str, float]:
+        """! Retrieve velocities of all actuated joints."""
         return self._driver.pass_joint_velocities(self._all_actuated_joints)
 
     def get_joint_efforts(self) -> Dict[str, float]:
+        """! Retrieve efforts/torques of all actuated joints."""
         return self._driver.pass_joint_efforts(self._all_actuated_joints)
 
     def get_joint_group_positions(self, joint_group: str) -> Dict[str, float]:
+        """! Return positions for the specified joint group."""
         actuated_joints = self.joint_groups[joint_group]["actuated_joints"]
         return self._driver.pass_joint_positions(actuated_joints)
 
     def get_joint_group_velocities(self, joint_group: str) -> Dict[str, float]:
+        """! Return velocities for the specified joint group."""
         actuated_joints = self.joint_groups[joint_group]["actuated_joints"]
         return self._driver.pass_joint_velocities(actuated_joints)
 
     def get_joint_group_efforts(self, joint_group: str) -> Dict[str, float]:
+        """! Return efforts for the specified joint group."""
         actuated_joints = self.joint_groups[joint_group]["actuated_joints"]
         return self._driver.pass_joint_efforts(actuated_joints)
 
@@ -339,6 +360,7 @@ class Robot(SimToRealComponent):
     ##     control     ##
     #####################
     def control_joint_group(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
+        """! Forward a control command for a joint group to the driver."""
         self._driver.pass_joint_group_control_cmd(control_mode, cmd, **kwargs)
 
     #####################
@@ -346,7 +368,8 @@ class Robot(SimToRealComponent):
     #####################
     
     def reset_component(self, channel=None, msg=None) -> flag_t:
-        print("RESET HAS BEEN CALLED")          
+        """! Reset the robot to a known configuration."""
+        print("RESET HAS BEEN CALLED")
         self._is_suspended = True
         
         # # TODO
@@ -390,6 +413,7 @@ class Robot(SimToRealComponent):
     
     
     def step_component(self):
+        """! Publish the current robot state on its channels."""
         data = self.get_state()
         packed = self.pack_data(data)
         self.component_multi_publisher.publish(packed)

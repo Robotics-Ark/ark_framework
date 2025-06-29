@@ -1,4 +1,10 @@
 
+"""! LiDAR sensor driver for PyBullet simulations.
+
+Provides a simple implementation of :class:`LiDARDriver` that retrieves range
+data from PyBullet and converts it into numpy arrays for downstream processing.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List

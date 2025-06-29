@@ -1,4 +1,12 @@
 
+"""! Abstract driver layer for all components.
+
+Drivers handle the backend specific communication for robots, sensors and other
+simulation objects.  They provide unified methods so that higher level
+components can interact with different simulators or hardware without caring
+about their implementation details.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from pathlib import Path
@@ -42,6 +50,7 @@ class ComponentDriver(ABC):
 
 
     def _load_single_section(self, component_config, component_name):
+        """! Load configuration for a single component from a YAML file."""
         # handle path object vs string
         if isinstance(component_config, str):
             component_config = Path(component_config)
@@ -78,6 +87,7 @@ class ComponentDriver(ABC):
         return section_config
     
     def is_sim(self):
+        """! Return ``True`` if this driver is used in simulation."""
         return self.sim
 
     @abstractmethod

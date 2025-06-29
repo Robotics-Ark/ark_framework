@@ -1,4 +1,12 @@
 
+"""! Base interface for simulator backends.
+
+The :class:`SimulatorBackend` class defines how ARK interacts with different
+physics engines or simulators.  Implementations handle adding and stepping
+robots, sensors and objects as well as setting physics parameters such as
+gravity or time step.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -33,7 +41,7 @@ class SimulatorBackend(ABC):
         self.ready = True
         
     def is_ready(self) -> bool:
-        """Returns whether the simulator is ready for interaction."""
+        """! Returns whether the simulator is ready for interaction."""
         return self.ready
 
     #########################
@@ -63,7 +71,7 @@ class SimulatorBackend(ABC):
 
     @abstractmethod
     def reset_simulator(self) -> None:
-        """Reset the entire simulator state, including scene and objects."""
+        """! Reset the entire simulator state, including scene and objects."""
         ...
 
     @abstractmethod
@@ -128,12 +136,12 @@ class SimulatorBackend(ABC):
 
     @abstractmethod
     def step(self) -> None:
-        """Advance the simulator by one time step."""
+        """! Advance the simulator by one time step."""
         ...
         
     @abstractmethod
     def shutdown_backend(self) -> None:
-        """Shutdown the simulator, cleaning up resources."""
+        """! Shutdown the simulator, cleaning up resources."""
         pass
 
         

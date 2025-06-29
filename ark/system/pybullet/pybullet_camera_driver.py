@@ -1,4 +1,11 @@
 
+"""! Camera driver implementation for PyBullet.
+
+The :class:`BulletCameraDriver` simulates RGB-D or mono cameras within the
+PyBullet environment.  Depending on configuration it can be fixed or attached to
+another body and provides convenience methods for rendering images.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List
@@ -11,12 +18,14 @@ import pybullet as p
 from scipy.spatial.transform import Rotation as R
 
 def rotation_matrix_to_euler(R_world):
-    # Convert rotation matrix to Euler angles (yaw, pitch, roll)
+    """! Convert a rotation matrix to Euler angles in degrees."""
     r = R.from_matrix(R_world)
-    euler_angles = r.as_euler('xyz', degrees=True)  
+    euler_angles = r.as_euler('xyz', degrees=True)
     return euler_angles
 
 class CameraType(Enum):
+    """! Types of camera mounting supported by the driver."""
+
     FIXED = "fixed"
     ATTACHED = "attached"
     
@@ -28,13 +37,14 @@ class BulletCameraDriver(CameraDriver):
     Should absorb everything that is specific to any simulator
     """
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any],
                  attached_body_id: int = None,
                  client: Any = None,
                  ) -> None:
-        super().__init__(component_name, component_config, True) # sim is always True for pybullet
+        """! Create a camera driver instance for PyBullet."""
+        super().__init__(component_name, component_config, True)  # sim is always True for pybullet
         self.client = client
         self.attached_body_id = attached_body_id 
         
@@ -172,6 +182,7 @@ class BulletCameraDriver(CameraDriver):
 
     
     def _update_position(self) -> Any:
+        """! Refresh camera pose if attached to another body."""
         if self.camera_type == CameraType.ATTACHED:
             if self.parent_link is None or self.parent_link_id is None:
                     position, orientation = p.getBasePositionAndOrientation(self.attached_body_id)
@@ -195,6 +206,7 @@ class BulletCameraDriver(CameraDriver):
 
 
     def get_images(self):
+        """! Capture the current camera images from PyBullet."""
         
         if self.camera_type == CameraType.ATTACHED:
             self._update_position()
@@ -240,5 +252,5 @@ class BulletCameraDriver(CameraDriver):
         return images
     
     def shutdown_driver(self) -> None:
-        # nothing to worry about here
+        """! Cleanup any resources used by the camera driver."""
         pass

@@ -1,4 +1,11 @@
 
+"""! Logging utilities used across the ARK framework.
+
+Provides a colorized logger with additional log levels and helpers such as
+``log.query`` for interactive prompts.  The :data:`log` object is intended to be
+imported and used directly by other modules.
+"""
+
 import logging
 from datetime import datetime
 from typing import Optional
@@ -45,6 +52,7 @@ def ok(self: logging.Logger, message: str, *args: object, **kwargs: object) -> N
 logging.Logger.ok = ok  # Add the `ok` method to the Logger class
 
 def apply_panda_style(text: str) -> str:
+    """! Return text styled in a panda pattern for fun logging."""
     styled_text = ""
     colors = [bcolors.WHITE, bcolors.GREY]
     for i, char in enumerate(text):
@@ -52,6 +60,7 @@ def apply_panda_style(text: str) -> str:
     return styled_text + bcolors.ENDC
 
 def log_panda(self: logging.Logger, message: str, *args: object, **kwargs: object) -> None:
+    """! Log a message using alternating white/grey characters."""
     if self.isEnabledFor(logging.INFO):
         styled_message = apply_panda_style(message)
         self._log(logging.INFO, styled_message, args, **kwargs)

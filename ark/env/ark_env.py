@@ -1,4 +1,12 @@
 
+"""! Core environment base classes.
+
+This module defines :class:`ArkEnv`, a Gymnasium compatible environment used
+to interface reinforcement learning agents with the ARK ecosystem.  It handles
+configuration loading, action/observation spaces and exposes a simple API that
+child classes can extend for custom behaviour.
+"""
+
 import time
 from typing import Optional, Callable, Any, Tuple, Dict, List, Union
 from pathlib import Path
@@ -59,52 +67,75 @@ class ArkEnv(Env, InstanceNode, ABC):
 
     @abstractmethod
     def action_packing(self, action: Any) -> Dict[str, Any]:
-        '''
-            Takes any input passed to the `step` function and returns a dictionary where:
-            - Each key corresponds to an action channel.
-            - Each value is the packed LCM message associated with that action channel.
-            @rtype: Dict[str, Any]
-        '''
+        """!
+        Pack the provided action into LCM messages.
+
+        This method converts the high level action passed to :func:`step` into
+        a dictionary mapping each action channel to its packed LCM message.
+
+        @param action The action passed to :func:`step`.
+        @return Dictionary mapping channel names to packed messages.
+        @rtype Dict[str, Any]
+        """
         raise NotImplementedError
     
     @abstractmethod
     def observation_unpacking(self, observation_dict: Dict[str, Any]) -> Any:
-        '''
-            Returns a dictionary containing all previous messages received on the observation channels.
-            - Each key represents the name of the channel from which the message was received.
-            - Each value is the corresponding packed LCM message for that channel.
+        """!
+        Unpack the dictionary of raw observation messages.
 
-            The format of the returned dictionary is flexible and can be customized based on the desired structure.
-            @rtype: Any
-        '''
+        This method receives the dictionary with raw LCM messages from all
+        observation channels and converts it into the desired observation
+        representation.
+
+        @param observation_dict Dictionary mapping channel names to packed messages.
+        @return Decoded observation in any user defined format.
+        @rtype Any
+        """
         raise NotImplementedError
     
     @abstractmethod
     def terminated_truncated_info(self, state: Any, action: Any, next_state: Any) -> Tuple[bool, bool, Any]:
-        '''
-        Returns a tuple containing the termination flag, the truncation flag, and any additional information.
-        Note: when reset is called action and next state will be None
-        @rtype: Tuple[bool, bool, Any]
-        '''
+        """!
+        Compute episode termination information.
+
+        Called after each step to evaluate whether the episode should terminate or
+        be truncated based on the current transition.
+
+        @param state Previous observation returned by :func:`step`.
+        @param action Action that produced ``next_state``.
+        @param next_state Observation after applying ``action``.
+        @return Tuple ``(terminated, truncated, info)`` describing episode status.
+        @rtype Tuple[bool, bool, Any]
+        """
         return False, False, None
     
     @abstractmethod
     def reward(self, state: Any, action: Any, next_state: Any) -> float:
-        '''
-        Returns the reward for the given state, action, and next state.
-        @rtype: float
-        '''
+        """!
+        Compute the scalar reward for the given transition.
+
+        @param state Observation before executing ``action``.
+        @param action Action applied to the environment.
+        @param next_state Observation resulting from ``action``.
+        @return Reward value for the transition.
+        @rtype float
+        """
         raise NotImplementedError
     
     @abstractmethod
     def reset_objects(self):
+        """! Reset all components belonging to the environment."""
         raise NotImplementedError
     
     def reset(self):
-        '''
-        return obs, terminated, truncated
-        @rtype: Tuple[Any, bool, bool]
-        '''
+        """!
+        Reset the environment to an initial state.
+
+        @return Tuple ``(observation, info)`` where ``info`` contains
+        termination flags as returned by :func:`terminated_truncated_info`.
+        @rtype Tuple[Any, Tuple[bool, bool, Any]]
+        """
         #self.suspend_node()
         self.reset_objects()
         self.observation_space.is_ready = False
@@ -119,12 +150,20 @@ class ArkEnv(Env, InstanceNode, ABC):
         return obs, info
 
     def reset_backend(self):
+        """! Request a simulator backend reset via LCM service."""
         service_name = self.global_config["simulation"]["name"] + "/backend/reset/sim"
-        response = self.send_service_request(service_name=service_name, 
-                                             request=flag_t(), 
+        response = self.send_service_request(service_name=service_name,
+                                             request=flag_t(),
                                              response_type=flag_t)
-    
+
     def reset_component(self, name: str, **kwargs):
+        """!
+        Reset a specific robot or object using its reset service.
+
+        @param name Name of the component as defined in the configuration.
+        @param kwargs Optional overrides for position, orientation and other
+               reset parameters.
+        """
         if self.global_config is None:
             log.error("No configuration file provided, so no objects can be found. Please provide a valid configuration file.")
             return
@@ -201,6 +240,11 @@ class ArkEnv(Env, InstanceNode, ABC):
         return obs, reward, terminated, truncated, info
 
     def _load_config(self, global_config) -> None:
+        """!
+        Load and merge the global configuration from YAML files.
+
+        @param global_config Path or dictionary specifying the configuration.
+        """
         if isinstance(global_config, str):
             global_config = Path(global_config)
         elif global_config is None:
@@ -241,9 +285,13 @@ class ArkEnv(Env, InstanceNode, ABC):
         
         
     def _load_section(self, cfg, config_path, section_name):
-        """
-        Generic function to load a section from the config (e.g., robots, sensors, or objects).
-        It handles both inline configurations and paths to external YAML files.
+        """!
+        Helper to load a configuration section from the main YAML file.
+
+        @param cfg Parsed YAML configuration dictionary.
+        @param config_path Path of the main configuration file.
+        @param section_name Section key (``robots``, ``sensors`` or ``objects``).
+        @return Dictionary mapping component names to their configuration.
         """
         # { "name" : { ... } },
         #   "name" : { ... } } 

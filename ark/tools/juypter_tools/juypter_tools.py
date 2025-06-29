@@ -1,4 +1,10 @@
 
+"""! Helper routines for visualising data in Jupyter notebooks.
+
+Provides convenience functions for displaying images and plots when interacting
+with ARK through notebooks.
+"""
+
 import numpy as np
 import cv2
 from IPython.display import clear_output, display
@@ -14,6 +20,7 @@ num_channels = {
 }
 
 def process_and_display_image(image_msg):
+    """! Decode and show an ``image_t`` message inside a notebook."""
     # Decode the image data
     img_data = np.frombuffer(image_msg.data, dtype=np.uint8)
 

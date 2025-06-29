@@ -1,4 +1,10 @@
 
+"""! Utility class for loading various multibody objects in PyBullet.
+
+`PyBulletMultiBody` handles spawning of URDF, SDF or primitive shapes into the
+simulation and provides methods to query or reset their state.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Union
 from enum import Enum
@@ -11,18 +17,23 @@ from ark.system.component.sim_component import SimComponent
 from arktypes import flag_t, rigid_body_state_t
 
 class SourceType(Enum):
+    """! Types of multibody sources that can be loaded."""
+
     URDF = "urdf"
     PRIMITIVE = "primitive"
     SDF = "sdf"
     MJCF = "mjcf"
 
 class PyBulletMultiBody(SimComponent):
-    def __init__(self, 
-                 name: str,  
+    """!
+    Wrapper around PyBullet objects providing communication utilities.
+    """
+    def __init__(self,
+                 name: str,
                  client: Any,
                  global_config: Dict[str, Any] = None,
                  ) -> None:
-
+        """! Load a multibody object description into PyBullet."""
         super().__init__(name, global_config)
         self.client = client
         source_str = self.config["source"]
@@ -109,6 +120,7 @@ class PyBulletMultiBody(SimComponent):
             self.state_publisher = self.component_channels_init([(self.publisher_name, rigid_body_state_t)])
 
     def get_object_data(self):
+        """! Return the current pose and velocity of the object."""
         position, orientation = self.client.getBasePositionAndOrientation(self.ref_body_id)
         lin_vel, ang_vel = self.client.getBaseVelocity(self.ref_body_id)
         return {
@@ -120,6 +132,7 @@ class PyBulletMultiBody(SimComponent):
         }
     
     def pack_data(self, data_dict):
+        """! Convert object state dictionary into a ``rigid_body_state_t``."""
         msg = rigid_body_state_t()
         msg.name = data_dict["name"]
         msg.position = data_dict["position"]
@@ -132,6 +145,7 @@ class PyBulletMultiBody(SimComponent):
         
 
     def reset_component(self, channel, msg) -> None:
+        """! Reset the object's pose in the simulation."""
         new_pos = msg.position
         new_orn = msg.orientation
         log.info(f"Resetting object {self.name} to position: {new_pos}")

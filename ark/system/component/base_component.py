@@ -1,4 +1,11 @@
 
+"""! Base classes for robots, sensors and objects within the ARK system.
+
+`BaseComponent` provides common functionality for all components such as
+communication setup and reset handling.  Subclasses specialise this behaviour
+for concrete robots, sensors or simulated objects.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -85,13 +92,17 @@ class BaseComponent(HybridNode, ABC):
         
         
 class SimToRealComponent(BaseComponent, ABC):
+    """!
+    Base component that interfaces a driver to the hybrid node infrastructure.
+    """
     
-    def __init__(self, 
-                 name: str, 
+    def __init__(self,
+                 name: str,
                  global_config: Union[str, Dict[str, Any], Path],
                  driver: ComponentDriver = None,
                  ) -> None:
-        
+        """! Initialise the component and store the driver instance."""
+
         super().__init__(name, global_config)
         self._driver = driver
         self.sim = self._driver.is_sim()
@@ -104,7 +115,6 @@ class SimToRealComponent(BaseComponent, ABC):
         
     # Override killing the node to also shutwodn the driver, freeing up ports etc.
     def kill_node(self) -> None:
-        # kill driver (close ports, ...)
+        """! Shutdown the driver and communication handlers."""
         self._driver.shutdown_driver()
-        # kill all communication
         super().kill_node()

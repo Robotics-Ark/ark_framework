@@ -3,6 +3,13 @@ import importlib.util
 import sys, ast, os
 import math
 import cv2
+"""! PyBullet based simulation backend.
+
+This backend implements :class:`SimulatorBackend` using the PyBullet physics
+engine.  It manages loading robots, objects and sensors and provides utilities
+for capturing rendered images from the simulation.
+"""
+
 from pathlib import Path
 from typing import Any, Optional, Dict
 
@@ -83,9 +90,12 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
 
 class PyBulletBackend(SimulatorBackend):
+    """!
+    PyBullet based implementation of :class:`SimulatorBackend`.
+    """
 
     def initialize(self) -> None:
-        """Initialize the simulator with the given configuration."""
+        """! Initialize the simulator with the given configuration."""
         self.ready = False
         self.client = self._connect_pybullet(self.global_config)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -154,10 +164,12 @@ class PyBulletBackend(SimulatorBackend):
 
 
     def is_ready(self) -> bool:
+        """! Return ``True`` once all components have been created."""
         return self.ready
 
 
     def _connect_pybullet(self, config: dict[str, Any]):
+        """! Create a BulletClient according to the configuration."""
         kwargs = dict(options="")
         mp4 = config.get("mp4")
         if mp4:
@@ -168,11 +180,12 @@ class PyBulletBackend(SimulatorBackend):
 
 
     def set_gravity(self, gravity: tuple[float]) -> None:
+        """! Set gravity in the simulation world."""
         self.client.setGravity(gravity[0], gravity[1], gravity[2])
 
 
     def set_time_step(self, time_step: float) -> None:
-        """Set the simulation timestep."""
+        """! Set the simulation timestep."""
         self.client.setTimeStep(time_step)
         self._time_step = time_step
 
@@ -184,6 +197,7 @@ class PyBulletBackend(SimulatorBackend):
     def add_robot(self,
                   name: str,
                   robot_config: Dict[str, Any]):
+        """! Instantiate a robot and its driver inside the simulator."""
         class_path = Path(robot_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
@@ -266,6 +280,7 @@ class PyBulletBackend(SimulatorBackend):
     #######################################
 
     def _all_available(self):
+        """! Return ``True`` if no component is currently suspended."""
         for robot in self.robot_ref:
             if self.robot_ref[robot]._is_suspended:
                 return False
@@ -275,7 +290,7 @@ class PyBulletBackend(SimulatorBackend):
         return True
 
     def step(self) -> None:
-        """Advance the simulation by one timestep."""
+        """! Advance the simulation by one timestep."""
         if self._all_available():
             self._step_sim_components()
             self.client.stepSimulation()
@@ -291,7 +306,7 @@ class PyBulletBackend(SimulatorBackend):
             pass
 
     def save_render(self):
-        """ Renders an image given camera parameters """
+        """! Renders an image given camera parameters."""
         # Calculate camera extrinsic matrix
         look_at = self.extrinsics["look_at"]
         azimuth = math.radians(self.extrinsics["azimuth"])
@@ -335,7 +350,7 @@ class PyBulletBackend(SimulatorBackend):
         cv2.imwrite(str(save_path), bgra)
 
     def reset_simulator(self) -> None:
-        """Reset the entire simulator state (i.e., scene, objects, etc.)."""
+        """! Reset the entire simulator state (i.e., scene, objects, etc.)."""
         log.info("Starting simulator reset ... ")
         self.client.disconnect()
         self._simulation_time = 0.0
@@ -347,11 +362,12 @@ class PyBulletBackend(SimulatorBackend):
         log.ok("Simulator reset complete.")
 
     def get_current_time(self) -> float:
-        """Get the current simulation time."""
+        """! Get the current simulation time."""
         # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12438
         return self._simulation_time
 
     def shutdown_backend(self):
+        """! Disconnect PyBullet and destroy all spawned components."""
         self.client.disconnect()
         for robot in self.robot_ref:
             self.robot_ref[robot].kill_node()

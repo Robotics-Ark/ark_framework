@@ -1,4 +1,11 @@
 
+"""! Common functionality for simulated objects.
+
+`SimComponent` extends :class:`BaseComponent` with utilities for publishing
+ground truth state in simulation.  Subclasses implement data packing and object
+specific state retrieval.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
@@ -33,6 +40,7 @@ class SimComponent(BaseComponent, ABC):
 
   
     def step_component(self):
+        """! Publish ground truth state if configured to do so."""
         if self.publish_ground_truth:
             data = self.get_object_data()
             packed = self.pack_data(data)

@@ -1,4 +1,10 @@
 
+"""! Tools for visualising node graphs and communications.
+
+This module generates mermaid diagrams representing the connections between ARK
+nodes.  It can also query running nodes for their communication details.
+"""
+
 import argparse
 import json
 import sys
@@ -104,6 +110,7 @@ class ServiceInfo:
         request_type: str,
         response_type: str
     ):
+        """! Construct a ``ServiceInfo`` describing one service endpoint."""
         self.comms_type = comms_type
         self.service_name = service_name
         self.service_host = service_host
@@ -132,6 +139,7 @@ class ListenerInfo:
         channel_type: str,
         channel_status: str
     ):
+        """! Construct ``ListenerInfo`` for a subscribed LCM channel."""
         self.comms_type = comms_type
         self.channel_name = channel_name
         self.channel_type = channel_type
@@ -156,6 +164,7 @@ class SubscriberInfo:
         channel_type: str,
         channel_status: str
     ):
+        """! Construct ``SubscriberInfo`` for an outgoing subscription."""
         self.comms_type = comms_type
         self.channel_name = channel_name
         self.channel_type = channel_type
@@ -180,6 +189,7 @@ class PublisherInfo:
         channel_type: str,
         channel_status: str
     ):
+        """! Construct ``PublisherInfo`` for a published channel."""
         self.comms_type = comms_type
         self.channel_name = channel_name
         self.channel_type = channel_type
@@ -212,6 +222,7 @@ class CommsInfo:
         n_services: int,
         services: list
     ):
+        """! Aggregate all communication endpoints of a node."""
         self.n_listeners = n_listeners
         self.listeners = listeners
         self.n_subscribers = n_subscribers
@@ -233,6 +244,7 @@ class NodeInfo:
     """
 
     def __init__(self, node_name: str, node_id: str, comms: CommsInfo):
+        """! Container for a node and its communication details."""
         self.name = node_name
         self.node_id = node_id
         self.comms = comms
@@ -248,6 +260,7 @@ class NetworkInfo:
     """
 
     def __init__(self, n_nodes: int, nodes: list):
+        """! Wrapper for the entire network graph."""
         self.num_nodes = n_nodes
         self.nodes = nodes
 
@@ -256,14 +269,11 @@ class NetworkInfo:
 #                        DECODING & HELPER FUNCTIONS
 # ----------------------------------------------------------------------
 def decode_network_info(lcm_message) -> NetworkInfo:
-    """
+    """!
     Converts an LCM network info message into a NetworkInfo object.
 
-    Args:
-        lcm_message (network_info_t): The LCM message containing network information.
-
-    Returns:
-        NetworkInfo: A NetworkInfo object with detailed node and comms information.
+    @param lcm_message The raw ``network_info_t`` LCM message.
+    @return ``NetworkInfo`` object with detailed node and comms information.
     """
     return NetworkInfo(
         n_nodes=lcm_message.n_nodes,
@@ -536,11 +546,11 @@ def start(
     registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
     registry_port: int = typer.Option(1234, "--port", help="The port for the registry server.")
 ):
-    """Starts the graph with specified host and port."""
+    """! Starts the graph with specified host and port."""
     server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
 
 def main():
-    """Entry point for the CLI."""
+    """! Entry point for the CLI."""
     app()  # Initializes the Typer CLI
 
 if __name__ == "__main__":

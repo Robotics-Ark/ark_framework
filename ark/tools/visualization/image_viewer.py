@@ -1,4 +1,10 @@
 
+"""! Convenience tool for visualising image streams.
+
+Connects to an image LCM channel and displays frames using OpenCV.  Useful for
+quick debugging of camera feeds produced by ARK components.
+"""
+
 import argparse
 
 from ark.client.comm_infrastructure.base_node import BaseNode, main
@@ -19,13 +25,16 @@ num_channels = {
 app = typer.Typer()
 
 class ImageViewNode(BaseNode):
+    """! Simple subscriber that visualises image streams."""
 
     def __init__(self, channel_name: str = "image/sim"):
+        """! Subscribe to an image channel and display incoming frames."""
         super().__init__("image viewer")
         print(f"Listening to channel: {channel_name}")
         self.create_subscriber(channel_name, image_t, self._image_callback)
         
     def _image_callback(self, t, channel_name, msg):
+        """! Handle incoming ``image_t`` messages and show them with OpenCV."""
         img_data = np.frombuffer(msg.data, dtype=np.uint8)
 
         # Handle compression
@@ -74,6 +83,7 @@ class ImageViewNode(BaseNode):
             raise KeyboardInterrupt
             
     def kill_node(self):
+        """! Close any OpenCV windows and shut down communications."""
         cv2.destroyAllWindows()
         super().kill_node()
 
@@ -81,15 +91,15 @@ class ImageViewNode(BaseNode):
 def start(
     channel: str = typer.Option("image", help="The channel to listen to. Default is 'image/sim' (Note only supports RGB)."),
 ):
-    """
+    """!
     Start the image viewer node.
 
-    Args:
-        channel (str): The channel to listen to. Default is "image/sim".
+    @param channel The channel to listen to. Default is ``image/sim``.
     """
     main(ImageViewNode, channel)
 
 def main():
+    """! Typer entry point for the image viewer CLI."""
     app()
 
 if __name__ == '__main__':

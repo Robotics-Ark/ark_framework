@@ -1,4 +1,11 @@
 
+"""! Robot driver using the PyBullet API.
+
+`BulletRobotDriver` implements the :class:`SimRobotDriver` interface, mapping
+generic robot control commands to PyBullet specific calls for simulation
+purposes.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List
@@ -24,10 +31,11 @@ class BulletRobotDriver(SimRobotDriver):
 
     def __init__(self,
                  component_name = str,
-                 component_config: Dict[str, Any] = None, 
+                 component_config: Dict[str, Any] = None,
                  client: Any = None,
                  ) -> None:
-        
+        """! Initialise a robot driver for the PyBullet backend."""
+
         super().__init__(component_name, component_config, True)
 
         self.client = client
@@ -121,6 +129,7 @@ class BulletRobotDriver(SimRobotDriver):
        
 
     def load_robot(self, base_position = None, base_orientation = None, q_init=None) -> None:
+        """! Load the robot URDF/MJCF model into the simulation."""
         kwargs = {}
 
         kwargs["useFixedBase"] = self.config.get("use_fixed_base", 1)
@@ -287,10 +296,11 @@ class BulletRobotDriver(SimRobotDriver):
     ##      misc.      ##
     #####################
 
-    def sim_reset(self, 
+    def sim_reset(self,
                   base_pos : List[float],
                   base_orn : List[float],
                   q_init : List[float]) -> None:
+        """! Reset the simulated robot to ``base_pos``/``base_orn`` and ``q_init``."""
 
         # delete the robot
         self.client.removeBody(self.ref_body_id)

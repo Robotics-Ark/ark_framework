@@ -1,6 +1,13 @@
 
+"""! Node launching a chosen simulator backend.
+
+`SimulatorNode` wraps a simulation backend and exposes it as a network node in
+the ARK system.  It is responsible for loading configuration files, stepping the
+simulator and creating reset services.
+"""
+
 from pathlib import Path
-from abc import ABC, abstractmethod 
+from abc import ABC, abstractmethod
 from typing import Dict, Any
 import os
 import yaml
@@ -14,7 +21,12 @@ import pdb
 
 
 class SimulatorNode(BaseNode, ABC):
+    """!
+    Node wrapping a simulation backend and exposing stepping services.
+    """
+
     def __init__(self, global_config):
+        """! Create a simulator node and launch the configured backend."""
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
 
@@ -43,6 +55,7 @@ class SimulatorNode(BaseNode, ABC):
         
         
     def _load_config(self, global_config) -> None:
+        """! Parse the YAML configuration for the simulator and its components."""
         
         if not global_config:
             raise ValueError("Please provide a global configuration file.")
@@ -127,21 +140,24 @@ class SimulatorNode(BaseNode, ABC):
 
     
     def _reset_backend(self, channel, msg):
+        """! Service callback to reset the entire simulator."""
         self.backend.reset_simulator()
         return flag_t()
     
 
     def _step_simulation(self) -> None:
+        """! Advance the backend one step and allow custom user hooks."""
         self.step()
         self.backend.step()
 
     @abstractmethod 
     def initialize_scene(self) -> None:
+        """! Load static objects or other one-off resources before stepping."""
         pass
     
     @abstractmethod
     def step(self) -> None:
-        # enables custom behavior like printing out information etc.
+        """! Optional hook executed every simulation step."""
         pass
 
     # OVERRIDE
@@ -162,7 +178,6 @@ class SimulatorNode(BaseNode, ABC):
 
     # OVERRIDE
     def kill_node(self) -> None:
-        # kill driver (close ports, ...)
+        """! Shutdown the backend and all communications."""
         self.backend.shutdown_backend()
-        # kill all communication
         super().kill_node()
