@@ -43,6 +43,11 @@ class Stepper(threading.Thread):
         log.ok("started stepper")
 
     def suspend(self) -> None:
+        """!
+        Signal the stepper thread to stop running.
+
+        @return: ``None``
+        """
         self._shutdown = True
         log.ok("stepper suspended")
 
@@ -67,6 +72,9 @@ class Stepper(threading.Thread):
                 break
 
     def restart(self):
+        """!
+        Restart the stepper if it was previously suspended.
+        """
         if self._shutdown:
             self._shutdown = False
             self.start()

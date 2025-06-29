@@ -10,22 +10,18 @@ from typing import Any, Optional, List, Dict
 from ark.tools.log import log
 
 class MultiChannelPublisher(MultiCommHandler):
-    """
-    A publisher that manages multiple communication channels using LCM (Lightweight Communications and Marshalling).
+    """!
+    Publisher that manages multiple communication channels.
 
-    This class initializes multiple publishers for different channels and handles the publishing of messages
-    to these channels. It supports dynamic channel management by accepting a list of channel names and their
-    corresponding message types during initialization.
-
-    Attributes:
-        _lcm (lcm.LCM): The LCM instance used for publishing messages.
-        data (dict): A dictionary to store data for each channel.
-        _comm_handlers (list of CommHandler): A list of communication handlers for each channel.
+    @note Internally creates one :class:`Publisher` per channel.
     """
 
     def __init__(self, channels: List, lcm_instance: LCM) -> None:
-        """
-        Initializes the MultiChannelPublisher with specified channels.
+        """!
+        Initialize the publisher with a list of channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @param lcm_instance: LCM instance used for publishing.
         """
         
         super().__init__()
@@ -37,13 +33,10 @@ class MultiChannelPublisher(MultiCommHandler):
             self._comm_handlers.append(publisher)
 
     def publish(self, messages_to_publish: Dict[str, Any]) -> None:
-        """
-        Publishes messages to their respective channels.
+        """!
+        Publish messages to their respective channels.
 
-        This method iterates over all registered communication handlers and publishes the corresponding
-        message to each channel. It expects a dictionary where keys are channel names and values are the
-        messages to be published.
-
+        @param messages_to_publish: Mapping of channel names to messages.
         """
         for publisher in self._comm_handlers:
             channel_name = publisher.channel_name
