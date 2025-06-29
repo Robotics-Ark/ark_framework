@@ -1,3 +1,6 @@
+"""@file pybullet_camera_driver.py
+@brief Camera driver for the PyBullet simulator.
+"""
 
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -11,32 +14,42 @@ import pybullet as p
 from scipy.spatial.transform import Rotation as R
 
 def rotation_matrix_to_euler(R_world):
-    # Convert rotation matrix to Euler angles (yaw, pitch, roll)
+    """!Convert a rotation matrix to Euler angles.
+
+    @param R_world ``3x3`` rotation matrix in row-major order.
+    @return Euler angles ``[roll, pitch, yaw]`` in degrees.
+    @rtype List[float]
+    """
     r = R.from_matrix(R_world)
-    euler_angles = r.as_euler('xyz', degrees=True)  
+    euler_angles = r.as_euler('xyz', degrees=True)
     return euler_angles
 
 class CameraType(Enum):
+    """Supported camera models."""
     FIXED = "fixed"
     ATTACHED = "attached"
     
     
 class BulletCameraDriver(CameraDriver):
-    """
-    TODO
-    Defines base gateway, responsible for exchanging information between our component classes and a simulator
-    Should absorb everything that is specific to any simulator
-    """
+    """Camera driver implementation for PyBullet."""
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any],
                  attached_body_id: int = None,
                  client: Any = None,
                  ) -> None:
-        super().__init__(component_name, component_config, True) # sim is always True for pybullet
+        """!Create a new camera driver.
+
+        @param component_name Name of the camera component.
+        @param component_config Configuration dictionary for the camera.
+        @param attached_body_id ID of the body to attach the camera to.
+        @param client Optional PyBullet client.
+        @return ``None``
+        """
+        super().__init__(component_name, component_config, True)  # simulation is always True
         self.client = client
-        self.attached_body_id = attached_body_id 
+        self.attached_body_id = attached_body_id
         
         try:
             self.camera_type = CameraType(self.config["camera_type"])
@@ -172,6 +185,12 @@ class BulletCameraDriver(CameraDriver):
 
     
     def _update_position(self) -> Any:
+        """!Update internal pose information.
+
+        When the camera is attached to a body this queries PyBullet for the
+        current link pose and updates ``self.current_position`` and
+        ``self.current_orientation``.
+        """
         if self.camera_type == CameraType.ATTACHED:
             if self.parent_link is None or self.parent_link_id is None:
                     position, orientation = p.getBasePositionAndOrientation(self.attached_body_id)
@@ -195,7 +214,14 @@ class BulletCameraDriver(CameraDriver):
 
 
     def get_images(self):
-        
+        """!Capture camera images from the simulator.
+
+        Depending on the enabled streams the returned dictionary can contain the
+        keys ``color``, ``depth`` and ``segmentation``.
+
+        @return Dictionary mapping stream names to ``numpy.ndarray`` images.
+        @rtype Dict[str, np.ndarray]
+        """
         if self.camera_type == CameraType.ATTACHED:
             self._update_position()
             
@@ -240,5 +266,10 @@ class BulletCameraDriver(CameraDriver):
         return images
     
     def shutdown_driver(self) -> None:
+        """!Clean up any resources used by the driver.
+
+        Called when the simulator is shutting down.  The PyBullet camera driver
+        currently does not allocate additional resources so the method is empty.
+        """
         # nothing to worry about here
         pass
