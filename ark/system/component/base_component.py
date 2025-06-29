@@ -102,7 +102,7 @@ class SimToRealComponent(BaseComponent, ABC):
             self.reset_service_name = self.reset_service_name + "sim/" 
       
         
-    # Override killing the node to also shutwodn the driver, freeing up ports etc.
+    # Override killing the node to also shutdown the driver, freeing up ports etc.
     def kill_node(self) -> None:
         # kill driver (close ports, ...)
         self._driver.shutdown_driver()
