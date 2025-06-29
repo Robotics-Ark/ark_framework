@@ -1,3 +1,6 @@
+"""@file pybullet_backend.py
+@brief Backend implementation for running simulations in PyBullet.
+"""
 
 import importlib.util
 import sys, ast, os
@@ -20,14 +23,16 @@ from arktypes import *
 
 
 def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
-    """
-    Dynamically import a class from a Python file located in the given directory.
-    The class name is assumed to be the same as the file name (without extension).
-    If the file contains a class named "Drivers", it is also imported.
+    """!Load a class from ``path``.
 
-    @param path: The directory containing the Python file.
+    The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
+    class with the same name.  If a ``Drivers`` class is present in the module
+    its ``PYBULLET_DRIVER`` attribute is returned alongside the main class.
 
-    @return: A tuple containing the imported class and the driver class (if present).
+    @param path Path to the directory containing the module.
+    @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
+            driver is defined.
+    @rtype Tuple[type, Optional[type]]
     """
     # Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
@@ -83,9 +88,20 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
 
 class PyBulletBackend(SimulatorBackend):
+    """Backend wrapper around the PyBullet client.
+
+    This class handles scene creation, stepping the simulation and managing
+    simulated components such as robots, objects and sensors.
+    """
 
     def initialize(self) -> None:
-        """Initialize the simulator with the given configuration."""
+        """!Initialize the PyBullet world.
+
+        The method creates the Bullet client, configures gravity and time step
+        and loads all robots, objects and sensors defined in
+        ``self.global_config``.  Optional frame capture settings are applied as
+        well.
+        """
         self.ready = False
         self.client = self._connect_pybullet(self.global_config)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -154,10 +170,26 @@ class PyBulletBackend(SimulatorBackend):
 
 
     def is_ready(self) -> bool:
+        """!Check whether the backend has finished initialization.
+
+        @return ``True`` once all components were created and the simulator is
+                ready for stepping.
+        @rtype bool
+        """
         return self.ready
 
 
     def _connect_pybullet(self, config: dict[str, Any]):
+        """!Create and return the Bullet client.
+
+        ``config`` must contain the ``connection_mode`` under the ``simulator``
+        section.  Optionally ``mp4`` can be provided to enable video
+        recording.
+
+        @param config Global configuration dictionary.
+        @return Initialized :class:`BulletClient` instance.
+        @rtype BulletClient
+        """
         kwargs = dict(options="")
         mp4 = config.get("mp4")
         if mp4:
@@ -168,11 +200,18 @@ class PyBulletBackend(SimulatorBackend):
 
 
     def set_gravity(self, gravity: tuple[float]) -> None:
+        """!Set the world gravity.
+
+        @param gravity Tuple ``(gx, gy, gz)`` specifying gravity in m/s^2.
+        """
         self.client.setGravity(gravity[0], gravity[1], gravity[2])
 
 
     def set_time_step(self, time_step: float) -> None:
-        """Set the simulation timestep."""
+        """!Set the simulation timestep.
+
+        @param time_step Length of a single simulation step in seconds.
+        """
         self.client.setTimeStep(time_step)
         self._time_step = time_step
 
@@ -184,6 +223,11 @@ class PyBulletBackend(SimulatorBackend):
     def add_robot(self,
                   name: str,
                   robot_config: Dict[str, Any]):
+        """!Instantiate and register a robot in the simulation.
+
+        @param name Identifier for the robot.
+        @param robot_config Robot specific configuration dictionary.
+        """
         class_path = Path(robot_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
@@ -202,17 +246,25 @@ class PyBulletBackend(SimulatorBackend):
                           name: str,
                           obj_config: Dict[str, Any],
                           ) -> None:
-            """! Add object to the simulator."""
-            sim_component = PyBulletMultiBody(name=name,
-                                              client=self.client,
-                                              global_config=self.global_config)
-            self.object_ref[name] = sim_component
+        """!Add a generic simulated object.
+
+        @param name Name of the object.
+        @param obj_config Object specific configuration dictionary.
+        """
+        sim_component = PyBulletMultiBody(name=name,
+                                          client=self.client,
+                                          global_config=self.global_config)
+        self.object_ref[name] = sim_component
 
     def add_sensor(self,
                    name: str,
                    sensor_config: Dict[str, Any]
                    ) -> None:
-        """! Add a sensor (e.g., camera or FT sensor) to the simulator."""
+        """!Instantiate and register a sensor.
+
+        @param name Name of the sensor component.
+        @param sensor_config Sensor configuration dictionary.
+        """
         sensor_type = sensor_config["type"]
         class_path = Path(sensor_config["class_dir"])
         if class_path.is_file():
@@ -244,8 +296,10 @@ class PyBulletBackend(SimulatorBackend):
         self.sensor_ref[name] = sensor
 
     def remove(self, name: str) -> None:
-        # TODO remove
-        """! Remove an object from the simulator by name."""
+        """!Remove a component from the simulator.
+
+        @param name Name of the robot, object or sensor to remove.
+        """
         if name in self.robot_ref:
             self.robot_ref[name].shutdown()
             del self.robot_ref[name]
@@ -266,6 +320,11 @@ class PyBulletBackend(SimulatorBackend):
     #######################################
 
     def _all_available(self):
+        """!Check whether all registered components are active.
+
+        @return ``True`` if no component is suspended.
+        @rtype bool
+        """
         for robot in self.robot_ref:
             if self.robot_ref[robot]._is_suspended:
                 return False
@@ -275,7 +334,11 @@ class PyBulletBackend(SimulatorBackend):
         return True
 
     def step(self) -> None:
-        """Advance the simulation by one timestep."""
+        """!Advance the simulation by one timestep.
+
+        The method updates all registered components, advances the physics
+        engine and optionally saves renders when enabled.
+        """
         if self._all_available():
             self._step_sim_components()
             self.client.stepSimulation()
@@ -291,7 +354,11 @@ class PyBulletBackend(SimulatorBackend):
             pass
 
     def save_render(self):
-        """ Renders an image given camera parameters """
+        """!Render the scene and write the image to disk.
+
+        The image is saved either as ``render.png`` when overwriting or with the
+        current simulation time as filename when not.
+        """
         # Calculate camera extrinsic matrix
         look_at = self.extrinsics["look_at"]
         azimuth = math.radians(self.extrinsics["azimuth"])
@@ -335,7 +402,11 @@ class PyBulletBackend(SimulatorBackend):
         cv2.imwrite(str(save_path), bgra)
 
     def reset_simulator(self) -> None:
-        """Reset the entire simulator state (i.e., scene, objects, etc.)."""
+        """!Reset the entire simulator state.
+
+        All robots, objects and sensors are destroyed and the backend is
+        re-initialized using ``self.global_config``.
+        """
         log.info("Starting simulator reset ... ")
         self.client.disconnect()
         self._simulation_time = 0.0
@@ -347,11 +418,20 @@ class PyBulletBackend(SimulatorBackend):
         log.ok("Simulator reset complete.")
 
     def get_current_time(self) -> float:
-        """Get the current simulation time."""
+        """!Return the current simulation time.
+
+        @return Elapsed simulation time in seconds.
+        @rtype float
+        """
         # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12438
         return self._simulation_time
 
     def shutdown_backend(self):
+        """!Disconnect all components and shut down the backend.
+
+        This should be called at program termination to cleanly close the
+        simulator and free all resources.
+        """
         self.client.disconnect()
         for robot in self.robot_ref:
             self.robot_ref[robot].kill_node()

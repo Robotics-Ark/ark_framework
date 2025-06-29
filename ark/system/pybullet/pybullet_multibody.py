@@ -1,3 +1,6 @@
+"""@file pybullet_multibody.py
+@brief Abstractions for multi-body objects in PyBullet.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Union
@@ -11,17 +14,26 @@ from ark.system.component.sim_component import SimComponent
 from arktypes import flag_t, rigid_body_state_t
 
 class SourceType(Enum):
+    """Supported source types for object creation."""
     URDF = "urdf"
     PRIMITIVE = "primitive"
     SDF = "sdf"
     MJCF = "mjcf"
 
 class PyBulletMultiBody(SimComponent):
-    def __init__(self, 
-                 name: str,  
+    """Utility class for creating PyBullet multi-body objects."""
+    def __init__(self,
+                 name: str,
                  client: Any,
                  global_config: Dict[str, Any] = None,
                  ) -> None:
+        """Instantiate a PyBulletMultiBody object.
+
+        @param name Name of the object.
+        @param client Bullet client used for creation.
+        @param global_config Global configuration dictionary.
+        @return ``None``
+        """
 
         super().__init__(name, global_config)
         self.client = client
@@ -109,6 +121,12 @@ class PyBulletMultiBody(SimComponent):
             self.state_publisher = self.component_channels_init([(self.publisher_name, rigid_body_state_t)])
 
     def get_object_data(self):
+        """!Return the current state of the simulated object.
+
+        @return Dictionary with position, orientation and velocities of the
+                object.
+        @rtype Dict[str, Any]
+        """
         position, orientation = self.client.getBasePositionAndOrientation(self.ref_body_id)
         lin_vel, ang_vel = self.client.getBaseVelocity(self.ref_body_id)
         return {
@@ -120,6 +138,12 @@ class PyBulletMultiBody(SimComponent):
         }
     
     def pack_data(self, data_dict):
+        """!Convert a state dictionary to a ``rigid_body_state_t`` message.
+
+        @param data_dict Dictionary as returned by :func:`get_object_data`.
+        @return Mapping suitable for :class:`MultiChannelPublisher`.
+        @rtype Dict[str, rigid_body_state_t]
+        """
         msg = rigid_body_state_t()
         msg.name = data_dict["name"]
         msg.position = data_dict["position"]
@@ -132,10 +156,16 @@ class PyBulletMultiBody(SimComponent):
         
 
     def reset_component(self, channel, msg) -> None:
+        """!Reset the object pose using a message.
+
+        @param channel LCM channel on which the reset request was received.
+        @param msg ``rigid_body_state_t`` containing the desired pose.
+        @return ``flag_t`` acknowledging the reset.
+        """
         new_pos = msg.position
         new_orn = msg.orientation
         log.info(f"Resetting object {self.name} to position: {new_pos}")
-        log.info("PyBullet does not support resetting with velocities, Only using positions.")        
+        log.info("PyBullet does not support resetting with velocities, Only using positions.")
         self.client.resetBasePositionAndOrientation(self.ref_body_id, new_pos, new_orn)
         log.ok(f"Reset object  {self.name} completed at: {new_pos}")
         

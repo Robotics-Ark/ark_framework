@@ -1,3 +1,6 @@
+"""@file pybullet_lidar_driver.py
+@brief LiDAR driver implementation for PyBullet.
+"""
 
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -30,26 +33,13 @@ type: "LiDAR"                       # Type of sensor
 """
 
 class LiDARType(Enum):
-    """!
-    Types of LiDAR supported in the simulation.
-
-    @var FIXED      LiDAR is in a fixed position in the world.
-    @var ATTACHED   LiDAR is attached to a body and moves with it.
-    """
+    """Types of LiDAR supported in the simulation."""
     FIXED = "fixed"
     ATTACHED = "attached"
     
     
 class BulletLiDARDriver(LiDARDriver):
-    """!
-    LiDAR driver for the PyBullet simulator.
-
-    This class acts as the interface between the simulation-specific LiDAR implementation 
-    and the generic LiDARDriver base class. It is responsible for simulating LiDAR 
-    raycasting in PyBullet and providing scan data to the rest of the system.
-
-    This driver supports both fixed LiDAR setups and those attached to simulated bodies.
-    """
+    """LiDAR driver for the PyBullet simulator."""
 
     def __init__(self, 
                  component_name: str,
@@ -57,8 +47,7 @@ class BulletLiDARDriver(LiDARDriver):
                  attached_body_id: int = None,
                  client: Any = None,
                  ) -> None:
-        """!
-        Initialize the BulletLiDARDriver.
+        """Initialize the BulletLiDARDriver.
 
         @param component_name Name of the LiDAR component.
         @param component_config Dictionary containing LiDAR configuration (e.g., number of rays, range).
@@ -139,8 +128,11 @@ class BulletLiDARDriver(LiDARDriver):
             self.current_orientation = orientation
     
     def _update_position(self) -> Any:
-        """!
-        Update the LiDAR's current position and orientation in the simulation if attached to another body.
+        """!Update the LiDAR pose when attached to another body.
+
+        This queries the pose of the attachment link and applies the configured
+        offset.  ``self.current_position`` and ``self.current_orientation`` are
+        updated accordingly.
         """
         if self.lidar_type == LiDARType.ATTACHED:
             if p.getNumJoints(self.attached_body_id) == 0 or self.parent_link_id is None:
@@ -158,14 +150,14 @@ class BulletLiDARDriver(LiDARDriver):
                                                                                              self.offset_rot)
 
     def get_scan(self) -> Dict[str, np.ndarray]:
-        """!
-        Retrieve a simulated LiDAR scan from the Pybullet Environment.
+        """!Retrieve a simulated LiDAR scan from PyBullet.
 
-        @return Dictionary containing:
-            - "angles": 1D NumPy array of angles (in radians) in the LiDAR's reference frame.
-            - "ranges": 1D NumPy array of range values (in meters).
+        The returned dictionary contains the keys ``angles`` and ``ranges``.  A
+        range value of ``-1`` indicates that no hit was recorded for the
+        corresponding angle.
 
-        Angles and ranges must be aligned such that each angle corresponds to the respective range index.
+        @return Dictionary with keys ``angles`` and ``ranges``.
+        @rtype Dict[str, np.ndarray]
         """
         if self.lidar_type == LiDARType.ATTACHED:
             self._update_position()
@@ -219,8 +211,9 @@ class BulletLiDARDriver(LiDARDriver):
         return scan
     
     def shutdown_driver(self) -> None:
-        """!
-        Shutdown the LiDAR driver.
+        """!Shutdown the LiDAR driver.
+
+        Currently no additional resources are allocated, so this is a no-op.
         """
         # nothing to worry about here
         pass
