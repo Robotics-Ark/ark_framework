@@ -51,7 +51,7 @@ class Listener(Subscriber):
         This method is invoked by the parent `Subscriber` class when a new message is received.
         It locks the mutex to safely store the received message in the instance.
 
-        @param t: The time stamp when the message was recieved in nanoseconds.
+        @param t: The time stamp when the message was received in nanoseconds.
         @param channel_name: The name of the channel to subscribe to.
         @param msg: The received message.
         """
@@ -72,13 +72,24 @@ class Listener(Subscriber):
         return msg
     
     def suspend(self):
+        """!
+        Suspend the listener and clear any cached message.
+
+        @return: ``None``
+        """
         self.empty_data()
         return super().suspend()
     
     def empty_data(self):
+        """!
+        Clear the stored message.
+        """
         self._msg = None
 
     def get_info(self):
+        """!
+        Return a dictionary describing this listener.
+        """
         info  = {
             "comms_type": "Listener",
             "channel_name": self.channel_name,

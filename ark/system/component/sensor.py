@@ -1,4 +1,6 @@
 
+"""Base classes for sensor components."""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -13,27 +15,18 @@ import yaml
 from arktypes import flag_t
 
 class Sensor(SimToRealComponent, ABC):
-    """
-    Abstract base class for sensor system components.
-
-    This class serves as a template for creating sensor in the ark sim-to-real pipeline. 
-    Subclasses must implement ...
-    """
+    """Base class for sensors used in the framework."""
 
 
-    def __init__(self, name: str, 
+    def __init__(self, name: str,
                        global_config: Dict[str, Any] = None,
                        driver: Optional[SensorDriver] = None,
                        ) -> None:
-        
-        """
-        Initialize the SystemComponent instance.
+        """Create a sensor component.
 
-        Args:
-            name (str): The name of the component, initializes name 
-        
-        Raises:
-            ValueError: If the provided 'name' is empty or invalid.
+        @param name  Name of the sensor.
+        @param global_config  Global configuration dictionary.
+        @param driver  Optional :class:`SensorDriver` implementation.
         """
         
         super().__init__(name, global_config, driver) # handles self.name, self.sim
@@ -52,12 +45,12 @@ class Sensor(SimToRealComponent, ABC):
 
     @abstractmethod
     def get_sensor_data(self) -> Any:
-        """Simulate the sensor's behavior."""
+        """Acquire data from the sensor or its simulation."""
         
 
     @abstractmethod
     def pack_data(self, data: Any):
-        """Pack the sensor data into a lcm_type to be published."""
+        """Transform raw sensor data into the message format."""
         
 
     # # OVERRIDE
@@ -68,9 +61,10 @@ class Sensor(SimToRealComponent, ABC):
     #     super().shutdown()
 
     def reset_component(self) -> None:
-        pass
+        """Reset the sensor state if necessary."""
 
     def step_component(self):
+        """Retrieve, pack and publish sensor data."""
         data = self.get_sensor_data()
         packed = self.pack_data(data)
         self.component_multi_publisher.publish(packed)

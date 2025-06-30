@@ -60,13 +60,21 @@ class Subscriber(CommHandler):
         except ValueError as e:
             log.warning(f"failed to decode message on channel '{channel_name}': {e}")
 
-    def subscribe(self): 
+    def subscribe(self):
+        """!
+        Subscribe to the configured channel.
+
+        @return: ``None``
+        """
         self._sub = self._lcm.subscribe(self.channel_name, self.subscriber_callback)
-        self._sub.set_queue_capacity(1) ### TODO
+        self._sub.set_queue_capacity(1)  # TODO: configurable
         log.ok(f"subscribed to {self}")
         self.active = True
 
     def restart(self):
+        """!
+        Reconnect the subscriber to its channel.
+        """
         self.subscribe()
         self.active = True
         
@@ -83,6 +91,9 @@ class Subscriber(CommHandler):
             self.active = False
 
     def get_info(self):
+        """!
+        Return a dictionary describing this subscriber.
+        """
         info = {
             "comms_type": "Subscriber",
             "channel_name": self.channel_name,

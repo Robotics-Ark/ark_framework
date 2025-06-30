@@ -1,4 +1,11 @@
 
+"""! Sensor driver base definitions.
+
+This module contains abstract base classes for sensor drivers used throughout
+the ARK framework. Drivers handle backend-specific details for sensors such as
+cameras or LiDARs.
+"""
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List
@@ -10,43 +17,52 @@ import numpy as np
 
 
 class SensorType(Enum):
+    """! Enumeration of supported sensor types."""
+
     CAMERA = "camera"
     FORCE_TORQUE = "force_torque"
     
     
     
 class SensorDriver(ComponentDriver, ABC):
-    """
-    Defines base gateway, responsible for exchanging information between our component classes and a backend
-    Should absorb everything that is specific to any simulator or real system 
-    (driver will handle differences between real systems)
+    """! Abstract driver interface for sensors.
+
+    Concrete sensor drivers inherit from this class and implement the required
+    methods to acquire data from a simulator or hardware backend.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any] = None,
                  sim: bool = True,
                  ) -> None:
-        # TOOD
+        """! Initialize the sensor driver.
+
+        @param component_name Name of the sensor component.
+        @param component_config Configuration dictionary or path.
+        @param sim True if running in simulation mode.
+        """
+
         super().__init__(component_name, component_config, sim)
 
 
 
 class CameraDriver(SensorDriver, ABC):
-    """
-    ...
-    """
+    """! Base class for camera sensor drivers."""
 
-    def __init__(self, 
+    def __init__(self,
                  component_name: str,
                  component_config: Dict[str, Any] = None,
                  sim: bool = True,
                  ) -> None:
-        # TOOD
+        """! Initialize the camera driver."""
+
         super().__init__(component_name, component_config, sim)
         
     @abstractmethod
     def get_images(self) -> Dict[str, np.ndarray]:
+        """! Retrieve images from the camera."""
+
         ...
 
 class LiDARDriver(SensorDriver, ABC):

@@ -44,11 +44,11 @@ class CommEndpoint(EndPoint):
     @param channel_type: The type of the message expected for the channel.
     """    
     #def __init__(self, node_name: str, registry_host: str = "127.0.0.1", registry_port: int = 1234, lcm_network_bounces: int = 1) -> None:
-    def __init__(self, 
-                 node_name: str, 
-                 global_config: Union[str, Dict[str, Any], Path]) -> None:  
+    def __init__(self,
+                 node_name: str,
+                 global_config: Union[str, Dict[str, Any], Path]) -> None:
         """!
-        
+        Initialize a communication endpoint for a node.
 
         @param node_name: The name for the node.
         param unique: True when the node is unique, False otherwise. When True the node name is appended with a unique stamp.
@@ -87,7 +87,12 @@ class CommEndpoint(EndPoint):
             sys.exit(1)
 
     def check_registration(self):
-        # check if defulat services are registered
+        """!
+        Check whether all default services have been registered.
+
+        @return: ``True`` if all services are registered, ``False`` otherwise.
+        """
+        # check if default services are registered
         n_service_channels = 0
         n_service_channels_registered = 0
         for ch in self._comm_handlers:
@@ -107,8 +112,13 @@ class CommEndpoint(EndPoint):
             return True
         
     def _load_config_section(self, global_config: Union[str, Dict[str, Any], Path], name: str, type: str) -> Dict:
-        """
-        Load the configuration section for the component returns the Dictionary
+        """!
+        Load the configuration section for a component.
+
+        @param global_config: Global configuration source.
+        @param name: Name of the component.
+        @param type: Section type within the configuration file.
+        @return: Dictionary containing the configuration for the component.
         """
 
         if isinstance(global_config, str):
@@ -154,7 +164,12 @@ class CommEndpoint(EndPoint):
         else:
             log.error(f"Couldn't load config for {type} '{self.name}'")
     
-    def get_info(self) -> dict: 
+    def get_info(self) -> dict:
+        """!
+        Gather information about all registered communication handlers.
+
+        @return: Dictionary describing listeners, publishers, subscribers and services.
+        """
         listener_info = []
         subscriber_info = []
         publisher_info = []
@@ -200,8 +215,15 @@ class CommEndpoint(EndPoint):
         return info
     
     def _callback_get_info(self, channel, msg):
+        """!
+        Callback for the default GetInfo service.
 
-        print("Get info service called")    
+        @param channel: Unused service channel name.
+        @param msg: Service request message.
+        @return: Node information message.
+        """
+
+        print("Get info service called")
 
 
         # Create an instance of node_info_t
@@ -276,11 +298,23 @@ class CommEndpoint(EndPoint):
         return pub
     
     def create_multi_channel_publisher(self, channels):
+        """!
+        Create a publisher that manages multiple channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @return: The created :class:`MultiChannelPublisher` instance.
+        """
         multi_pub = MultiChannelPublisher(channels, self._lcm)
         self._multi_comm_handlers.append(multi_pub)
         return multi_pub
     
-    def create_multi_channel_listener(self, channels): 
+    def create_multi_channel_listener(self, channels):
+        """!
+        Create listeners for multiple channels.
+
+        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @return: The created :class:`MultiChannelListener` instance.
+        """
         multi_listeners = MultiChannelListener(channels, lcm_instance=self._lcm)
         self._multi_comm_handlers.append(multi_listeners)
         return multi_listeners
@@ -317,12 +351,22 @@ class CommEndpoint(EndPoint):
         return sub
     
     def create_service(self, service_name: str, request_type: type, response_type: type, callback: callable, is_default_service = False):
-        service = Service(name= service_name, 
-                          req_type= request_type, 
-                          resp_type= response_type, 
-                          callback= callback, 
-                          registry_host= self.registry_host, 
-                          registry_port= self.registry_port, 
+        """!
+        Create and register a service.
+
+        @param service_name: Name of the service.
+        @param request_type: Message type of the request.
+        @param response_type: Message type of the response.
+        @param callback: Callback invoked to handle the request.
+        @param is_default_service: Mark service as an internal default.
+        @return: The created :class:`Service` instance.
+        """
+        service = Service(name= service_name,
+                          req_type= request_type,
+                          resp_type= response_type,
+                          callback= callback,
+                          registry_host= self.registry_host,
+                          registry_port= self.registry_port,
                           is_default= is_default_service)
         self._comm_handlers.append(service)
         return service
@@ -447,10 +491,24 @@ class CommEndpoint(EndPoint):
                 self._done = True
 
     def _callback_suspend_node(self, channel, msg):
+        """!
+        Callback that suspends the node when triggered.
+
+        @param channel: Unused service channel.
+        @param msg: Service request message.
+        @return: Empty :class:`flag_t` response.
+        """
         self.suspend_node()
         return flag_t()
     
     def _callback_restart_node(self, channel, msg):
+        """!
+        Callback that restarts the node when triggered.
+
+        @param channel: Unused service channel.
+        @param msg: Service request message.
+        @return: Empty :class:`flag_t` response.
+        """
         self.restart_node()
         return flag_t()
 
@@ -479,7 +537,12 @@ class CommEndpoint(EndPoint):
             m_ch.restart()
 
     def kill_node(self) -> None:
-        
+        """!
+        Terminate the node process immediately.
+
+        This method suspends the node and exits the program.
+        """
+
         self.suspend_node()
         log.ok(f"Killing {self.name} Node")
         sys.exit(0)
@@ -503,7 +566,10 @@ class CommEndpoint(EndPoint):
             s.suspend()
             
             
-    def restart_node(self) -> None: 
+    def restart_node(self) -> None:
+        """!
+        Restart all communication handlers and steppers for the node.
+        """
         for ch in self._comm_handlers:
             ch.restart()
 
@@ -514,5 +580,14 @@ class CommEndpoint(EndPoint):
             s.restart()
     
     def send_service_request(self, service_name: str, request: object, response_type: type, timeout: int = 30) -> Any:
+        """!
+        Convenience wrapper around :func:`send_service_request`.
+
+        @param service_name: Name of the service to call.
+        @param request: Request object to send.
+        @param response_type: Expected response type.
+        @param timeout: Timeout in seconds.
+        @return: The decoded response from the service.
+        """
         return send_service_request(self.registry_host, self.registry_port, service_name, request, response_type, timeout)
 
