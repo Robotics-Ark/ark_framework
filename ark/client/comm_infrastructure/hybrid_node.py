@@ -38,6 +38,12 @@ class HybridNode(CommEndpoint):
         
 
     def manual_spin(self) -> None:
+        """!
+        Process pending LCM messages once.
+
+        This method calls ``handle_timeout`` a single time and updates the
+        done flag if an error occurs.
+        """
         try:
             self._lcm.handle_timeout(0)
         except OSError as e:

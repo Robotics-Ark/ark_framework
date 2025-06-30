@@ -17,22 +17,27 @@ from abc import ABC, abstractmethod
 
 
 class ArkEnv(Env, InstanceNode, ABC):
-    """!
-    A custom environment class for interacting with the Noah system. This class inherits
-    from `gym.Env` and integrates with the Noah framework to handle observations, actions,
-    rewards, and environment resets.
+"""!ArkEnv base class.
 
-    @param environment_name: The name of the environment (also a node)
-    @type: str
-    @param action channels: Channel names where actions will be published.
-    @type action_channels: List[str, type of LCM]
-    @param observation channels: Channel names where observations will be listened
-    @type observation_channels: List[str, type of LCM]
-    @param global_config: Contain the graph, networking, simulation setup and node configurations
-    @type global_config: Union
-    @param sim: Whether run ArkEnv in the simulation
-    @type param: bool
-    """
+This environment integrates the Noah system with the :mod:`gymnasium` API.  It
+handles action publishing, observation retrieval and exposes helper utilities
+for resetting parts of the system.  Sub‑classes are expected to implement the
+packing/unpacking logic for messages as well as the reward and termination
+functions.
+
+@param environment_name Name of the environment (also the node name).
+@type environment_name str
+@param action_channels Channels on which actions will be published.
+@type action_channels List[Tuple[str, type]]
+@param observation_channels Channels on which observations will be received.
+@type observation_channels List[Tuple[str, type]]
+@param global_config Path or dictionary describing the complete Noah system
+       configuration.  If ``None`` a warning is emitted and only minimal
+       functionality is available.
+@type global_config Union[str, Dict[str, Any], Path]
+@param sim Set ``True`` when running in simulation mode.
+@type sim bool
+"""
 
     def __init__(
         self,
@@ -41,8 +46,20 @@ class ArkEnv(Env, InstanceNode, ABC):
         observation_channels: List[Tuple[str, type]],
         global_config: Union[str, Dict[str, Any], Path]=None,
         sim=True) -> None:
-        """!
-        Initializes the Noah environment.
+        """!Construct the environment.
+
+        The constructor sets up the internal communication channels and creates
+        the action and observation spaces.  The configuration can either be
+        provided as a path to a YAML file or as a dictionary already loaded in
+        memory.
+
+        @param environment_name Name of the environment node.
+        @param action_channels List of tuples mapping channel names to LCM types
+               for actions.
+        @param observation_channels List of tuples mapping channel names to LCM
+               types for observations.
+        @param global_config Optional path or dictionary describing the system.
+        @param sim If ``True`` the environment interacts with the simulator.
         """
         super().__init__(environment_name, global_config)
         
@@ -59,51 +76,78 @@ class ArkEnv(Env, InstanceNode, ABC):
 
     @abstractmethod
     def action_packing(self, action: Any) -> Dict[str, Any]:
-        '''
-            Takes any input passed to the `step` function and returns a dictionary where:
-            - Each key corresponds to an action channel.
-            - Each value is the packed LCM message associated with that action channel.
-            @rtype: Dict[str, Any]
+        '''!Serialize an action.
+
+        This method converts the high level action passed to :func:`step` into
+        a dictionary that can be published over LCM.  The dictionary keys are
+        channel names and the values are already packed LCM messages.
+
+        @param action The high level action provided by the agent.
+        @return A mapping from channel names to packed LCM messages.
+        @rtype Dict[str, Any]
         '''
         raise NotImplementedError
     
     @abstractmethod
     def observation_unpacking(self, observation_dict: Dict[str, Any]) -> Any:
-        '''
-            Returns a dictionary containing all previous messages received on the observation channels.
-            - Each key represents the name of the channel from which the message was received.
-            - Each value is the corresponding packed LCM message for that channel.
+        '''!Deserialize observations.
 
-            The format of the returned dictionary is flexible and can be customized based on the desired structure.
-            @rtype: Any
+        ``observation_dict`` contains the raw LCM messages keyed by channel
+        name.  Implementations should convert these messages into a convenient
+        format for the agent.
+
+        @param observation_dict Raw messages indexed by channel name.
+        @return Processed observation in an arbitrary format.
+        @rtype Any
         '''
         raise NotImplementedError
     
     @abstractmethod
     def terminated_truncated_info(self, state: Any, action: Any, next_state: Any) -> Tuple[bool, bool, Any]:
-        '''
-        Returns a tuple containing the termination flag, the truncation flag, and any additional information.
-        Note: when reset is called action and next state will be None
-        @rtype: Tuple[bool, bool, Any]
+        '''!Evaluate episode status.
+
+        Determines whether the episode has terminated or been truncated after
+        transitioning from ``state`` to ``next_state`` by ``action``.  When
+        :func:`reset` is called ``action`` and ``next_state`` will be ``None``.
+
+        @param state Previous environment state.
+        @param action Action taken to reach ``next_state``.
+        @param next_state New state after the action.
+        @return Tuple of termination flag, truncation flag and optional info.
+        @rtype Tuple[bool, bool, Any]
         '''
         return False, False, None
     
     @abstractmethod
     def reward(self, state: Any, action: Any, next_state: Any) -> float:
-        '''
-        Returns the reward for the given state, action, and next state.
-        @rtype: float
+        '''!Compute the reward for a transition.
+
+        Sub‑classes must implement the task specific reward computation given
+        a state transition.
+
+        @param state Environment state before the action.
+        @param action Action taken by the agent.
+        @param next_state Environment state after the action.
+        @return Scalar reward.
+        @rtype float
         '''
         raise NotImplementedError
     
     @abstractmethod
     def reset_objects(self):
+        """!Reset all objects in the environment."""
         raise NotImplementedError
     
     def reset(self):
-        '''
-        return obs, terminated, truncated
-        @rtype: Tuple[Any, bool, bool]
+        '''!Reset the environment.
+
+        This method resets all user defined objects by calling
+        :func:`reset_objects` and waits until fresh observations are available.
+        The returned information tuple contains the termination and truncation
+        flags as produced by :func:`terminated_truncated_info`.
+
+        @return Observation after reset and information tuple.
+        @rtype Tuple[Any, Any]
         '''
         #self.suspend_node()
         self.reset_objects()
@@ -119,12 +163,25 @@ class ArkEnv(Env, InstanceNode, ABC):
         return obs, info
 
     def reset_backend(self):
+        """!Reset the simulation backend."""
+
         service_name = self.global_config["simulation"]["name"] + "/backend/reset/sim"
-        response = self.send_service_request(service_name=service_name, 
-                                             request=flag_t(), 
-                                             response_type=flag_t)
+        self.send_service_request(
+            service_name=service_name,
+            request=flag_t(),
+            response_type=flag_t,
+        )
     
     def reset_component(self, name: str, **kwargs):
+        """!Reset a single component.
+
+        Depending on ``name`` this method sends a reset service request to a
+        robot or object defined in the configuration.
+
+        @param name Identifier of the component to reset.
+        @param kwargs Optional parameters such as ``base_position`` or
+               ``initial_position`` used to override the configuration.
+        """
         if self.global_config is None:
             log.error("No configuration file provided, so no objects can be found. Please provide a valid configuration file.")
             return
@@ -172,16 +229,16 @@ class ArkEnv(Env, InstanceNode, ABC):
         
         
     def step(self, action: Any) -> Tuple[Any, float, bool, bool, Any]:
-        """!
-        Takes an action in the environment, steps forward, and returns the resulting
-        observation, reward, termination status, truncation status and info.
+        """!Advance the environment by one step.
 
-        @param action: The action to take in the environment.
-        @type action: Any
-        @param reward_function: An optional function that takes the new state and returns a reward.
-        @type reward_function: Any, Any, Any
-        @return: A tuple containing the observation, reward, termination flag, truncation flag, info
-        @rtype: Tuple[Any, float, bool, bool, Any]
+        The provided ``action`` is packed and published.  The function then
+        waits for a new observation, computes the reward and termination flags
+        and returns all gathered information.
+
+        @param action Action provided by the agent.
+        @return Tuple of observation, reward, termination flag, truncation flag
+                and an optional info object.
+        @rtype Tuple[Any, float, bool, bool, Any]
         """
         if self.prev_state == None: 
             raise ValueError("Please call reset() before calling step().")
@@ -201,6 +258,15 @@ class ArkEnv(Env, InstanceNode, ABC):
         return obs, reward, terminated, truncated, info
 
     def _load_config(self, global_config) -> None:
+        """!Load and merge the environment configuration.
+
+        The configuration can be provided as a path to a YAML file or as an
+        already parsed dictionary.  Sections describing robots, sensors and
+        objects may themselves reference additional YAML files which are loaded
+        and merged.
+
+        @param global_config Path or dictionary to parse.
+        """
         if isinstance(global_config, str):
             global_config = Path(global_config)
         elif global_config is None:
@@ -241,9 +307,18 @@ class ArkEnv(Env, InstanceNode, ABC):
         
         
     def _load_section(self, cfg, config_path, section_name):
-        """
-        Generic function to load a section from the config (e.g., robots, sensors, or objects).
-        It handles both inline configurations and paths to external YAML files.
+        """!Load a sub-section from the configuration.
+
+        Sections can either be provided inline in ``cfg`` or as a path to an
+        additional YAML file.  This helper returns a dictionary mapping component
+        names to their configuration dictionaries.
+
+        @param cfg Parsed configuration dictionary.
+        @param config_path Path to the root configuration file, used to resolve
+               relative includes.
+        @param section_name Section within ``cfg`` to load.
+        @return Dictionary with component names as keys and their configurations
+                as values.
         """
         # { "name" : { ... } },
         #   "name" : { ... } } 

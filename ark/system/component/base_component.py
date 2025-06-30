@@ -1,4 +1,11 @@
 
+"""Base classes for ARK system components.
+
+This module defines the :class:`BaseComponent` and
+:class:`SimToRealComponent` classes which form the foundation of all
+robot, sensor and simulation objects in the framework.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
 from pathlib import Path
@@ -12,26 +19,26 @@ from ark.tools.log import log
 
 
 class BaseComponent(HybridNode, ABC):
+    """Base class for all components in the ARK system.
+
+    @brief Provides common functionality for robots, sensors and
+    simulated objects.
+
+    Concrete implementations must provide methods for packing data,
+    stepping the component and resetting it to a well defined state.
     """
-    Abstract base class for system components: robots, sensors, and simulation objects.
-
-    This class serves as a template for creating any component in the ark sim-to-real pipeline. 
-    Subclasses must implement the 'reset' method to define how to components return to their initial state.
-    """
 
 
-    def __init__(self, 
-                 name: str, 
+    def __init__(self,
+                 name: str,
                  global_config: Union[str, Dict[str, Any], Path],
                  ) -> None:
-        """
-        Initialize the SystemComponent instance.
+        """Construct a new component.
 
-        Args:
-            name (str): The name of the component, initializes name 
-        
-        Raises:
-            ValueError: If the provided 'name' is empty or invalid.
+        @param name  Unique name of the component.
+        @param global_config  Global configuration or path to a YAML
+        configuration file.
+        @throws ValueError if ``name`` is empty.
         """
         if not name:
             raise ValueError("Name must be a non-empty string (unique in your system).")
@@ -43,41 +50,37 @@ class BaseComponent(HybridNode, ABC):
 
     @abstractmethod
     def pack_data(self) -> None:
-        """
-        Packs the data to be sent to the client.
+        """Pack the component data for publishing.
 
-        This method should be implemented by subclasses to define specific behavior 
-        for packing data to be sent to the client.
+        Subclasses use this hook to convert raw state information into
+        the LCM types that are sent to the client.
         """
 
     def component_channels_init(self, channels) -> None:
-        """
-        Initialize the component's channels.
+        """Create publishers for the specified channels.
 
-        This method should be implemented by subclasses to define specific behavior 
-        for initializing the component's channels.
+        @param channels  Iterable of channel names that the component
+        should publish on.
         """
         self.component_multi_publisher = self.create_multi_channel_publisher(channels)
 
     @abstractmethod
     def step_component(self) -> None:
-        """
-        Handles the component's functionality, e.g., processing sensor data, controlling robot, etc.
+        """Perform a single update of the component state.
 
-        This method should be implemented by subclasses to define specific behavior 
-        for the component.
+        Called periodically by the communication layer, this method is
+        responsible for gathering data from the driver and publishing it
+        to the appropriate channels.
         """
         ...
 
 
     @abstractmethod
     def reset_component(self, channel, msg) -> None:
-        """
-        Resets the state of the component (e.g., robot, sensor, simulation object).
+        """Reset the component to a known state.
 
-        This method should be implemented by subclasses to define specific behavior 
-        for resetting states, configurations, or other parameters that are important 
-        for the component.
+        @param channel  Channel name for the reset request.
+        @param msg  Optional message containing reset parameters.
         """
         ...       
             
@@ -85,13 +88,20 @@ class BaseComponent(HybridNode, ABC):
         
         
 class SimToRealComponent(BaseComponent, ABC):
-    
-    def __init__(self, 
-                 name: str, 
+    """Component with a driver that may run in simulation or on real hardware."""
+
+    def __init__(self,
+                 name: str,
                  global_config: Union[str, Dict[str, Any], Path],
                  driver: ComponentDriver = None,
                  ) -> None:
-        
+        """Create a component connected to a driver.
+
+        @param name  Name of the component.
+        @param global_config  Configuration dictionary or path.
+        @param driver  Driver instance that provides low level access.
+        """
+
         super().__init__(name, global_config)
         self._driver = driver
         self.sim = self._driver.is_sim()
@@ -102,8 +112,9 @@ class SimToRealComponent(BaseComponent, ABC):
             self.reset_service_name = self.reset_service_name + "sim/" 
       
         
-    # Override killing the node to also shutwodn the driver, freeing up ports etc.
+    # Override killing the node to also shutdown the driver, freeing up ports etc.
     def kill_node(self) -> None:
+        """Shut down the node and associated driver."""
         # kill driver (close ports, ...)
         self._driver.shutdown_driver()
         # kill all communication
