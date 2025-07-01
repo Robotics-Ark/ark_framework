@@ -29,7 +29,7 @@ class SimComponent(BaseComponent, ABC):
         # whether this should publish state information 
         self.publish_ground_truth = self.config["publish_ground_truth"] 
         # initialize service for reset of any component
-        self.reset_service_name = self.name + "/reset/sim/" 
+        self.reset_service_name = self.name + "/reset/sim" 
         
         self.create_service(self.reset_service_name, rigid_body_state_t, flag_t, self.reset_component)
 

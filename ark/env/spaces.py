@@ -48,7 +48,7 @@ class ActionSpace(Space):
     @type lcm_instance: LCM
     """
 
-    def __init__(self, action_channels: List, action_packing: Callable, lcm_instance: LCM):
+    def __init__(self, action_channels: Dict[str, type], action_packing: Callable, lcm_instance: LCM):
         """!Create an action space.
 
         @param action_channels Channels to publish actions on.
@@ -95,7 +95,7 @@ class ObservationSpace(Space):
     """
 
     def __init__(
-        self, observation_channels: List, observation_unpacking: Callable, lcm_instance: LCM):
+        self, observation_channels: Dict[str, type], observation_unpacking: Callable, lcm_instance: LCM):
         """!Create an observation space.
 
         @param observation_channels Channels to listen for observations.

@@ -61,10 +61,10 @@ class Publisher(CommHandler):
         """!
         Return a dictionary describing this publisher.
         """
-       info = {
+        info = {
             "comms_type": "Publisher",
             "channel_name": self.channel_name,
             "channel_type": self.channel_type.__name__,
             "channel_status": self.active
-       }
-       return info
+        }
+        return info

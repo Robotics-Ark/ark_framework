@@ -56,7 +56,7 @@ class BaseComponent(HybridNode, ABC):
         the LCM types that are sent to the client.
         """
 
-    def component_channels_init(self, channels) -> None:
+    def component_channels_init(self, channels: Dict[str, type]) -> None:
         """Create publishers for the specified channels.
 
         @param channels  Iterable of channel names that the component
@@ -107,9 +107,9 @@ class SimToRealComponent(BaseComponent, ABC):
         self.sim = self._driver.is_sim()
         
         # initialize service for reset of any component
-        self.reset_service_name = self.name + "/reset/"
+        self.reset_service_name = self.name + "/reset"
         if self.sim:
-            self.reset_service_name = self.reset_service_name + "sim/" 
+            self.reset_service_name = self.reset_service_name + "/sim" 
       
         
     # Override killing the node to also shutdown the driver, freeing up ports etc.

@@ -513,25 +513,31 @@ class CommEndpoint(EndPoint):
         return flag_t()
 
 
-    def suspend_communications(self) -> None:
+    def suspend_communications(self, services=True) -> None:
         """!
         Suspends the node stopping comms handellers
 
         """
         # Unsubscribe all comm handlers
         for ch in self._comm_handlers:
-            ch.suspend()
+            if ch.comm_type != 'Service':
+                ch.suspend()
+            elif ch.comm_type == 'Service' and services == True:
+                ch.suspend()
         
         for m_ch in self._multi_comm_handlers:
             m_ch.suspend()
 
 
-    def resume_communications(self) -> None:
+    def resume_communications(self, services=True) -> None:
         """!
         Resumes the node's communication handlers.
         """
         for ch in self._comm_handlers:
-            ch.restart()
+            if ch.comm_type != 'Service':
+                ch.restart()
+            elif ch.comm_type == 'Service' and services == True:
+                ch.restart()
         
         for m_ch in self._multi_comm_handlers:
             m_ch.restart()

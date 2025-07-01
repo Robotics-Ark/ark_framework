@@ -118,7 +118,7 @@ class PyBulletMultiBody(SimComponent):
         # setup communication 
         self.publisher_name = self.name + "/ground_truth/sim"
         if self.publish_ground_truth:
-            self.state_publisher = self.component_channels_init([(self.publisher_name, rigid_body_state_t)])
+            self.state_publisher = self.component_channels_init({self.publisher_name: rigid_body_state_t})
 
     def get_object_data(self):
         """!Return the current state of the simulated object.
