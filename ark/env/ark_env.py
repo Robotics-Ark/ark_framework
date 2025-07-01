@@ -17,33 +17,33 @@ from abc import ABC, abstractmethod
 
 
 class ArkEnv(Env, InstanceNode, ABC):
-"""!ArkEnv base class.
+    """!ArkEnv base class.
 
-This environment integrates the Noah system with the :mod:`gymnasium` API.  It
-handles action publishing, observation retrieval and exposes helper utilities
-for resetting parts of the system.  Sub‑classes are expected to implement the
-packing/unpacking logic for messages as well as the reward and termination
-functions.
+    This environment integrates the Ark system with the :mod:`gymnasium` API.  It
+    handles action publishing, observation retrieval and exposes helper utilities
+    for resetting parts of the system.  Sub‑classes are expected to implement the
+    packing/unpacking logic for messages as well as the reward and termination
+    functions.
 
-@param environment_name Name of the environment (also the node name).
-@type environment_name str
-@param action_channels Channels on which actions will be published.
-@type action_channels List[Tuple[str, type]]
-@param observation_channels Channels on which observations will be received.
-@type observation_channels List[Tuple[str, type]]
-@param global_config Path or dictionary describing the complete Noah system
-       configuration.  If ``None`` a warning is emitted and only minimal
-       functionality is available.
-@type global_config Union[str, Dict[str, Any], Path]
-@param sim Set ``True`` when running in simulation mode.
-@type sim bool
-"""
+    @param environment_name Name of the environment (also the node name).
+    @type environment_name str
+    @param action_channels Channels on which actions will be published.
+    @type action_channels List[Tuple[str, type]]
+    @param observation_channels Channels on which observations will be received.
+    @type observation_channels List[Tuple[str, type]]
+    @param global_config Path or dictionary describing the complete Noah system
+        configuration.  If ``None`` a warning is emitted and only minimal
+        functionality is available.
+    @type global_config Union[str, Dict[str, Any], Path]
+    @param sim Set ``True`` when running in simulation mode.
+    @type sim bool
+    """
 
     def __init__(
         self,
         environment_name: str,
-        action_channels: List[Tuple[str, type]],
-        observation_channels: List[Tuple[str, type]],
+        action_channels: Dict[str, type],
+        observation_channels: Dict[str, type],
         global_config: Union[str, Dict[str, Any], Path]=None,
         sim=True) -> None:
         """!Construct the environment.
@@ -54,10 +54,12 @@ functions.
         memory.
 
         @param environment_name Name of the environment node.
-        @param action_channels List of tuples mapping channel names to LCM types
-               for actions.
-        @param observation_channels List of tuples mapping channel names to LCM
+        @param action_channels Dictionary mapping channel names to LCM
+               types for actions.
+        @type action_channels Dict[str, type]
+        @param observation_channels Dictionary mapping channel names to LCM
                types for observations.
+        @type observation_channels Dict[str, type]
         @param global_config Optional path or dictionary describing the system.
         @param sim If ``True`` the environment interacts with the simulator.
         """
@@ -164,13 +166,13 @@ functions.
 
     def reset_backend(self):
         """!Reset the simulation backend."""
-
-        service_name = self.global_config["simulation"]["name"] + "/backend/reset/sim"
-        self.send_service_request(
-            service_name=service_name,
-            request=flag_t(),
-            response_type=flag_t,
-        )
+        raise NotImplementedError("This feature is to be added soon.")
+        # service_name = self.global_config["simulator"]["name"] + "/backend/reset/sim"
+        # self.send_service_request(
+        #     service_name=service_name,
+        #     request=flag_t(),
+        #     response_type=flag_t,
+        # )
     
     def reset_component(self, name: str, **kwargs):
         """!Reset a single component.
@@ -180,7 +182,7 @@ functions.
 
         @param name Identifier of the component to reset.
         @param kwargs Optional parameters such as ``base_position`` or
-               ``initial_position`` used to override the configuration.
+               ``initial_configuration`` used to override the configuration.
         """
         if self.global_config is None:
             log.error("No configuration file provided, so no objects can be found. Please provide a valid configuration file.")
@@ -197,7 +199,7 @@ functions.
             request.name = name
             request.position = kwargs.get("base_position", self.global_config["robots"][name]["base_position"])
             request.orientation = kwargs.get("base_orientation", self.global_config["robots"][name]["base_orientation"])
-            q_init = kwargs.get("initial_position", self.global_config["robots"][name]["initial_position"])
+            q_init = kwargs.get("initial_configuration", self.global_config["robots"][name]["initial_configuration"])
             request.n = len(q_init)
             request.q_init = q_init
                         
