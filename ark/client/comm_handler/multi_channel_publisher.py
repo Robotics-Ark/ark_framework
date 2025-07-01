@@ -16,11 +16,12 @@ class MultiChannelPublisher(MultiCommHandler):
     @note Internally creates one :class:`Publisher` per channel.
     """
 
-    def __init__(self, channels: List, lcm_instance: LCM) -> None:
+    def __init__(self, channels: Dict[str,type], lcm_instance: LCM) -> None:
         """!
         Initialize the publisher with a list of channels.
 
-        @param channels: List of ``(channel_name, channel_type)`` tuples.
+        @param channels: Dictionary mapping channel names to their types.
+        @type channels: Dict[str, type]
         @param lcm_instance: LCM instance used for publishing.
         """
         
@@ -28,7 +29,8 @@ class MultiChannelPublisher(MultiCommHandler):
         
         
         self.comm_type = "Multi Channel Publisher"
-        for channel_name, channel_type in channels:
+        # iterate through the channels dictionary
+        for channel_name, channel_type in channels.items():
             publisher = Publisher(lcm_instance, channel_name, channel_type)
             self._comm_handlers.append(publisher)
 

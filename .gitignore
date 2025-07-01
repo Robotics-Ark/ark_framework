@@ -33,3 +33,5 @@ Thumbs.db
 # Ignore configuration files
 *.cfg
 *.ini
+
+docs/

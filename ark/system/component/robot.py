@@ -346,7 +346,9 @@ class Robot(SimToRealComponent):
     def reset_component(self, channel=None, msg=None) -> flag_t:
         """Reset the robot to its initial configuration."""
         print("RESET HAS BEEN CALLED")
+        self.suspend_communications(services=False)  # Suspend communications to avoid conflicts during reset
         self._is_suspended = True
+
         
         # # TODO
         # IDEA seperate reset iinto sim and real reset, make user implement real_reset for each robot ?
@@ -381,8 +383,7 @@ class Robot(SimToRealComponent):
             self._driver.sim_reset(base_pos=new_pos, 
                                    base_orn=new_orn, 
                                    q_init=list(q_init))
-        # self.suspend_communications()
-        # self.resume_communications()
+        self.resume_communications(services=False)
         self._is_suspended = False
         return flag_t()
     

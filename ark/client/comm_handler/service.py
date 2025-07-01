@@ -25,16 +25,16 @@ class Service(CommHandler):
         """!
         Initialize the service.
 
-        @param name: Name of the service.
-        @param req_type: Request message class with ``encode``/``decode``.
-        @param resp_type: Response message class with ``encode``/``decode``.
-        @param callback: Callback handling the request.
-        @param registry_host: Registry server host.
-        @param registry_port: Registry server port.
-        @param host: Optional host to bind the service.
-        @param port: Optional port to bind the service.
+        :param name: Name of the service.
+        :param req_type: Request message class with encode/decode methods.
+        :param resp_type: Response message class with encode/decode methods.
+        :param callback: Function to handle the request and return a response.
+        :param registry_host: Host of the registry server.
+        :param registry_port: Port of the registry server.
+        :param host: Host to bind the service. If None, binds to the local network interface.
+        :param port: Port to bind the service. If None, a random free port is chosen.
         """
-        self.service_name = name
+        self.name = name
         self.comm_type = "Service"
         self.req_type = req_type
         self.resp_type = resp_type
@@ -85,7 +85,7 @@ class Service(CommHandler):
         """
         registration = {
             "type": "REGISTER",
-            "service_name": self.service_name,
+            "name": self.name,
             "host": self.host,  # Use the local IP address for registration
             "port": self.port,
         }
@@ -112,7 +112,7 @@ class Service(CommHandler):
                 response = json.loads(data.decode("utf-8"))
                 if response.get("status") == "OK":
                     log.info(
-                        f"Service: Successfully registered '{self.service_name}' with registry."
+                        f"Service: Successfully registered '{self.name}' with registry."
                     )
                 else:
                     log.error(f"Service: Registration failed - {response.get('message')}")
@@ -155,7 +155,7 @@ class Service(CommHandler):
                         request = self.req_type.decode(data)
                         
                         # Process the request
-                        response = self.callback(self.service_name, request)
+                        response = self.callback(self.name, request)
                         # Encode the response
                         encoded_resp = response.encode()
                         
@@ -193,7 +193,7 @@ class Service(CommHandler):
         @return: A string representation of the handler, formatted as 
                 "channel_name[request_type,response_type]".
         """
-        return f"{self.service_name}[{self.req_type},{self.resp_type}]"
+        return f"{self.name}[{self.req_type},{self.resp_type}]"
     
     def restart(self):
         """!
@@ -208,7 +208,7 @@ class Service(CommHandler):
         if self.deregister_from_registry():
             self._stop_event.set()  # Stop the serving thread
             self.thread.join()  # Wait for the serving thread to terminate
-            print(f"Service '{self.service_name}' stopped.")
+            print(f"Service '{self.name}' stopped.")
         else:
             print("Service shutdown un-gracefully.")
 
@@ -220,7 +220,7 @@ class Service(CommHandler):
         """
         deregistration = {
             "type": "DEREGISTER",
-            "service_name": self.service_name,
+            "name": self.name,
             "host": self.host,
             "port": self.port,
         }
@@ -230,7 +230,7 @@ class Service(CommHandler):
                 encoded_req = json.dumps(deregistration).encode("utf-8")
                 s.sendall(struct.pack("!I", len(encoded_req)))
                 s.sendall(encoded_req)
-                log.info(f"Service: Sending deregistration request for '{self.service_name}'.")
+                log.info(f"Service: Sending deregistration request for '{self.name}'.")
 
                 # Receive response length
                 raw_resp_len = self._recvall(s, 4)
@@ -248,7 +248,7 @@ class Service(CommHandler):
                 # Parse the response
                 response = json.loads(data.decode("utf-8"))
                 if response.get("status") == "OK":
-                    log.info(f"Service: Successfully deregistered '{self.service_name}' from registry.")
+                    log.info(f"Service: Successfully deregistered '{self.name}' from registry.")
                     return True
                 else:
                     log.error(f"Service: Deregistration failed - {response.get('message')}")
@@ -263,7 +263,7 @@ class Service(CommHandler):
         """
         info = {
             "comms_type": "Service",
-            "service_name": self.service_name,
+            "name": self.name,
             "service_host": self.host,
             "service_port": self.port,
             "registry_host": self.registry_host,
@@ -365,7 +365,7 @@ def __discover_service(registry_host: str, registry_port: int, service_name: str
     @return: ``(host, port)`` tuple of the discovered service.
     @raises RuntimeError: If discovery fails.
     """
-    discovery_request = {"type": "DISCOVER", "service_name": service_name}
+    discovery_request = {"type": "DISCOVER", "name": service_name}
     try:
         # Create a socket connection to the registry
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -403,7 +403,7 @@ def __discover_service(registry_host: str, registry_port: int, service_name: str
                 return host, port
             else:
                 raise RuntimeError(
-                    f"Client: Service discovery failed - {response.get('message')}"
+                    f"Client: Service discovery of {service_name} failed - {response.get('message')}"
                 )
     except Exception as e:
         log.error(f"Client: Error during service discovery - {e}")
