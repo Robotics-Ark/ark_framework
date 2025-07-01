@@ -294,5 +294,9 @@ class BulletRobotDriver(SimRobotDriver):
         self.load_robot(base_position=base_pos, base_orientation=base_orn, q_init=q_init)
 
         log.ok("Reset robot " + self.component_name + " completed.")
+
+        # print the joint positons after reset
+        joint_positions = self.pass_joint_positions(list(self.actuated_joints.keys()))
+        log.info("Joint positions after reset: " + str(joint_positions))
         return 
 

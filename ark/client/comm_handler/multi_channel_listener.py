@@ -12,7 +12,7 @@ import copy
 
 class MultiChannelListener(MultiCommHandler):
     def __init__(
-        self, channels: List, lcm_instance: LCM) -> None:
+        self, channels: dict[str,type], lcm_instance: LCM) -> None:
         """!
         Initialize listeners for multiple channels.
 
@@ -26,7 +26,7 @@ class MultiChannelListener(MultiCommHandler):
         self.blank_data = {}
         self.comm_type = "Multi Channel Listener"
 
-        for channel_name, channel_type  in channels:
+        for channel_name, channel_type in channels.items():
             listener = Listener(lcm_instance, channel_name, channel_type)
             self.channel_data[channel_name] = None
             self.blank_data[channel_name] = None

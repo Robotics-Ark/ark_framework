@@ -407,7 +407,16 @@ class PyBulletBackend(SimulatorBackend):
         All robots, objects and sensors are destroyed and the backend is
         re-initialized using ``self.global_config``.
         """
-        log.info("Starting simulator reset ... ")
+        log.error("Reset Simulator function is not ready yet !")
+        for robot in self.robot_ref:
+            self.robot_ref[robot].kill_node()
+
+        for obj in self.object_ref:
+            self.object_ref[obj].kill_node()
+
+        for sensor in self.sensor_ref:
+            self.sensor_ref[sensor].kill_node()
+
         self.client.disconnect()
         self._simulation_time = 0.0
         self.initialize()
