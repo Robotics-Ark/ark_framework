@@ -140,7 +140,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         """!Reset all objects in the environment."""
         raise NotImplementedError
     
-    def reset(self):
+    def reset(self, **kwargs) -> Tuple[Any, Any]:
         '''!Reset the environment.
 
         This method resets all user defined objects by calling
@@ -152,7 +152,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         @rtype Tuple[Any, Any]
         '''
         #self.suspend_node()
-        self.reset_objects()
+        self.reset_objects(**kwargs)
         self.observation_space.is_ready = False
         #self.restart_node()
         # if self.sim:
