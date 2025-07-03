@@ -143,7 +143,7 @@ class Registry(EndPoint):
         """
         req_type = request.get("type")
         if req_type == "REGISTER":
-            service_name = request.get("name")
+            service_name = request.get("service_name")
             host = request.get("host")
             port = request.get("port")
             if not all([service_name, host, port]):
@@ -153,7 +153,7 @@ class Registry(EndPoint):
             log.info(f"Registry: Registered service '{service_name}' at {host}:{port}")
             return {"status": "OK", "message": "Service registered successfully"}
         elif req_type == "DISCOVER":
-            service_name = request.get("name")
+            service_name = request.get("service_name")
             if not service_name:
                 return {"status": "ERROR", "message": "Missing service_name in DISCOVER"}
             with self.lock:
@@ -166,7 +166,7 @@ class Registry(EndPoint):
                 log.warning(f"Registry: Service '{service_name}' not found")
                 return {"status": "ERROR", "message": "Service not found"}
         elif req_type == "DEREGISTER":
-            service_name = request.get("name")
+            service_name = request.get("service_name")
             if not service_name:
                 return {"status": "ERROR", "message": "Missing service_name in DEREGISTER"}
             with self.lock:
