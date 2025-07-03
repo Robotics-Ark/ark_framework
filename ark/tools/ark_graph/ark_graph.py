@@ -453,9 +453,16 @@ class ArkGraph(EndPoint):
         # Convert LCM response to a dictionary
         data = network_info_lcm_to_dict(response_lcm)
 
-        # Generate the GraphViz diagram and display it
-        plot_image = graph_viz_plot(data)
-        self.display_image(plot_image)
+        # Generate the GraphViz diagram
+        self.plot_image = graph_viz_plot(data)
+        self.display_image(self.plot_image)
+
+    def save_image(self, file_path: str | Path) -> None:
+        """Save the generated diagram image to ``file_path``."""
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.plot_image.save(file_path)
 
     @staticmethod
     def get_cli_doc() -> str:
@@ -512,6 +519,18 @@ def start(
 ):
     """Starts the graph with specified host and port."""
     server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
+
+
+@app.command()
+def save(
+    file_path: str,
+    registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
+    registry_port: int = typer.Option(1234, "--port", help="The port for the registry server."),
+):
+    """Save the graph image to ``FILE_PATH``."""
+    server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
+    server.save_image(file_path)
+    log.ok(f"Graph saved to {file_path}")
 
 def main():
     """Entry point for the CLI."""
