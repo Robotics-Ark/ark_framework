@@ -354,7 +354,7 @@ def graph_viz_plot(data: dict):
     """
     dot = Digraph(format="png")
     dot.attr("graph", fontname="Helvetica")
-    dot.attr("node", style="filled", shape="box", fillcolor="lightblue", fontname="Helvetica")
+    dot.attr("node", fontname="Helvetica")
     dot.attr("edge", fontname="Helvetica")
 
     channel_id_map = {}
@@ -372,7 +372,7 @@ def graph_viz_plot(data: dict):
         node_id = node["node_id"]
         node_name = node["name"]
 
-        dot.node(node_id, node_name)
+        dot.node(node_id, node_name, shape="box", style="filled", fillcolor="lightblue")
 
         publishers = [pub["channel_name"] for pub in node["comms"]["publishers"]]
         subscribers = [sub["channel_name"] for sub in node["comms"]["subscribers"]]
