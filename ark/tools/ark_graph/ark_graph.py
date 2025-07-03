@@ -347,6 +347,10 @@ def graph_viz_plot(data: dict):
 
     Returns:
         Image: The generated PIL Image containing the graph visualisation.
+
+    Notes:
+        Service nodes are drawn with single borders on the top and bottom and
+        double borders on the left and right to resemble ``|| service ||``.
     """
     dot = Digraph(format="png")
     dot.attr("graph", fontname="Helvetica")
@@ -396,7 +400,7 @@ def graph_viz_plot(data: dict):
             ser_id = get_channel_id(ser)
             service_label = (
                 "<"
-                "<TABLE BORDER='1' CELLBORDER='0' CELLPADDING='4' BGCOLOR='white'>"
+                "<TABLE BORDER='1' CELLBORDER='0' CELLPADDING='0' BGCOLOR='white'>"
                 "<TR><TD>"
                 "<TABLE BORDER='0' CELLBORDER='1' SIDES='LR' CELLPADDING='4' BGCOLOR='white'>"
                 f"<TR><TD>{ser}</TD></TR>"
