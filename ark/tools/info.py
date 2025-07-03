@@ -6,7 +6,6 @@ from ark.tools.ark_graph.ark_graph import network_info_lcm_to_dict
 from arktypes import flag_t, network_info_t
 
 info = typer.Typer(help="Query information about the running ARK network")
-active = typer.Typer(help="Inspect active objects")
 
 
 def _fetch_network_info(host: str, port: int) -> dict:
@@ -44,9 +43,9 @@ def channels(host: str = "127.0.0.1", port: int = 1234):
         print(ch)
 
 
-@active.command()
+@info.command()
 def services(host: str = "127.0.0.1", port: int = 1234):
-    """List active services."""
+    """List available services."""
     data = _fetch_network_info(host, port)
     services = set()
     for node in data.get("nodes", []):
@@ -58,10 +57,7 @@ def services(host: str = "127.0.0.1", port: int = 1234):
 
 
 def main():
-    app = typer.Typer()
-    app.add_typer(info, name="info")
-    app.add_typer(active, name="active")
-    app()
+    info()
 
 
 if __name__ == "__main__":

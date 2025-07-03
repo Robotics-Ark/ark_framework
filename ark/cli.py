@@ -14,7 +14,6 @@ app.add_typer(ark_graph.app, name="graph")
 app.add_typer(launcher.app, name="launcher")
 # CLI utilities for inspecting running network
 app.add_typer(info.info, name="info")
-app.add_typer(info.active, name="active")
 # app.add_typer(image_viewer.app, name="image_viewer")
 
 def main():
