@@ -394,7 +394,17 @@ def graph_viz_plot(data: dict):
             if ser.startswith(DEFAULT_SERVICE_DECORATOR):
                 continue
             ser_id = get_channel_id(ser)
-            dot.node(ser_id, ser, shape="box", peripheries="2", fillcolor="white")
+            service_label = (
+                "<"
+                "<TABLE BORDER='1' CELLBORDER='0' CELLPADDING='4' BGCOLOR='white'>"
+                "<TR><TD>"
+                "<TABLE BORDER='0' CELLBORDER='1' SIDES='LR' CELLPADDING='4' BGCOLOR='white'>"
+                f"<TR><TD>{ser}</TD></TR>"
+                "</TABLE>"
+                "</TD></TR>"
+                "</TABLE>>"
+            )
+            dot.node(ser_id, label=service_label, shape="plaintext")
             dot.edge(node_id, ser_id)
 
     graph_image = dot.pipe()
