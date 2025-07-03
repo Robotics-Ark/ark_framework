@@ -4,24 +4,20 @@ import json
 import sys
 
 # --- Third-party/project-specific imports ---
-from ark.client.comm_handler.service import Service, send_service_request
+from ark.client.comm_handler.service import send_service_request
 from ark.client.comm_infrastructure.endpoint import EndPoint
 from ark.tools.log import log
 from ark.global_constants import *
 from arktypes import flag_t, network_info_t
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
-
-import mermaid as mmd
-from mermaid.graph import Graph
+from graphviz import Digraph
 import typer
 
 from dataclasses import dataclass
 from pathlib import Path
 
 # Render the image with matplotlib
-import base64
 import io
 from PIL import Image
 
@@ -56,15 +52,15 @@ class BaseGraph:
                 with the title as the filename.
 
         Raises:
-            ValueError: If the file extension is not '.mmd' or '.mermaid'.
+            ValueError: If the file extension is not '.gv' or '.dot'.
         """
         if path is None:
-            path = Path(f"./{self.title}.mmd")
+            path = Path(f"./{self.title}.gv")
         if isinstance(path, str):
             path = Path(path)
 
-        if path.suffix not in [".mmd", ".mermaid"]:
-            raise ValueError("File extension must be '.mmd' or '.mermaid'")
+        if path.suffix not in [".gv", ".dot"]:
+            raise ValueError("File extension must be '.gv' or '.dot'")
 
         with open(path, "w") as file:
             file.write(self.script)
@@ -339,91 +335,84 @@ def network_info_lcm_to_dict(lcm_message) -> dict:
 
 
 # ----------------------------------------------------------------------
-#                         MERMAID VISUALIZATION
+#                         GRAPHVIZ VISUALIZATION
 # ----------------------------------------------------------------------
-def mermaid_plot(data: dict):
+def graph_viz_plot(data: dict):
     """
-    Generate a Mermaid diagram from the given network data and display it using Matplotlib.
+    Generate a GraphViz diagram from the given network data and display it using Matplotlib.
 
     Args:
         data (dict): A dictionary containing the network information.
                      Typically the output of `network_info_lcm_to_dict(...)`.
 
     Returns:
-        Mermaid: A mermaid diagram object (useful if further manipulation is needed).
-    """
-    graph_lines = ["graph LR"]
-    # Define some default class styles
-    graph_lines.append("classDef node fill:#add8e6,stroke:#000,stroke-width:2px;")
-    graph_lines.append("classDef channel fill:#ffffff,stroke:#000,stroke-width:2px;")
+        Image: The generated PIL Image containing the graph visualisation.
 
-    # We will map channel names to IDs so every time we see the same channel name,
-    # we reuse the same ID, ensuring consistent links in the diagram.
+    Notes:
+        Service nodes are drawn with single borders on the top and bottom and
+        double borders on the left and right to resemble ``|| service ||``.
+    """
+    dot = Digraph(format="png")
+    dot.attr("graph", fontname="Helvetica")
+    dot.attr("node", fontname="Helvetica")
+    dot.attr("edge", fontname="Helvetica")
+
     channel_id_map = {}
     id_counter = 1
 
     def get_channel_id(channel_name: str) -> str:
-        """
-        Return a unique channel ID if it doesn't exist,
-        or return the existing one from our dictionary.
-        """
         nonlocal id_counter
         if channel_name not in channel_id_map:
             channel_id_map[channel_name] = f"ch_{id_counter}"
             id_counter += 1
         return channel_id_map[channel_name]
 
-    # For each node, define its communication and connections
+    # Build the graph
     for node in data["nodes"]:
         node_id = node["node_id"]
         node_name = node["name"]
+
+        dot.node(node_id, node_name, shape="box", style="filled", fillcolor="lightblue")
 
         publishers = [pub["channel_name"] for pub in node["comms"]["publishers"]]
         subscribers = [sub["channel_name"] for sub in node["comms"]["subscribers"]]
         listeners = [lis["channel_name"] for lis in node["comms"]["listeners"]]
         services = [ser["service_name"] for ser in node["comms"]["services"]]
 
-        # Publisher edges: node -> channel
         for pub in publishers:
             pub_id = get_channel_id(pub)
-            graph_lines.append(
-                f"{node_id}([{node_name}]):::node --> {pub_id}[{pub}]:::channel"
-            )
+            dot.node(pub_id, pub, shape="box", style="rounded,filled", fillcolor="white")
+            dot.edge(node_id, pub_id)
 
-        # Subscriber edges: channel -> node
         for sub in subscribers:
             sub_id = get_channel_id(sub)
-            graph_lines.append(
-                f"{sub_id}[{sub}]:::channel --> {node_id}([{node_name}]):::node"
-            )
+            dot.node(sub_id, sub, shape="box", style="rounded,filled", fillcolor="white")
+            dot.edge(sub_id, node_id)
 
-        # Listener edges: channel -> node
         for lis in listeners:
             lis_id = get_channel_id(lis)
-            graph_lines.append(
-                f"{lis_id}[{lis}]:::channel --> {node_id}([{node_name}]):::node"
-            )
+            dot.node(lis_id, lis, shape="box", style="rounded,filled", fillcolor="white")
+            dot.edge(lis_id, node_id)
 
-        # Service edges: node -> service
         for ser in services:
-            # Skip default service placeholders
             if ser.startswith(DEFAULT_SERVICE_DECORATOR):
                 continue
             ser_id = get_channel_id(ser)
-            graph_lines.append(
-                f"{node_id}([{node_name}]):::node --> {ser_id}[[{ser}]]:::channel"
+            service_label = (
+                            "<"
+        "<TABLE BORDER='0' CELLBORDER='0' CELLPADDING='0' BGCOLOR='white'>"
+        "  <TR><TD>"
+        "    <TABLE BORDER='0' CELLBORDER='1' SIDES='LR' CELLPADDING='4' BGCOLOR='white'>"
+        f"      <TR><TD>{ser}</TD></TR>"
+        "    </TABLE>"
+        "  </TD></TR>"
+        "</TABLE>"
+        ">"
             )
+            dot.node(ser_id, label=service_label, shape="plaintext")
+            dot.edge(node_id, ser_id)
 
-    # Combine all lines into a single Mermaid script
-    script = "\n".join(graph_lines) + "\n"
-
-    # Create a mermaid graph and convert to image
-    mermaid_graph = Graph("Ark Graph", script)
-    mermaid_obj = mmd.Mermaid(mermaid_graph)
-    graph_image = mermaid_obj.img_response.content
-
-
-
+    graph_image = dot.pipe()
     image_stream = io.BytesIO(graph_image)
     image = Image.open(image_stream)
 
@@ -434,9 +423,9 @@ def mermaid_plot(data: dict):
 #                              MAIN CLASS
 # ----------------------------------------------------------------------
 class ArkGraph(EndPoint):
-    """
-    ArkGraph is an EndPoint that retrieves network information from
-    a registry service and displays it as a Mermaid diagram.
+    """Endpoint that retrieves network info and renders a GraphViz diagram.
+
+    The diagram can either be displayed immediately or saved for later use.
 
     Attributes:
         registry_host (str): The host of the registry server.
@@ -448,7 +437,9 @@ class ArkGraph(EndPoint):
         self,
         registry_host: str = "127.0.0.1",
         registry_port: int = 1234,
-        lcm_network_bounces: int = 1
+        lcm_network_bounces: int = 1,
+        *,
+        display: bool = True,
     ):
         """
         Initializes the ArkGraph endpoint with registry configuration.
@@ -457,6 +448,8 @@ class ArkGraph(EndPoint):
             registry_host (str): The host address for the registry server.
             registry_port (int): The port for the registry server.
             lcm_network_bounces (int): LCM network bounces for deeper network queries.
+            display (bool, optional): Whether to immediately display the diagram.
+                If ``False``, the image can still be saved via :meth:`save_image`.
         """
         config = { "network": {
             "registry_host": registry_host,
@@ -479,9 +472,24 @@ class ArkGraph(EndPoint):
         # Convert LCM response to a dictionary
         data = network_info_lcm_to_dict(response_lcm)
 
-        # Generate the Mermaid diagram and display it
-        plot_image = mermaid_plot(data)
-        self.display_image(plot_image)
+        # Generate the GraphViz diagram
+        self.plot_image = graph_viz_plot(data)
+        if display:
+            self.display_image(self.plot_image)
+
+    def save_image(self, file_path: str | Path) -> None:
+        """Save the generated diagram image to ``file_path``.
+
+        Only ``.png`` files are supported.
+        """
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+
+        if file_path.suffix.lower() != ".png":
+            raise ValueError("File extension must be '.png'")
+
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.plot_image.save(file_path)
 
     @staticmethod
     def get_cli_doc() -> str:
@@ -492,10 +500,10 @@ class ArkGraph(EndPoint):
     
     def display_image(self, plot_image):
         """
-        Display the Mermaid diagram image using Matplotlib.
+        Display the GraphViz diagram image using Matplotlib.
 
         Args:
-            plot_image (Mermaid): The Mermaid object containing the diagram.
+            plot_image (Image.Image): The PIL Image containing the diagram.
         """
         plt.imshow(plot_image)
         plt.axis("off")
@@ -538,6 +546,26 @@ def start(
 ):
     """Starts the graph with specified host and port."""
     server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
+
+
+@app.command()
+def save(
+    file_path: str,
+    registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
+    registry_port: int = typer.Option(1234, "--port", help="The port for the registry server."),
+):
+    """Save the graph image to ``FILE_PATH`` without displaying it.
+
+    ``FILE_PATH`` must end with ``.png``.
+    """
+    server = ArkGraph(registry_host=registry_host, registry_port=registry_port, display=False)
+    try:
+        server.save_image(file_path)
+    except ValueError as exc:
+        log.error(str(exc))
+        raise typer.Exit(code=1)
+    else:
+        log.ok(f"Graph saved to {file_path}")
 
 def main():
     """Entry point for the CLI."""
