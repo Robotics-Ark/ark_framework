@@ -377,17 +377,17 @@ def graph_viz_plot(data: dict):
 
         for pub in publishers:
             pub_id = get_channel_id(pub)
-            dot.node(pub_id, pub, shape="ellipse", fillcolor="white")
+            dot.node(pub_id, pub, shape="box", style="rounded,filled", fillcolor="white")
             dot.edge(node_id, pub_id)
 
         for sub in subscribers:
             sub_id = get_channel_id(sub)
-            dot.node(sub_id, sub, shape="ellipse", fillcolor="white")
+            dot.node(sub_id, sub, shape="box", style="rounded,filled", fillcolor="white")
             dot.edge(sub_id, node_id)
 
         for lis in listeners:
             lis_id = get_channel_id(lis)
-            dot.node(lis_id, lis, shape="ellipse", fillcolor="white")
+            dot.node(lis_id, lis, shape="box", style="rounded,filled", fillcolor="white")
             dot.edge(lis_id, node_id)
 
         for ser in services:
