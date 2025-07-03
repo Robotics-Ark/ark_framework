@@ -408,9 +408,9 @@ def graph_viz_plot(data: dict):
 #                              MAIN CLASS
 # ----------------------------------------------------------------------
 class ArkGraph(EndPoint):
-    """
-    ArkGraph is an EndPoint that retrieves network information from
-    a registry service and displays it as a GraphViz diagram.
+    """Endpoint that retrieves network info and renders a GraphViz diagram.
+
+    The diagram can either be displayed immediately or saved for later use.
 
     Attributes:
         registry_host (str): The host of the registry server.
@@ -422,7 +422,9 @@ class ArkGraph(EndPoint):
         self,
         registry_host: str = "127.0.0.1",
         registry_port: int = 1234,
-        lcm_network_bounces: int = 1
+        lcm_network_bounces: int = 1,
+        *,
+        display: bool = True,
     ):
         """
         Initializes the ArkGraph endpoint with registry configuration.
@@ -431,6 +433,8 @@ class ArkGraph(EndPoint):
             registry_host (str): The host address for the registry server.
             registry_port (int): The port for the registry server.
             lcm_network_bounces (int): LCM network bounces for deeper network queries.
+            display (bool, optional): Whether to immediately display the diagram.
+                If ``False``, the image can still be saved via :meth:`save_image`.
         """
         config = { "network": {
             "registry_host": registry_host,
@@ -455,12 +459,20 @@ class ArkGraph(EndPoint):
 
         # Generate the GraphViz diagram
         self.plot_image = graph_viz_plot(data)
-        self.display_image(self.plot_image)
+        if display:
+            self.display_image(self.plot_image)
 
     def save_image(self, file_path: str | Path) -> None:
-        """Save the generated diagram image to ``file_path``."""
+        """Save the generated diagram image to ``file_path``.
+
+        Only ``.png`` files are supported.
+        """
         if isinstance(file_path, str):
             file_path = Path(file_path)
+
+        if file_path.suffix.lower() != ".png":
+            raise ValueError("File extension must be '.png'")
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
         self.plot_image.save(file_path)
 
@@ -527,10 +539,18 @@ def save(
     registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
     registry_port: int = typer.Option(1234, "--port", help="The port for the registry server."),
 ):
-    """Save the graph image to ``FILE_PATH``."""
-    server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
-    server.save_image(file_path)
-    log.ok(f"Graph saved to {file_path}")
+    """Save the graph image to ``FILE_PATH`` without displaying it.
+
+    ``FILE_PATH`` must end with ``.png``.
+    """
+    server = ArkGraph(registry_host=registry_host, registry_port=registry_port, display=False)
+    try:
+        server.save_image(file_path)
+    except ValueError as exc:
+        log.error(str(exc))
+        raise typer.Exit(code=1)
+    else:
+        log.ok(f"Graph saved to {file_path}")
 
 def main():
     """Entry point for the CLI."""
