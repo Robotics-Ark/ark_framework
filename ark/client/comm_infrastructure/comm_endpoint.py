@@ -361,7 +361,7 @@ class CommEndpoint(EndPoint):
         @param is_default_service: Mark service as an internal default.
         @return: The created :class:`Service` instance.
         """
-        service = Service(name= service_name,
+        service = Service(service_name= service_name,
                           req_type= request_type,
                           resp_type= response_type,
                           callback= callback,
