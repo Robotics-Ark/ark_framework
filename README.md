@@ -1,8 +1,6 @@
-# ark
+# Ark
 
-**Ark will be actively updated weekly - we iterate so you dont have to wade through a single monster-commit 😄**
-
-This repository contains the ARK framework for machine learning and robotics.
+[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics)
 
 ## Installation
 
