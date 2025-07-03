@@ -4,16 +4,19 @@ import typer
 from ark.client.comm_infrastructure import registry
 from ark.tools.ark_graph import ark_graph
 from ark.tools import launcher
-from ark.tools import info
+from ark.tools import network
 # from ark.tools.image_viewer import image_viewer
 
 app = typer.Typer()
 
+# Core tooling
 app.add_typer(registry.app, name="registry")
 app.add_typer(ark_graph.app, name="graph")
 app.add_typer(launcher.app, name="launcher")
-# CLI utilities for inspecting running network
-app.add_typer(info.info, name="info")
+# Network inspection utilities
+app.add_typer(network.node, name="node")
+app.add_typer(network.channel, name="channel")
+app.add_typer(network.service, name="service")
 # app.add_typer(image_viewer.app, name="image_viewer")
 
 def main():
