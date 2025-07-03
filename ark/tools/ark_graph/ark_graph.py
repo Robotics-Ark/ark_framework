@@ -349,7 +349,9 @@ def graph_viz_plot(data: dict):
         Image: The generated PIL Image containing the graph visualisation.
     """
     dot = Digraph(format="png")
-    dot.attr("node", style="filled", shape="box", fillcolor="lightblue")
+    dot.attr("graph", fontname="Helvetica")
+    dot.attr("node", style="filled", shape="box", fillcolor="lightblue", fontname="Helvetica")
+    dot.attr("edge", fontname="Helvetica")
 
     channel_id_map = {}
     id_counter = 1
@@ -392,7 +394,7 @@ def graph_viz_plot(data: dict):
             if ser.startswith(DEFAULT_SERVICE_DECORATOR):
                 continue
             ser_id = get_channel_id(ser)
-            dot.node(ser_id, ser, shape="doublecircle", fillcolor="white")
+            dot.node(ser_id, ser, shape="box", peripheries="2", fillcolor="white")
             dot.edge(node_id, ser_id)
 
     graph_image = dot.pipe()
