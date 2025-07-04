@@ -1,3 +1,4 @@
+import typing
 import typer
 
 from ark.client.comm_handler.service import send_service_request
@@ -25,11 +26,16 @@ def _fetch_network_info(host: str, port: int) -> dict:
 @node.callback(invoke_without_command=True)
 def show_node(
     ctx: typer.Context,
-    name: str = typer.Argument(None),
+    name: typing.Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Name of the node to inspect",
+    ),
     host: str = "127.0.0.1",
     port: int = 1234,
 ):
-    """Show information about NODE if provided."""
+    """Show information about NODE if provided via ``-n/--name``."""
     if ctx.invoked_subcommand is not None:
         return
     if name is None:
