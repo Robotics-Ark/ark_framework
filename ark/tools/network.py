@@ -34,6 +34,7 @@ def show_node(
     ),
     host: str = "127.0.0.1",
     port: int = 1234,
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show default services"),
 ):
     """Show information about NODE if provided via ``-n/--name``."""
     if ctx.invoked_subcommand is not None:
@@ -62,8 +63,11 @@ def show_node(
                 print("  <none>")
             else:
                 for srv in services:
+                    name = srv.get("service_name")
+                    if not verbose and name.startswith(DEFAULT_SERVICE_DECORATOR):
+                        continue
                     print(
-                        f"  {srv.get('service_name')} ({srv.get('request_type')} -> {srv.get('response_type')})"
+                        f"  {name} ({srv.get('request_type')} -> {srv.get('response_type')})"
                     )
             return
     typer.echo(f"Node '{name}' not found.")
@@ -93,13 +97,20 @@ def list_channels(host: str = "127.0.0.1", port: int = 1234):
 
 
 @service.command("list")
-def list_services(host: str = "127.0.0.1", port: int = 1234):
+def list_services(
+    host: str = "127.0.0.1",
+    port: int = 1234,
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show default services"),
+):
     """List available services."""
     data = _fetch_network_info(host, port)
     services = set()
     for node_info in data.get("nodes", []):
         for srv in node_info.get("comms", {}).get("services", []):
-            services.add(srv.get("service_name"))
+            name = srv.get("service_name")
+            if not verbose and name.startswith(DEFAULT_SERVICE_DECORATOR):
+                continue
+            services.add(name)
     for srv in sorted(services):
         print(srv)
 
