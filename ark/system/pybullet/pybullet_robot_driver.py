@@ -175,6 +175,9 @@ class BulletRobotDriver(SimRobotDriver):
             # Check if the URDF path exists
             if not urdf_path.exists():
                 log.error(f"The URDF path '{urdf_path}' does not exist.")
+                log.error(f"Full path: {urdf_path.resolve()}")
+                # print the full path for debugging
+                
                 return
 
             # Load the URDF into the simulator
