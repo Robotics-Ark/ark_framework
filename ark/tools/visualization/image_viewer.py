@@ -1,7 +1,7 @@
 
 from ark.client.comm_infrastructure.base_node import BaseNode, main
 from arktypes import image_t
-
+from arktypes.utils import unpack
 import cv2
 import numpy as np
 import typer
@@ -21,83 +21,68 @@ class ImageViewNode(BaseNode):
     def __init__(self, channel_name: str = "image/sim", image_type: str = "image"):
         super().__init__("image viewer")
         self.channel_name = channel_name
-        self.image_type = image_type
 
         # Select the message type based on the requested image_type
-        msg_type = image_t
         if image_type == "rgbd":
             try:
-                from arktypes import rgbd_image_t
-                msg_type = rgbd_image_t
+                from arktypes import rgbd_t
+                msg_type = rgbd_t
+                self.image_type = "rgbd"
+                self.create_subscriber(channel_name, rgbd_t, self._display_image)
+                print("Subscribed to rgbd_t messages")
             except Exception:
-                print("rgbd_image_t not available, falling back to image_t")
+                print("rgbd_t not available, falling back to image_t")
         elif image_type == "depth":
             try:
-                from arktypes import depth_image_t
-                msg_type = depth_image_t
+                msg_type = image_t
+                self.image_type = "depth"
+                self.create_subscriber(channel_name, image_t, self._display_image)
             except Exception:
-                print("depth_image_t not available, falling back to image_t")
-
-        print(f"Listening to channel: {channel_name} (type: {image_type})")
-        self.create_subscriber(channel_name, msg_type, self._image_callback)
-
-    def _decode_image(self, msg, is_depth: bool = False):
-        """Decode an image message into a numpy array."""
-        img_data = np.frombuffer(msg.data, dtype=np.uint8)
-
-        if msg.compression_method in (
-            image_t.COMPRESSION_METHOD_JPEG,
-            image_t.COMPRESSION_METHOD_PNG,
-        ):
-            img = cv2.imdecode(img_data, cv2.IMREAD_UNCHANGED)
-            if img is None:
-                print("Failed to decompress image")
-                return None
-        elif msg.compression_method == image_t.COMPRESSION_METHOD_NOT_COMPRESSED:
+                print("depth not available, falling back to image_t")
+        elif image_type == "image":
             try:
-                nchannels = num_channels[msg.pixel_format]
-            except KeyError:
-                print("Unsupported pixel format")
-                return None
-
-            try:
-                img = img_data.reshape((msg.height, msg.width, nchannels))
-            except ValueError as e:
-                print(f"Error reshaping image data: {e}")
-                return None
+                msg_type = image_t
+                self.image_type = "image"
+                self.create_subscriber(channel_name, image_t, self._display_image)
+            except Exception:
+                print("image_t not available")
         else:
-            print("Unsupported compression method")
-            return None
+            raise ValueError(f"Unsupported image type: {image_type}")
 
-        if is_depth:
-            depth_norm = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-            img = cv2.applyColorMap(depth_norm.astype(np.uint8), cv2.COLORMAP_JET)
-
-        return img
-        
-    def _image_callback(self, t, channel_name, msg):
-        """Callback for incoming image messages."""
+    def _display_image(self, channel_name: str, t, msg: image_t):
+        print(f"Received message on channel {channel_name} at time {t}")
         if self.image_type == "rgbd":
-            try:
-                color_img = self._decode_image(msg.rgb, is_depth=False)
-                depth_img = self._decode_image(msg.depth, is_depth=True)
-                if color_img is None or depth_img is None:
-                    return
-                img = np.hstack([color_img, depth_img])
-            except AttributeError:
-                print("RGBD message missing 'rgb' or 'depth' fields")
-                return
-        else:
-            is_depth = self.image_type == "depth"
-            img = self._decode_image(msg, is_depth=is_depth)
-            if img is None:
-                return
+            image,depth = unpack.rgbd(msg)
+        elif self.image_type == "depth":
+            image = unpack.image(msg)
+        elif self.image_type == "image":
+            image = unpack.image(msg)
 
-        cv2.imshow(self.channel_name, img)
-        cv2.waitKey(1)
-        if cv2.getWindowProperty(self.channel_name, cv2.WND_PROP_VISIBLE) < 1:
-            print("Window closed!")
-            raise KeyboardInterrupt
+        print(image.shape if image is not None else "No image data received")
+        # display the image
+        if image is not None:
+            if isinstance(image, np.ndarray):
+                if image.ndim == 2:
+                    # Grayscale image
+                    cv2.imshow(image)
+                elif image.ndim == 3:
+                    # Color image
+                    if image.shape[2] == 3:
+                        # RGB or BGR
+                        pass
+        
+        image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+        cv2.imshow(channel_name, image)
+        
+                        
+                   
+    
+
+
+
+
+
+        
             
     def kill_node(self):
         cv2.destroyAllWindows()
@@ -116,9 +101,9 @@ def start(
     """Start the image viewer node."""
     main(ImageViewNode, channel, image_type)
 
-def main():
+def cli_main():
     app()
 
 if __name__ == '__main__':
-    main()
+    cli_main()
     
