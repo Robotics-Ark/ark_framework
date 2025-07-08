@@ -5,7 +5,7 @@ from ark.client.comm_infrastructure import registry
 from ark.tools.ark_graph import ark_graph
 from ark.tools import launcher
 from ark.tools import network
-# from ark.tools.image_viewer import image_viewer
+from ark.tools.visualization import image_viewer
 
 app = typer.Typer()
 
@@ -17,7 +17,7 @@ app.add_typer(launcher.app, name="launcher")
 app.add_typer(network.node, name="node")
 app.add_typer(network.channel, name="channel")
 app.add_typer(network.service, name="service")
-# app.add_typer(image_viewer.app, name="image_viewer")
+app.add_typer(image_viewer.app, name="view")
 
 def main():
     """Main CLI entry point."""
