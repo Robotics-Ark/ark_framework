@@ -120,7 +120,7 @@ class CommEndpoint(EndPoint):
         @param type: Section type within the configuration file.
         @return: Dictionary containing the configuration for the component.
         """
-
+        
         if isinstance(global_config, str):
             global_config = Path(global_config)
             if not global_config.exists():
@@ -132,13 +132,12 @@ class CommEndpoint(EndPoint):
             with open(config_path, 'r') as file:
                 cfg = yaml.safe_load(file) 
             for item in cfg.get(type, []):
-                # TODO: Not
                 if isinstance(item, dict):  # If it's an inline configuration
                     config = item["config"]
                     return config
                 # Make sure the yaml config has the same name with "name"
                 elif isinstance(item, str) and item.endswith('.yaml'):  # If it's a path to an external file
-                    if item.split('.')[0] == name:
+                    if item.split('.')[0] == type+'/'+name:
                         if os.path.isabs(item):  # Check if the path is absolute
                             external_path = item
                         else:  # Relative path, use the directory of the main config file
