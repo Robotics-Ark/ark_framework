@@ -62,28 +62,21 @@ class ImageViewNode(BaseNode):
         # display the image
         if image is not None:
             if isinstance(image, np.ndarray):
-                if image.ndim == 2:
-                    # Grayscale image
-                    cv2.imshow(image)
-                elif image.ndim == 3:
+                if image.ndim == 3:
                     # Color image
                     if image.shape[2] == 3:
-                        # RGB or BGR
-                        pass
+                        cv2.imshow(self.channel_name, image)
+                if image.ndim == 2:
+                    # Grayscale image
+                    cv2.imshow(self.channel_name, image)
+        if depth is not None:
+            if isinstance(depth, np.ndarray):
+                # Display depth image
+                depth_display = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                cv2.imshow(f"{self.channel_name}_depth", depth_display)
         
-        image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-        cv2.imshow(channel_name, image)
-        
-                        
-                   
-    
+        cv2.waitKey(1)
 
-
-
-
-
-        
-            
     def kill_node(self):
         cv2.destroyAllWindows()
         super().kill_node()
