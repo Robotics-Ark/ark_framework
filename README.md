@@ -22,13 +22,13 @@ conda activate ark_env
 # clone and install the framework
 git clone https://github.com/Robotics-Ark/ark_framework.git
 cd ark_framework
-pip install -e .
+pip install .
 cd ..
 
 # clone and install ark_types
 git clone https://github.com/Robotics-Ark/ark_types.git
 cd ark_types
-pip install -e .
+pip install .
 ```
 
 ### macOS
@@ -45,7 +45,7 @@ conda activate ark_env
 # clone and install the framework
 git clone https://github.com/Robotics-Ark/ark_framework.git
 cd ark_framework
-pip install -e .
+pip install .
 
 # pybullet must be installed via conda on macOS
 conda install -c conda-forge pybullet
@@ -54,7 +54,7 @@ cd ..
 # clone and install ark_types
 git clone https://github.com/Robotics-Ark/ark_types.git
 cd ark_types
-pip install -e .
+pip install .
 ```
 
 After installation, verify the command-line tool is available:

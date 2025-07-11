@@ -1,10 +1,24 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = [
+    "setuptools>=64",
+    "wheel",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ark"
 version = "0.1"
+description = "Robotics Ark robotics framework"
+readme = "README.md"
+license = {file = "LICENCE"}
+requires-python = ">=3.10"
+authors = [{name = "Robotics Ark"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+urls = {"Source" = "https://github.com/Robotics-Ark/ark_framework"}
 dependencies = [
     "lcm",
     "colorlog",
