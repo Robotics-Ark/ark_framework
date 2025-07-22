@@ -2,6 +2,8 @@
 
 [![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics)
 
+This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
+
 ## Installation
 
 The framework depends on [ARK Types](https://github.com/Robotics-Ark/ark_types) and
@@ -63,4 +65,17 @@ After installation, verify the command-line tool is available:
 ark --help
 ```
 
+## Cite
 
+If you find Ark useful for your work please cite:
+
+```bibtex
+ @misc{robotark2025,
+      title        = {Ark: An Open-source Python-based Framework for Robot Learning},
+      author       = {Magnus Dierking, Christopher E. Mower, Sarthak Das, Huang Helong, Jiacheng Qiu, Cody Reading, 
+                      Wei Chen, Huidong Liang, Huang Guowei, Jan Peters, Quan Xingyue, Jun Wang, Haitham Bou-Ammar},
+      year         = {2025},
+      howpublished = {\url{https://ark_robotics.github.io/}},
+      note         = {Technical report}
+    }
+```
