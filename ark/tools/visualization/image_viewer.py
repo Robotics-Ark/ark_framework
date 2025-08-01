@@ -69,11 +69,6 @@ class ImageViewNode(BaseNode):
                 if image.ndim == 2:
                     # Grayscale image
                     cv2.imshow(self.channel_name, image)
-        if depth is not None:
-            if isinstance(depth, np.ndarray):
-                # Display depth image
-                depth_display = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-                cv2.imshow(f"{self.channel_name}_depth", depth_display)
         
         cv2.waitKey(1)
 
