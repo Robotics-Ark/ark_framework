@@ -10,7 +10,7 @@ from ark.system.component.robot import Robot
 from ark.system.component.sensor import Sensor
 from ark.system.component.sim_component import SimComponent
 
-    
+
 class SimulatorBackend(ABC):
     """Base class for all simulator backends.
 
@@ -26,14 +26,18 @@ class SimulatorBackend(ABC):
                configuration.
         """
         self.robot_ref: Dict[str, Robot] = {}  # Key is robot name, value is config dict
-        self.object_ref: Dict[str, SimComponent] = {}  # Key is object name, value is config dict
-        self.sensor_ref: Dict[str, Sensor] = {}  # Key is sensor name, value is config dict
+        self.object_ref: Dict[str, SimComponent] = (
+            {}
+        )  # Key is object name, value is config dict
+        self.sensor_ref: Dict[str, Sensor] = (
+            {}
+        )  # Key is sensor name, value is config dict
         self.ready: bool = False
         self._simulation_time: float = 0.0
         self.global_config = global_config
         self.initialize()
         self.ready = True
-        
+
     def is_ready(self) -> bool:
         """!Check if the backend finished initialization."""
         return self.ready
@@ -46,7 +50,7 @@ class SimulatorBackend(ABC):
     def initialize(self) -> None:
         """!Initialize the simulator implementation."""
         ...
-    
+
     @abstractmethod
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         """!Set the gravity vector used by the simulator.
@@ -54,7 +58,6 @@ class SimulatorBackend(ABC):
         @param gravity Tuple ``(x, y, z)`` representing the gravity vector.
         """
         ...
-
 
     @abstractmethod
     def reset_simulator(self) -> None:
@@ -88,7 +91,7 @@ class SimulatorBackend(ABC):
         @param global_config Configuration dictionary for the sensor.
         """
         ...
-    
+
     @abstractmethod
     def add_sim_component(
         self,
@@ -104,7 +107,6 @@ class SimulatorBackend(ABC):
         """
         ...
 
-
     @abstractmethod
     def remove(self, name: str) -> None:
         """!Remove a robot, sensor or object by name.
@@ -117,13 +119,12 @@ class SimulatorBackend(ABC):
     def step(self) -> None:
         """!Advance the simulator by one timestep."""
         ...
-        
+
     @abstractmethod
     def shutdown_backend(self) -> None:
         """!Shut down the simulator and free resources."""
         pass
 
-        
     def _step_sim_components(self) -> None:
         """!Step all registered components."""
         for robot in self.robot_ref:
@@ -135,7 +136,6 @@ class SimulatorBackend(ABC):
         for sensor in self.sensor_ref:
             self.sensor_ref[sensor].step_component()
 
-
     def _spin_sim_components(self) -> None:
         """!Spin components in manual mode."""
         for robot in self.robot_ref:
@@ -144,7 +144,3 @@ class SimulatorBackend(ABC):
             self.object_ref[obj].manual_spin()
         for sensor in self.sensor_ref:
             self.sensor_ref[sensor].manual_spin()
-
-            
-
-

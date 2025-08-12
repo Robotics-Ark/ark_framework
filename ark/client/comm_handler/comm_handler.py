@@ -1,4 +1,3 @@
-
 from abc import ABC, abstractmethod
 from lcm import LCM
 from typing import Optional
@@ -39,7 +38,7 @@ class CommHandler(ABC):
         return f"{self.channel_name}[{self.channel_type.__name__}]"
 
     @abstractmethod
-    def get_info(self) -> dict: 
+    def get_info(self) -> dict:
         """!
         Should return a dictionary containing all information about the comms
 
@@ -53,7 +52,7 @@ class CommHandler(ABC):
 
         TODO
         """
-    
+
     @abstractmethod
     def restart(self) -> None:
         """!

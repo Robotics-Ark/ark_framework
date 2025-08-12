@@ -1,4 +1,3 @@
-
 from lcm import LCM
 import time
 import threading
@@ -9,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Dict
 from ark.tools.log import log
 
+
 class MultiChannelPublisher(MultiCommHandler):
     """!
     Publisher that manages multiple communication channels.
@@ -16,7 +16,7 @@ class MultiChannelPublisher(MultiCommHandler):
     @note Internally creates one :class:`Publisher` per channel.
     """
 
-    def __init__(self, channels: Dict[str,type], lcm_instance: LCM) -> None:
+    def __init__(self, channels: Dict[str, type], lcm_instance: LCM) -> None:
         """!
         Initialize the publisher with a list of channels.
 
@@ -24,10 +24,9 @@ class MultiChannelPublisher(MultiCommHandler):
         @type channels: Dict[str, type]
         @param lcm_instance: LCM instance used for publishing.
         """
-        
+
         super().__init__()
-        
-        
+
         self.comm_type = "Multi Channel Publisher"
         # iterate through the channels dictionary
         for channel_name, channel_type in channels.items():
@@ -43,7 +42,7 @@ class MultiChannelPublisher(MultiCommHandler):
         for publisher in self._comm_handlers:
             channel_name = publisher.channel_name
             channel_type = publisher.channel_type
-            try: 
+            try:
                 if channel_name not in messages_to_publish:
                     # log.warning(f"Channel '{channel_name}' not found in messages to publish.")
                     continue
@@ -57,6 +56,8 @@ class MultiChannelPublisher(MultiCommHandler):
 
                 publisher.publish(message)
                 # log.info(f"Message Published for channel '{channel_name}'.")
-            except: 
-                log.warning(f"Error Occured when publishing on channel '{channel_name}'.")
+            except:
+                log.warning(
+                    f"Error Occured when publishing on channel '{channel_name}'."
+                )
                 pass
