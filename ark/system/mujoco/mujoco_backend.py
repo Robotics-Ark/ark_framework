@@ -6,8 +6,11 @@ import importlib.util
 import sys, ast, os
 import math
 import cv2
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Optional, Dict
+import xml.etree.ElementTree as ET
 
 import mujoco
 import mujoco.viewer
@@ -251,11 +254,40 @@ class MujocoBackend(SimulatorBackend):
             if not Path(urdf_path).exists():
                 raise FileNotFoundError(f"URDF file {urdf_path} does not exist.")
 
-            # Use MuJoCo's built-in function to load URDF
-            xml = mujoco.MjModel.from_urdf_file(
-                urdf_path, name=name, pos=pos, quat=quat
+            scaling = cfg.get("global_scaling", 1.0)
+
+            mjcf_str = convert_urdf_to_mjcf(urdf_path)
+
+            root = ET.fromstring(mjcf_str)
+            worldbody = root.find("worldbody")
+            if worldbody is None:
+                raise ValueError("Converted MJCF missing worldbody section.")
+
+            if scaling != 1.0:
+                for geom in worldbody.iter("geom"):
+                    size = geom.get("size")
+                    if size:
+                        vals = [float(v) * scaling for v in size.split()]
+                        geom.set("size", " ".join(map(str, vals)))
+                    pos_attr = geom.get("pos")
+                    if pos_attr:
+                        pos_vals = [float(v) * scaling for v in pos_attr.split()]
+                        geom.set("pos", " ".join(map(str, pos_vals)))
+                for body in worldbody.iter("body"):
+                    pos_attr = body.get("pos")
+                    if pos_attr:
+                        pos_vals = [float(v) * scaling for v in pos_attr.split()]
+                        body.set("pos", " ".join(map(str, pos_vals)))
+
+            child_xml = "".join(
+                ET.tostring(child, encoding="unicode") for child in worldbody
             )
-            return xml.to_xml_string()
+            body_xml = f"""
+            <body name="{name}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[0]} {quat[1]} {quat[2]} {quat[3]}">
+            {child_xml}
+            </body>
+            """
+            return textwrap.dedent(body_xml).strip()
 
     def remove(self, name: str) -> None:
         pass
