@@ -1,4 +1,3 @@
-
 import threading
 from copy import deepcopy
 from ark.client.comm_handler.subscriber import Subscriber
@@ -70,7 +69,7 @@ class Listener(Subscriber):
         with self.mutex:
             msg = deepcopy(self._msg)
         return msg
-    
+
     def suspend(self):
         """!
         Suspend the listener and clear any cached message.
@@ -79,7 +78,7 @@ class Listener(Subscriber):
         """
         self.empty_data()
         return super().suspend()
-    
+
     def empty_data(self):
         """!
         Clear the stored message.
@@ -90,10 +89,10 @@ class Listener(Subscriber):
         """!
         Return a dictionary describing this listener.
         """
-        info  = {
+        info = {
             "comms_type": "Listener",
             "channel_name": self.channel_name,
             "channel_type": self.channel_type.__name__,
-            "channel_status": self.active
+            "channel_status": self.active,
         }
         return info

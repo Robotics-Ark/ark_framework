@@ -1,4 +1,3 @@
-
 import threading
 from ark.client.frequencies.rate import Rate
 from ark.tools.log import log

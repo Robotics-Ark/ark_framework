@@ -1,4 +1,3 @@
-
 import typer
 
 from ark.client.comm_infrastructure import registry
@@ -19,9 +18,11 @@ app.add_typer(network.channel, name="channel")
 app.add_typer(network.service, name="service")
 app.add_typer(image_viewer.app, name="view")
 
+
 def main():
     """Main CLI entry point."""
-    app()  
+    app()
+
 
 if __name__ == "__main__":
     main()

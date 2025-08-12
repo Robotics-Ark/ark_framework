@@ -1,4 +1,3 @@
-
 import argparse
 import socket
 import threading
@@ -15,8 +14,14 @@ from arktypes import flag_t, network_info_t, node_info_t
 
 app = typer.Typer()
 
+
 class Registry(EndPoint):
-    def __init__(self, registry_host: str = "127.0.0.1", registry_port: int = 1234, lcm_network_bounces: int = 1):
+    def __init__(
+        self,
+        registry_host: str = "127.0.0.1",
+        registry_port: int = 1234,
+        lcm_network_bounces: int = 1,
+    ):
         """!
         Initialize the Registry server instance.
 
@@ -28,7 +33,7 @@ class Registry(EndPoint):
             "network": {
                 "registry_host": registry_host,
                 "registry_port": registry_port,
-                "lcm_network_bounces": lcm_network_bounces
+                "lcm_network_bounces": lcm_network_bounces,
             }
         }
 
@@ -54,10 +59,12 @@ class Registry(EndPoint):
         req = flag_t()
         for service in self.services:
             if service.startswith(f"{DEFAULT_SERVICE_DECORATOR}/GetInfo"):
-                node_info = send_service_request(self.registry_host, self.registry_port, service, req, node_info_t)
+                node_info = send_service_request(
+                    self.registry_host, self.registry_port, service, req, node_info_t
+                )
                 if node_info is not None:
                     nodes_info.append(node_info)
-        
+
         res = network_info_t()
         res.n_nodes = len(nodes_info)
         for node in nodes_info:
@@ -73,11 +80,13 @@ class Registry(EndPoint):
         """
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        
-        #with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             self.s.bind((self.registry_host, self.registry_port))
-            log.ok(f"Registry Server started on {self.registry_host} : {self.registry_port}")
+            log.ok(
+                f"Registry Server started on {self.registry_host} : {self.registry_port}"
+            )
         except OSError as e:
             log.error(f"Error: {e}")
             self.error_flag = True  # Set the error flag to true on error
@@ -155,7 +164,10 @@ class Registry(EndPoint):
         elif req_type == "DISCOVER":
             service_name = request.get("service_name")
             if not service_name:
-                return {"status": "ERROR", "message": "Missing service_name in DISCOVER"}
+                return {
+                    "status": "ERROR",
+                    "message": "Missing service_name in DISCOVER",
+                }
             with self.lock:
                 service = self.services.get(service_name)
             if service:
@@ -168,12 +180,18 @@ class Registry(EndPoint):
         elif req_type == "DEREGISTER":
             service_name = request.get("service_name")
             if not service_name:
-                return {"status": "ERROR", "message": "Missing service_name in DEREGISTER"}
+                return {
+                    "status": "ERROR",
+                    "message": "Missing service_name in DEREGISTER",
+                }
             with self.lock:
                 if service_name in self.services:
                     del self.services[service_name]  # Remove service from registry
                     log.info(f"Registry: Deregistered service '{service_name}'")
-                    return {"status": "OK", "message": "Service deregistered successfully"}
+                    return {
+                        "status": "OK",
+                        "message": "Service deregistered successfully",
+                    }
                 else:
                     log.warning(f"Registry: Service '{service_name}' not found")
                     return {"status": "ERROR", "message": "Service not found"}
@@ -191,7 +209,6 @@ class Registry(EndPoint):
         if self.get_info_service:
             self.get_info_service.suspend()
 
-
         if self.thread and self.thread.is_alive():
             self._stop_event.set()
             self.thread.join()  # Ensure the server thread is stopped
@@ -206,13 +223,21 @@ class Registry(EndPoint):
 
         This method blocks until the server stops or encounters a fatal error.
         """
-        
+
         try:
             # Initialize thread to serve requests
             self.thread = threading.Thread(target=self._serve, daemon=True)
             self.thread.start()
 
-            self.get_info_service = Service(f"{DEFAULT_SERVICE_DECORATOR}/GetNetworkInfo", flag_t, network_info_t, self._callback_get_network_info, self.registry_host, self.registry_port, is_default=True)
+            self.get_info_service = Service(
+                f"{DEFAULT_SERVICE_DECORATOR}/GetNetworkInfo",
+                flag_t,
+                network_info_t,
+                self._callback_get_network_info,
+                self.registry_host,
+                self.registry_port,
+                is_default=True,
+            )
 
             while not self.error_flag:
                 if not self.thread.is_alive():
@@ -220,7 +245,9 @@ class Registry(EndPoint):
                     self.error_flag = True
                     self._stop()
                     sys.exit(1)
-                self.thread.join(1)  # Wait for the thread to finish (or periodically check for errors)
+                self.thread.join(
+                    1
+                )  # Wait for the thread to finish (or periodically check for errors)
 
             self._stop()
         except KeyboardInterrupt:
@@ -228,10 +255,15 @@ class Registry(EndPoint):
             self._stop()  # Gracefully stop the server
             sys.exit(0)  # Exit gracefully
 
+
 @app.command()
 def start(
-    registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
-    registry_port: int = typer.Option(1234, "--port", help="The port for the registry server.")
+    registry_host: str = typer.Option(
+        "127.0.0.1", "--host", help="The host address for the registry server."
+    ),
+    registry_port: int = typer.Option(
+        1234, "--port", help="The port for the registry server."
+    ),
 ):
     """!
     Start the Registry server with the specified host and port.
@@ -242,9 +274,11 @@ def start(
     server = Registry(registry_host=registry_host, registry_port=registry_port)
     server.start()
 
+
 def main():
-    """! Entry point for the CLI. """
+    """! Entry point for the CLI."""
     app()  # Initializes the Typer CLI
+
 
 if __name__ == "__main__":
     main()
@@ -268,9 +302,9 @@ if __name__ == "__main__":
 
 # if __name__ == "__main__":
 #     main()
-    # # Parse command-line arguments
-    # args = parse_args()
-    
-    # # Create Registry server instance with command-line arguments
-    # server = Registry(registry_host=args.registry_host, registry_port=args.registry_port)
-    # server.start()
+# # Parse command-line arguments
+# args = parse_args()
+
+# # Create Registry server instance with command-line arguments
+# server = Registry(registry_host=args.registry_host, registry_port=args.registry_port)
+# server.start()

@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -24,6 +23,8 @@ from PIL import Image
 app = typer.Typer()
 
 DEFAULT_SERVICE_DECORATOR = "__DEFAULT_SERVICE"
+
+
 # ----------------------------------------------------------------------
 #                             DATA CLASSES
 # ----------------------------------------------------------------------
@@ -39,6 +40,7 @@ class BaseGraph:
         title (str): The title of the diagram.
         script (str): The main script to create the diagram.
     """
+
     title: str
     script: str
 
@@ -98,7 +100,7 @@ class ServiceInfo:
         registry_host: str,
         registry_port: int,
         request_type: str,
-        response_type: str
+        response_type: str,
     ):
         self.comms_type = comms_type
         self.service_name = service_name
@@ -122,11 +124,7 @@ class ListenerInfo:
     """
 
     def __init__(
-        self,
-        comms_type: str,
-        channel_name: str,
-        channel_type: str,
-        channel_status: str
+        self, comms_type: str, channel_name: str, channel_type: str, channel_status: str
     ):
         self.comms_type = comms_type
         self.channel_name = channel_name
@@ -146,11 +144,7 @@ class SubscriberInfo:
     """
 
     def __init__(
-        self,
-        comms_type: str,
-        channel_name: str,
-        channel_type: str,
-        channel_status: str
+        self, comms_type: str, channel_name: str, channel_type: str, channel_status: str
     ):
         self.comms_type = comms_type
         self.channel_name = channel_name
@@ -170,11 +164,7 @@ class PublisherInfo:
     """
 
     def __init__(
-        self,
-        comms_type: str,
-        channel_name: str,
-        channel_type: str,
-        channel_status: str
+        self, comms_type: str, channel_name: str, channel_type: str, channel_status: str
     ):
         self.comms_type = comms_type
         self.channel_name = channel_name
@@ -206,7 +196,7 @@ class CommsInfo:
         n_publishers: int,
         publishers: list,
         n_services: int,
-        services: list
+        services: list,
     ):
         self.n_listeners = n_listeners
         self.listeners = listeners
@@ -274,7 +264,7 @@ def decode_network_info(lcm_message) -> NetworkInfo:
                             comms_type=listener.comms_type,
                             channel_name=listener.channel_name,
                             channel_type=listener.channel_type,
-                            channel_status=listener.channel_status
+                            channel_status=listener.channel_status,
                         )
                         for listener in node.comms.listeners
                     ],
@@ -284,7 +274,7 @@ def decode_network_info(lcm_message) -> NetworkInfo:
                             comms_type=subscriber.comms_type,
                             channel_name=subscriber.channel_name,
                             channel_type=subscriber.channel_type,
-                            channel_status=subscriber.channel_status
+                            channel_status=subscriber.channel_status,
                         )
                         for subscriber in node.comms.subscribers
                     ],
@@ -294,7 +284,7 @@ def decode_network_info(lcm_message) -> NetworkInfo:
                             comms_type=publisher.comms_type,
                             channel_name=publisher.channel_name,
                             channel_type=publisher.channel_type,
-                            channel_status=publisher.channel_status
+                            channel_status=publisher.channel_status,
                         )
                         for publisher in node.comms.publishers
                     ],
@@ -308,14 +298,14 @@ def decode_network_info(lcm_message) -> NetworkInfo:
                             registry_host=service.registry_host,
                             registry_port=service.registry_port,
                             request_type=service.request_type,
-                            response_type=service.response_type
+                            response_type=service.response_type,
                         )
                         for service in node.comms.services
-                    ]
-                )
+                    ],
+                ),
             )
             for node in lcm_message.nodes
-        ]
+        ],
     )
 
 
@@ -381,17 +371,23 @@ def graph_viz_plot(data: dict):
 
         for pub in publishers:
             pub_id = get_channel_id(pub)
-            dot.node(pub_id, pub, shape="box", style="rounded,filled", fillcolor="white")
+            dot.node(
+                pub_id, pub, shape="box", style="rounded,filled", fillcolor="white"
+            )
             dot.edge(node_id, pub_id)
 
         for sub in subscribers:
             sub_id = get_channel_id(sub)
-            dot.node(sub_id, sub, shape="box", style="rounded,filled", fillcolor="white")
+            dot.node(
+                sub_id, sub, shape="box", style="rounded,filled", fillcolor="white"
+            )
             dot.edge(sub_id, node_id)
 
         for lis in listeners:
             lis_id = get_channel_id(lis)
-            dot.node(lis_id, lis, shape="box", style="rounded,filled", fillcolor="white")
+            dot.node(
+                lis_id, lis, shape="box", style="rounded,filled", fillcolor="white"
+            )
             dot.edge(lis_id, node_id)
 
         for ser in services:
@@ -399,15 +395,15 @@ def graph_viz_plot(data: dict):
                 continue
             ser_id = get_channel_id(ser)
             service_label = (
-                            "<"
-        "<TABLE BORDER='0' CELLBORDER='0' CELLPADDING='0' BGCOLOR='white'>"
-        "  <TR><TD>"
-        "    <TABLE BORDER='0' CELLBORDER='1' SIDES='LR' CELLPADDING='4' BGCOLOR='white'>"
-        f"      <TR><TD>{ser}</TD></TR>"
-        "    </TABLE>"
-        "  </TD></TR>"
-        "</TABLE>"
-        ">"
+                "<"
+                "<TABLE BORDER='0' CELLBORDER='0' CELLPADDING='0' BGCOLOR='white'>"
+                "  <TR><TD>"
+                "    <TABLE BORDER='0' CELLBORDER='1' SIDES='LR' CELLPADDING='4' BGCOLOR='white'>"
+                f"      <TR><TD>{ser}</TD></TR>"
+                "    </TABLE>"
+                "  </TD></TR>"
+                "</TABLE>"
+                ">"
             )
             dot.node(ser_id, label=service_label, shape="plaintext")
             dot.edge(node_id, ser_id)
@@ -451,10 +447,11 @@ class ArkGraph(EndPoint):
             display (bool, optional): Whether to immediately display the diagram.
                 If ``False``, the image can still be saved via :meth:`save_image`.
         """
-        config = { "network": {
-            "registry_host": registry_host,
-            "registry_port": registry_port,
-            "lcm_network_bounces": lcm_network_bounces
+        config = {
+            "network": {
+                "registry_host": registry_host,
+                "registry_port": registry_port,
+                "lcm_network_bounces": lcm_network_bounces,
             }
         }
         super().__init__(config)
@@ -462,11 +459,11 @@ class ArkGraph(EndPoint):
         # Query the registry for network information
         req = flag_t()
         response_lcm = send_service_request(
-            self.registry_host, 
+            self.registry_host,
             self.registry_port,
             f"{DEFAULT_SERVICE_DECORATOR}/GetNetworkInfo",
-            req, 
-            network_info_t
+            req,
+            network_info_t,
         )
 
         # Convert LCM response to a dictionary
@@ -497,7 +494,7 @@ class ArkGraph(EndPoint):
         Return CLI help documentation.
         """
         return __doc__
-    
+
     def display_image(self, plot_image):
         """
         Display the GraphViz diagram image using Matplotlib.
@@ -520,18 +517,20 @@ def parse_args():
     Returns:
         argparse.Namespace: The parsed arguments with `registry_host` and `registry_port`.
     """
-    parser = argparse.ArgumentParser(description="ArkGraph - Visualize your NOAHR network.")
+    parser = argparse.ArgumentParser(
+        description="ArkGraph - Visualize your NOAHR network."
+    )
     parser.add_argument(
         "--registry_host",
         type=str,
         default="127.0.0.1",
-        help="The host address for the registry server."
+        help="The host address for the registry server.",
     )
     parser.add_argument(
         "--registry_port",
         type=int,
         default=1234,
-        help="The port for the registry server."
+        help="The port for the registry server.",
     )
     return parser.parse_args()
 
@@ -541,8 +540,12 @@ def parse_args():
 # ----------------------------------------------------------------------
 @app.command()
 def start(
-    registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
-    registry_port: int = typer.Option(1234, "--port", help="The port for the registry server.")
+    registry_host: str = typer.Option(
+        "127.0.0.1", "--host", help="The host address for the registry server."
+    ),
+    registry_port: int = typer.Option(
+        1234, "--port", help="The port for the registry server."
+    ),
 ):
     """Starts the graph with specified host and port."""
     server = ArkGraph(registry_host=registry_host, registry_port=registry_port)
@@ -551,14 +554,20 @@ def start(
 @app.command()
 def save(
     file_path: str,
-    registry_host: str = typer.Option("127.0.0.1", "--host", help="The host address for the registry server."),
-    registry_port: int = typer.Option(1234, "--port", help="The port for the registry server."),
+    registry_host: str = typer.Option(
+        "127.0.0.1", "--host", help="The host address for the registry server."
+    ),
+    registry_port: int = typer.Option(
+        1234, "--port", help="The port for the registry server."
+    ),
 ):
     """Save the graph image to ``FILE_PATH`` without displaying it.
 
     ``FILE_PATH`` must end with ``.png``.
     """
-    server = ArkGraph(registry_host=registry_host, registry_port=registry_port, display=False)
+    server = ArkGraph(
+        registry_host=registry_host, registry_port=registry_port, display=False
+    )
     try:
         server.save_image(file_path)
     except ValueError as exc:
@@ -567,9 +576,11 @@ def save(
     else:
         log.ok(f"Graph saved to {file_path}")
 
+
 def main():
     """Entry point for the CLI."""
     app()  # Initializes the Typer CLI
+
 
 if __name__ == "__main__":
     main()
