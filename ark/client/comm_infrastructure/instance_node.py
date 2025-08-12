@@ -1,4 +1,3 @@
-
 import sys
 from abc import ABC, abstractmethod
 from typing import Any, Generator, Dict, Type
@@ -13,6 +12,7 @@ import signal
 
 from ark.client.comm_infrastructure.comm_endpoint import CommEndpoint
 from ark.tools.log import log
+
 
 class InstanceNode(CommEndpoint):
     """!
@@ -33,12 +33,14 @@ class InstanceNode(CommEndpoint):
         Initializes a BaseNode object with the specified node name and registry host and port.
 
         @param node_name: The name of the node.
-        @param global_config: Contains IP Address and Port  
+        @param global_config: Contains IP Address and Port
         """
         print(global_config)
         super().__init__(node_name, global_config)
-        self.config  = self._load_config_section(global_config=global_config, name=node_name, type="other")
-       
+        self.config = self._load_config_section(
+            global_config=global_config, name=node_name, type="other"
+        )
+
         self._done = False
 
         self.spin_thread = threading.Thread(target=self.spin, daemon=True)

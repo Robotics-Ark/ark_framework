@@ -1,4 +1,3 @@
-
 import logging
 from datetime import datetime
 from typing import Optional
@@ -44,6 +43,7 @@ def ok(self: logging.Logger, message: str, *args: object, **kwargs: object) -> N
 
 logging.Logger.ok = ok  # Add the `ok` method to the Logger class
 
+
 def apply_panda_style(text: str) -> str:
     styled_text = ""
     colors = [bcolors.WHITE, bcolors.GREY]
@@ -51,10 +51,14 @@ def apply_panda_style(text: str) -> str:
         styled_text += colors[i % 2] + char
     return styled_text + bcolors.ENDC
 
-def log_panda(self: logging.Logger, message: str, *args: object, **kwargs: object) -> None:
+
+def log_panda(
+    self: logging.Logger, message: str, *args: object, **kwargs: object
+) -> None:
     if self.isEnabledFor(logging.INFO):
         styled_message = apply_panda_style(message)
         self._log(logging.INFO, styled_message, args, **kwargs)
+
 
 logging.Logger.panda = log_panda  # Add `log_panda` method to Logger class
 

@@ -1,4 +1,3 @@
-
 import sys
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -12,6 +11,7 @@ import os
 
 from ark.client.comm_infrastructure.comm_endpoint import CommEndpoint
 from ark.tools.log import log
+
 
 class HybridNode(CommEndpoint):
     """!
@@ -35,7 +35,6 @@ class HybridNode(CommEndpoint):
         @param global_config: Contains IP Address and Port
         """
         super().__init__(node_name, global_config)
-        
 
     def manual_spin(self) -> None:
         """!
@@ -49,8 +48,6 @@ class HybridNode(CommEndpoint):
         except OSError as e:
             log.warning(f"LCM threw OSError {e}")
             self._done = True
-    
-
 
     def spin(self) -> None:
         """!

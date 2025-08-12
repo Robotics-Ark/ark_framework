@@ -1,7 +1,6 @@
-
 from ark.tools.log import log
 from ark.client.comm_handler.comm_handler import CommHandler
-from lcm import LCM  
+from lcm import LCM
 
 
 class Publisher(CommHandler):
@@ -35,13 +34,14 @@ class Publisher(CommHandler):
         @param msg: The message object to publish. This should match the expected
                     type for the channel.
         """
-        assert type(msg) == self.channel_type, f"Wrong Message Type send to Channel {self.channel_name}"
-        
+        assert (
+            type(msg) == self.channel_type
+        ), f"Wrong Message Type send to Channel {self.channel_name}"
+
         if self.active:
             self._lcm.publish(self.channel_name, self.channel_type.encode(msg))
         else:
             log.warning(f"publisher {self} is not enabled, cannot publish messages")
-
 
     def restart(self) -> None:
         """!
@@ -65,6 +65,6 @@ class Publisher(CommHandler):
             "comms_type": "Publisher",
             "channel_name": self.channel_name,
             "channel_type": self.channel_type.__name__,
-            "channel_status": self.active
+            "channel_status": self.active,
         }
         return info

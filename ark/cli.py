@@ -1,4 +1,3 @@
-
 import typer
 
 from ark.client.comm_infrastructure import registry
@@ -6,6 +5,8 @@ from ark.tools.ark_graph import ark_graph
 from ark.tools import launcher
 from ark.tools import network
 from ark.tools.visualization import image_viewer
+from ark.tools.components import robot_cli
+from ark.tools.components import sensor_cli
 
 app = typer.Typer()
 
@@ -19,9 +20,13 @@ app.add_typer(network.channel, name="channel")
 app.add_typer(network.service, name="service")
 app.add_typer(image_viewer.app, name="view")
 
+app.add_typer(robot_cli.app, name="robot")
+app.add_typer(sensor_cli.app, name="sensor")
+
 def main():
     """Main CLI entry point."""
-    app()  
+    app()
+
 
 if __name__ == "__main__":
     main()

@@ -5,4 +5,3 @@ between the robotics backends.  Every component is implemented as a
 node that can send and receive data through the ARK communication
 infrastructure.
 """
-

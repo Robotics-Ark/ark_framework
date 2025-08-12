@@ -1,4 +1,3 @@
-
 import sys
 from abc import ABC, abstractmethod
 from typing import Any, Generator, Dict, Type
@@ -35,7 +34,9 @@ class BaseNode(CommEndpoint):
         @param global_config: Contains IP Address and Port
         """
         super().__init__(name, global_config)
-        self.config  = self._load_config_section(global_config=global_config, name=name, type="other")
+        self.config = self._load_config_section(
+            global_config=global_config, name=name, type="other"
+        )
         self._done = False
 
     def spin(self) -> None:

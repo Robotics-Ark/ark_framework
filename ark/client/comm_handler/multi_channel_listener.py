@@ -1,5 +1,4 @@
-
-import lcm 
+import lcm
 from lcm import LCM
 import time
 import threading
@@ -10,9 +9,9 @@ from ark.client.comm_handler.multi_comm_handler import MultiCommHandler
 from typing import List
 import copy
 
+
 class MultiChannelListener(MultiCommHandler):
-    def __init__(
-        self, channels: dict[str,type], lcm_instance: LCM) -> None:
+    def __init__(self, channels: dict[str, type], lcm_instance: LCM) -> None:
         """!
         Initialize listeners for multiple channels.
 
@@ -39,15 +38,15 @@ class MultiChannelListener(MultiCommHandler):
         @return: The current observation.
         @rtype: Any
         """
-        
+
         # get all the data
         for listener in self._comm_handlers:
             listener_message = listener.get()
             self.data[listener.channel_name] = listener_message
-            
+
         # return it
         return self.data
-    
+
     def empty_data(self):
         """!
         Empties the data dictionary.

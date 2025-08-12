@@ -1,4 +1,3 @@
-
 """Base classes for ARK system components.
 
 This module defines the :class:`BaseComponent` and
@@ -28,11 +27,11 @@ class BaseComponent(HybridNode, ABC):
     stepping the component and resetting it to a well defined state.
     """
 
-
-    def __init__(self,
-                 name: str,
-                 global_config: Union[str, Dict[str, Any], Path],
-                 ) -> None:
+    def __init__(
+        self,
+        name: str,
+        global_config: Union[str, Dict[str, Any], Path],
+    ) -> None:
         """Construct a new component.
 
         @param name  Unique name of the component.
@@ -43,10 +42,8 @@ class BaseComponent(HybridNode, ABC):
         if not name:
             raise ValueError("Name must be a non-empty string (unique in your system).")
         super().__init__(name, global_config)
-        self.name = name # node_name and name are the same
+        self.name = name  # node_name and name are the same
         self._is_suspended = False  # TODO do we still need this ?
-        
-
 
     @abstractmethod
     def pack_data(self) -> None:
@@ -74,7 +71,6 @@ class BaseComponent(HybridNode, ABC):
         """
         ...
 
-
     @abstractmethod
     def reset_component(self, channel, msg) -> None:
         """Reset the component to a known state.
@@ -82,19 +78,18 @@ class BaseComponent(HybridNode, ABC):
         @param channel  Channel name for the reset request.
         @param msg  Optional message containing reset parameters.
         """
-        ...       
-            
-        
-        
-        
+        ...
+
+
 class SimToRealComponent(BaseComponent, ABC):
     """Component with a driver that may run in simulation or on real hardware."""
 
-    def __init__(self,
-                 name: str,
-                 global_config: Union[str, Dict[str, Any], Path],
-                 driver: ComponentDriver = None,
-                 ) -> None:
+    def __init__(
+        self,
+        name: str,
+        global_config: Union[str, Dict[str, Any], Path],
+        driver: ComponentDriver = None,
+    ) -> None:
         """Create a component connected to a driver.
 
         @param name  Name of the component.
@@ -105,13 +100,12 @@ class SimToRealComponent(BaseComponent, ABC):
         super().__init__(name, global_config)
         self._driver = driver
         self.sim = self._driver.is_sim()
-        
+
         # initialize service for reset of any component
         self.reset_service_name = self.name + "/reset"
         if self.sim:
-            self.reset_service_name = self.reset_service_name + "/sim" 
-      
-        
+            self.reset_service_name = self.reset_service_name + "/sim"
+
     # Override killing the node to also shutdown the driver, freeing up ports etc.
     def kill_node(self) -> None:
         """Shut down the node and associated driver."""

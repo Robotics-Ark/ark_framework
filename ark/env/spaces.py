@@ -35,6 +35,7 @@ class Space(ABC):
         Subclasses must implement this method to cleanly shut down their specific space.
         """
 
+
 class ActionSpace(Space):
     """!
     A class representing a space where actions are taken. This space handles publishing
@@ -44,11 +45,16 @@ class ActionSpace(Space):
     @type action_channels: List
     @param action_packing: A function that converts any types of action into dictionary
     @type action_packing: Callable
-    @param lcm_instance: Communication variable 
+    @param lcm_instance: Communication variable
     @type lcm_instance: LCM
     """
 
-    def __init__(self, action_channels: Dict[str, type], action_packing: Callable, lcm_instance: LCM):
+    def __init__(
+        self,
+        action_channels: Dict[str, type],
+        action_packing: Callable,
+        lcm_instance: LCM,
+    ):
         """!Create an action space.
 
         @param action_channels Channels to publish actions on.
@@ -56,17 +62,17 @@ class ActionSpace(Space):
         @param lcm_instance LCM instance used for communication.
         """
 
-        self.action_space_publisher = MultiChannelPublisher(action_channels, lcm_instance)
+        self.action_space_publisher = MultiChannelPublisher(
+            action_channels, lcm_instance
+        )
         self.action_packing = action_packing
         self.messages_to_publish = None
-
 
     def pack_and_publish(self, action: Any):
         """!Pack an action and publish it."""
 
         messages_to_publish = self.pack_message(action)
         self.action_space_publisher.publish(messages_to_publish)
-    
 
     def pack_message(self, action: Any) -> Dict[str, Any]:
         """!
@@ -90,12 +96,16 @@ class ObservationSpace(Space):
     @type observation_channels: List
     @param observation_unpacking: A function that converts observation dictionary into any types
     @type observation_unpacking: Callable
-    @param lcm_instance: Communication variable 
+    @param lcm_instance: Communication variable
     @type lcm_instance: LCM
     """
 
     def __init__(
-        self, observation_channels: Dict[str, type], observation_unpacking: Callable, lcm_instance: LCM):
+        self,
+        observation_channels: Dict[str, type],
+        observation_unpacking: Callable,
+        lcm_instance: LCM,
+    ):
         """!Create an observation space.
 
         @param observation_channels Channels to listen for observations.
@@ -103,17 +113,19 @@ class ObservationSpace(Space):
         @param lcm_instance LCM instance used for communication.
         """
 
-        self.observation_space_listener = MultiChannelListener(observation_channels, lcm_instance)
+        self.observation_space_listener = MultiChannelListener(
+            observation_channels, lcm_instance
+        )
         self.observation_unpacking = observation_unpacking
         self.is_ready = False
 
     def unpack_message(self, observation_dict: Dict) -> Any:
-        '''!Unpack a raw observation dictionary.
+        """!Unpack a raw observation dictionary.
 
         @param observation_dict Dictionary mapping channel names to raw LCM messages.
         @return The processed observation.
         @rtype Any
-        '''
+        """
         obs = self.observation_unpacking(observation_dict)
         return obs
 
@@ -122,16 +134,16 @@ class ObservationSpace(Space):
 
         lcm_dictionary = self.observation_space_listener.get()
         self.is_ready = not any(value is None for value in lcm_dictionary.values())
-        
+
     def wait_until_observation_space_is_ready(self):
         """!Block until a complete observation has been received."""
 
         while not self.is_ready:
-            log.warning('Observation space is getting checked')
+            log.warning("Observation space is getting checked")
             self.check_readiness()
             time.sleep(0.05)
             if not self.is_ready:
-                log.warning('Observation space is still not ready. Retrying...')
+                log.warning("Observation space is still not ready. Retrying...")
 
     def empty_data(self):
         """!Clear cached observation data."""
@@ -139,11 +151,12 @@ class ObservationSpace(Space):
 
     def get_observation(self) -> Any:
         """!Return the latest processed observation."""
-        assert self.is_ready, 'Observation space is not ready. Call wait_until_observation_space_is_ready() first.'
-        
+        assert (
+            self.is_ready
+        ), "Observation space is not ready. Call wait_until_observation_space_is_ready() first."
+
         self.data = self.observation_space_listener.get()
 
         processed_observation = self.unpack_message(self.data)
 
         return processed_observation
-

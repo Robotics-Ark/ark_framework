@@ -14,19 +14,21 @@ from ark.system.driver.robot_driver import SimRobotDriver, ControlType
 
 # for pybullet setJointMotorControlArray optional arguments
 motor_control_kwarg = {
-    "position" : "targetPositions",
-    "velocity" : "targetVelocities",
-    "torque"   : "forces", 
+    "position": "targetPositions",
+    "velocity": "targetVelocities",
+    "torque": "forces",
 }
+
 
 class BulletRobotDriver(SimRobotDriver):
     """Robot driver that interfaces with the PyBullet simulation."""
 
-    def __init__(self,
-                 component_name = str,
-                 component_config: Dict[str, Any] = None,
-                 client: Any = None,
-                 ) -> None:
+    def __init__(
+        self,
+        component_name=str,
+        component_config: Dict[str, Any] = None,
+        client: Any = None,
+    ) -> None:
         """!Create a robot driver for PyBullet.
 
         @param component_name Name of the robot component.
@@ -37,14 +39,18 @@ class BulletRobotDriver(SimRobotDriver):
         super().__init__(component_name, component_config, True)
 
         self.client = client
-        
+
         self.base_position = self.config.get("base_position", [0.0, 0.0, 0.0])
-        self.base_orientation = self.config.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
+        self.base_orientation = self.config.get(
+            "base_orientation", [0.0, 0.0, 0.0, 1.0]
+        )
         if len(self.base_orientation) == 3:
             self.base_orientation = p.getQuaternionFromEuler(self.base_orientation)
-        
+
         self.load_robot(self.base_position, self.base_orientation, None)
-        self.initial_configuration = self.config.get("initial_configuration", [0.0] * self.client.getNumJoints(self.ref_body_id))
+        self.initial_configuration = self.config.get(
+            "initial_configuration", [0.0] * self.client.getNumJoints(self.ref_body_id)
+        )
 
         self.num_joints = self.client.getNumJoints(self.ref_body_id)
         self.bullet_joint_infos = {}
@@ -57,13 +63,13 @@ class BulletRobotDriver(SimRobotDriver):
         #            "upper_limit"       : ... ,
         #            "effort_limit"      : ... ,
         #            "velocity_limit"    : ... ,
-        # 
+        #
         #            "joint_axis"        : ... ,  # PyBullet specific
         #            "joint_parent_index": ... ,  # PyBullet specific
-        #            "joint_child_index" : ... ,  # PyBullet specific 
+        #            "joint_child_index" : ... ,  # PyBullet specific
         #            }
         # }
-        
+
         self.actuated_joints = {}
         self.joints = {}
         # {"name" : index}
@@ -93,14 +99,16 @@ class BulletRobotDriver(SimRobotDriver):
             self.bullet_joint_infos[joint_name]["joint_axis"] = joint_info[3]
             self.bullet_joint_infos[joint_name]["joint_parent_index"] = joint_info[10]
             self.bullet_joint_infos[joint_name]["joint_child_index"] = joint_info[11]
-    
-        self.sim_reset(base_pos=self.base_position, 
-                       base_orn=self.base_orientation, 
-                       q_init=self.initial_configuration)
-        
+
+        self.sim_reset(
+            base_pos=self.base_position,
+            base_orn=self.base_orientation,
+            q_init=self.initial_configuration,
+        )
+
         # PyBullet specific : extract and save joint group information to handle torque control
         torque_control_groups = {}
-        
+
         for group_name, group_config in self.config.get("joint_groups", {}).items():
             # add control type from enum to internal config dict
 
@@ -112,7 +120,7 @@ class BulletRobotDriver(SimRobotDriver):
                 for joint in group_config["joints"]:
                     joint_idx = self.bullet_joint_infos[joint]["index"]
                     torque_control_groups[group_name]["indices"].append(joint_idx)
-        
+
         # Setup torque control
         # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12644
         for group_name, group_data in torque_control_groups.items():
@@ -124,9 +132,10 @@ class BulletRobotDriver(SimRobotDriver):
                 self.client.VELOCITY_CONTROL,
                 forces=[force_limit] * len(joint_indices),
             )
-       
 
-    def load_robot(self, base_position = None, base_orientation = None, q_init=None) -> None:
+    def load_robot(
+        self, base_position=None, base_orientation=None, q_init=None
+    ) -> None:
         """!Load the robot model into the simulator.
 
         @param base_position Optional base position ``[x, y, z]``.
@@ -148,9 +157,9 @@ class BulletRobotDriver(SimRobotDriver):
         if base_orientation is not None:
             kwargs["baseOrientation"] = base_orientation
         else:
-            kwargs["baseOrientation"] = self.config.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
-
-            
+            kwargs["baseOrientation"] = self.config.get(
+                "base_orientation", [0.0, 0.0, 0.0, 1.0]
+            )
 
         urdf_path = self.config.get("urdf_path", None)
         mjcf_path = self.config.get("mjcf_path", None)
@@ -160,9 +169,13 @@ class BulletRobotDriver(SimRobotDriver):
             return
         elif mjcf_path:
             self.ref_body_id = self.client.loadMJCF(mjcf_path)[0]
-            log.ok("Initialized robot specified by mjcf " + mjcf_path + " in PyBullet simulator.")
+            log.ok(
+                "Initialized robot specified by mjcf "
+                + mjcf_path
+                + " in PyBullet simulator."
+            )
         elif urdf_path:
-        # Append the URDF path to the class path if provided
+            # Append the URDF path to the class path if provided
             if class_path is not None:
                 urdf_path = Path(class_path) / urdf_path
             else:
@@ -177,19 +190,19 @@ class BulletRobotDriver(SimRobotDriver):
                 log.error(f"The URDF path '{urdf_path}' does not exist.")
                 log.error(f"Full path: {urdf_path.resolve()}")
                 # print the full path for debugging
-                
+
                 return
 
             # Load the URDF into the simulator
             self.ref_body_id = self.client.loadURDF(str(urdf_path), **kwargs)
-            log.ok(f"Initialized robot specified by URDF '{urdf_path}' in PyBullet simulator.")
-        
+            log.ok(
+                f"Initialized robot specified by URDF '{urdf_path}' in PyBullet simulator."
+            )
 
         if q_init is not None:
             for joint in range(self.client.getNumJoints(self.ref_body_id)):
                 self.client.resetJointState(self.ref_body_id, joint, q_init[joint], 0.0)
-        
-        
+
     #####################
     ##    get infos    ##
     #####################
@@ -251,7 +264,9 @@ class BulletRobotDriver(SimRobotDriver):
     ##     control     ##
     #####################
 
-    def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
+    def pass_joint_group_control_cmd(
+        self, control_mode: str, cmd: Dict[str, float], **kwargs
+    ) -> None:
         """!Send a control command to a group of joints.
 
         @param control_mode One of ``position``, ``velocity`` or ``torque``.
@@ -260,7 +275,7 @@ class BulletRobotDriver(SimRobotDriver):
         @return ``None``
         """
         idx = [self.actuated_joints[joint] for joint in cmd.keys()]
-        
+
         kwargs = {motor_control_kwarg[control_mode]: list(cmd.values())}
         if control_mode == ControlType.POSITION.value:
             control_mode = p.POSITION_CONTROL
@@ -269,7 +284,10 @@ class BulletRobotDriver(SimRobotDriver):
         elif control_mode == ControlType.TORQUE.value:
             control_mode = p.TORQUE_CONTROL
         else:
-            log.error("Invalid control mode. Please use 'position', 'velocity', or 'torque', but received: " + control_mode)
+            log.error(
+                "Invalid control mode. Please use 'position', 'velocity', or 'torque', but received: "
+                + control_mode
+            )
 
         self.client.setJointMotorControlArray(
             bodyUniqueId=self.ref_body_id,
@@ -277,15 +295,14 @@ class BulletRobotDriver(SimRobotDriver):
             controlMode=control_mode,
             **kwargs,
         )
-    
+
     #####################
     ##      misc.      ##
     #####################
 
-    def sim_reset(self,
-                  base_pos : List[float],
-                  base_orn : List[float],
-                  q_init : List[float]) -> None:
+    def sim_reset(
+        self, base_pos: List[float], base_orn: List[float], q_init: List[float]
+    ) -> None:
         """!Reset the robot in the simulator.
 
         @param base_pos New base position.
@@ -294,12 +311,13 @@ class BulletRobotDriver(SimRobotDriver):
         """
         # delete the robot
         self.client.removeBody(self.ref_body_id)
-        self.load_robot(base_position=base_pos, base_orientation=base_orn, q_init=q_init)
+        self.load_robot(
+            base_position=base_pos, base_orientation=base_orn, q_init=q_init
+        )
 
         log.ok("Reset robot " + self.component_name + " completed.")
 
         # print the joint positons after reset
         joint_positions = self.pass_joint_positions(list(self.actuated_joints.keys()))
         log.info("Joint positions after reset: " + str(joint_positions))
-        return 
-
+        return

@@ -34,7 +34,9 @@ def show_node(
     ),
     host: str = "127.0.0.1",
     port: int = 1234,
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show default services"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show default services"
+    ),
 ):
     """Show information about NODE if provided via ``-n/--name``."""
     if ctx.invoked_subcommand is not None:
@@ -46,14 +48,23 @@ def show_node(
     for node_info in data.get("nodes", []):
         if node_info.get("name") == name:
             comms = node_info.get("comms", {})
+
             def _print_section(title: str, items: list, key: str):
                 print(f"{title}:")
                 if not items:
                     print("  <none>")
                 else:
                     for it in items:
-                        print(f"  {it.get(key)} ({it.get('channel_type') if 'channel_type' in it else it.get('request_type')}" +
-                              (f" -> {it.get('response_type')}" if 'response_type' in it else "") + ")")
+                        print(
+                            f"  {it.get(key)} ({it.get('channel_type') if 'channel_type' in it else it.get('request_type')}"
+                            + (
+                                f" -> {it.get('response_type')}"
+                                if "response_type" in it
+                                else ""
+                            )
+                            + ")"
+                        )
+
             _print_section("Listeners", comms.get("listeners", []), "channel_name")
             _print_section("Publishers", comms.get("publishers", []), "channel_name")
             _print_section("Subscribers", comms.get("subscribers", []), "channel_name")
@@ -100,7 +111,9 @@ def list_channels(host: str = "127.0.0.1", port: int = 1234):
 def list_services(
     host: str = "127.0.0.1",
     port: int = 1234,
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show default services"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show default services"
+    ),
 ):
     """List available services."""
     data = _fetch_network_info(host, port)
