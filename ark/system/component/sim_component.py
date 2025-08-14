@@ -34,12 +34,12 @@ class SimComponent(BaseComponent, ABC):
     def step_component(self):
         """Gather object state and publish it if required."""
         if self.publish_ground_truth:
-            data = self.get_object_data()
-            packed = self.pack_data(data)
+            data_dict = self.get_object_data()
+            packed = self.pack_data(data_dict)
             self.component_multi_publisher.publish(packed)
 
     @abstractmethod
-    def pack_data(self) -> None:
+    def pack_data(self, data_dict) -> dict[str, Any]:
         """Pack object data into the message format."""
 
     @abstractmethod

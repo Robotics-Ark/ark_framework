@@ -16,19 +16,13 @@ from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.system.pybullet.pybullet_robot_driver import BulletRobotDriver
 from ark.system.pybullet.pybullet_camera_driver import BulletCameraDriver
-from ark.system.pybullet.pybullet_multibody import PyBulletMultiBody
+from ark.system.mujoco.mujoco_multibody import MujocoMultiBody
 from ark.system.driver.sensor_driver import SensorType
 from arktypes import *
 
 import textwrap
 
-SHAPE_MAP = {
-    "GEOM_BOX": "box",
-    "GEOM_SPHERE": "sphere",
-    "GEOM_CAPSULE": "capsule",
-    "GEOM_CYLINDER": "cylinder",
-    # add more if you need
-}
+
 
 
 def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
@@ -96,18 +90,6 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     return class_, drivers
 
 
-def convert_urdf_to_mjcf(urdf_path: str) -> str:
-    """
-    Uses the `urdf2mjcf` CLI if installed: `pip install urdf2mjcf`.
-    Returns MJCF xml string.
-    """
-    outdir = tempfile.mkdtemp(prefix="urdf2mjcf_")
-    out_xml = os.path.join(outdir, "converted.mjcf.xml")
-    # urdf2mjcf <in> -o <out>
-    subprocess.run(["urdf2mjcf", urdf_path, "-o", out_xml], check=True)
-    return open(out_xml, "r", encoding="utf-8").read()
-
-
 class MujocoBackend(SimulatorBackend):
 
     def initialize(self) -> None:
@@ -120,14 +102,24 @@ class MujocoBackend(SimulatorBackend):
         self.world_model_dict["gravity"] = self.set_gravity(gravity)
 
         self.world_model_dict["objects"] = []
+        self.world_model_dict["assets"] = []
+        self.world_model_dict["defaults"] = []
         if self.global_config.get("objects", None):
             for obj_name, obj_config in self.global_config["objects"].items():
+                asset_xml , body_xml, default_xml = self.add_sim_component(obj_name, obj_config)
                 print(f"Adding object {obj_name}")
+                print(body_xml)
                 self.world_model_dict["objects"].append(
-                    self.add_sim_component(obj_name, obj_config)
+                    body_xml
                 )
+                if asset_xml:
+                    self.world_model_dict["assets"].append(asset_xml)
+                if default_xml:
+                    self.world_model_dict["defaults"].append(default_xml)
+
 
         world_xml = self.build_world(self.world_model_dict)
+        print(f"World XML: {world_xml}")
         self.model, self.data = self.compile_model(world_xml)
 
         if self.global_config.get("connection_mode", "GUI") == "GUI":
@@ -138,6 +130,16 @@ class MujocoBackend(SimulatorBackend):
             raise NotImplementedError(
                 "Headless mode is not implemented for Mujoco yet."
             )
+        
+        print("obj red", self.object_ref)
+        for obj_key in self.object_ref.keys():
+            obj = self.object_ref[obj_key]
+            obj.update_ids(self.model, self.data)
+
+
+        timestep = 1 / self.global_config["simulator"]["config"].get(
+            "sim_frequency", 240.0
+        )
 
     def compile_model(self, xml: str):
         model = mujoco.MjModel.from_xml_string(xml)
@@ -147,10 +149,20 @@ class MujocoBackend(SimulatorBackend):
     def build_world(self, world_xml: dict) -> str:
         bodies = "\n".join(world_xml["objects"])
         gravity = world_xml["gravity"]
+        assets = "\n".join(world_xml["assets"])
+        defaults = "\n".join(world_xml["defaults"])
         return f"""
         <mujoco model="dyn_world">
-        <compiler angle="degree"/>
+        <compiler angle="degree" meshdir="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/tests/mujco_tests"/>
             {gravity}
+        
+        {assets}
+
+
+        <default>
+        {defaults}
+        </default>
+
         <worldbody>
             {bodies}
         </worldbody>
@@ -184,87 +196,51 @@ class MujocoBackend(SimulatorBackend):
         self,
         name: str,
         obj_config: dict[str, Any],
-    ) -> str:
+    ) -> tuple[str,str,str]:
         """
         Returns an MJCF <body>...</body> snippet for a single object
         based on a PyBullet-like config.
         """
-        cfg = obj_config
+        sim_component = MujocoMultiBody(
+            name=name,
+            client=None,
+            global_config=self.global_config,
+        )
+        self.object_ref[name] = sim_component
+        xml_config = sim_component.get_xml_config()
+        return xml_config
 
-        # Pose
-        pos = cfg.get("base_position", [0, 0, 0])
-        quat = cfg.get("base_orientation", [0, 0, 0, 1])  # wxyz in MuJoCo (same order)
 
-        if cfg.get("source") == "primitive":
-            # Visual/collision (we’ll just build one geom; you can split into two if needed)
-            vis = cfg.get("visual", {})
-            col = cfg.get("collision", {})
-            stype = vis.get("shape_type") or col.get("shape_type") or "GEOM_BOX"
-            geom_type = SHAPE_MAP.get(stype, "box")
+    def _all_available(self):
+        """!Check whether all registered components are active.
 
-            # Size: MuJoCo uses half-sizes directly for boxes and radii/half-lengths otherwise
-            vis_shape = vis.get("visual_shape", {})
-            col_shape = col.get("collision_shape", {})
-            half_extents = vis_shape.get("halfExtents") or col_shape.get("halfExtents")
-            # RGBA (optional)
-            rgba = vis_shape.get("rgbaColor", [0.6, 0.6, 0.6, 1.0])
+        @return ``True`` if no component is suspended.
+        @rtype bool
+        """
+        for robot in self.robot_ref:
+            if self.robot_ref[robot]._is_suspended:
+                return False
+        for obj in self.object_ref:
+            if self.object_ref[obj]._is_suspended:
+                return False
+        return True
 
-            # “Static” if baseMass == 0  → no joint. Otherwise, give it a free joint.
-            mb = cfg.get("multi_body", {})
-            base_mass = mb.get("baseMass", 0)
-
-            # Build <geom size="..."> attribute depending on type
-            if geom_type == "box":
-                if not half_extents:
-                    raise ValueError("box needs visual/collision.halfExtents")
-                size_attr = (
-                    f'size="{half_extents[0]} {half_extents[1]} {half_extents[2]}"'
-                )
-            elif geom_type in ("sphere",):
-                r = vis_shape.get("radius") or col_shape.get("radius")
-                if r is None:
-                    raise ValueError(f"{geom_type} needs radius")
-                size_attr = f'size="{r}"'
-            elif geom_type in ("capsule", "cylinder"):
-                r = vis_shape.get("radius") or col_shape.get("radius")
-                hl = vis_shape.get("halfLength") or col_shape.get("halfLength")
-                if r is None or hl is None:
-                    raise ValueError(f"{geom_type} needs radius and halfLength")
-                size_attr = f'size="{r} {hl}"'
-            else:
-                raise ValueError(f"Unsupported geom type: {geom_type}")
-
-            joint_xml = '<joint type="free"/>' if base_mass and base_mass > 0 else ""
-            body_xml = f"""
-            <body name="{name}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[0]} {quat[1]} {quat[2]} {quat[3]}">
-            {joint_xml}
-            <geom name="{name}_geom" type="{geom_type}" {size_attr} rgba="{rgba[0]} {rgba[1]} {rgba[2]} {rgba[3]}"/>
-            </body>
-            """
-            return textwrap.dedent(body_xml).strip()
-
-        elif cfg.get("source") == "urdf":
-            # Load the URDF file and convert it to MJCF
-            urdf_path = cfg.get("urdf_path")
-            if not urdf_path:
-                raise ValueError("URDF path must be specified for URDF source.")
-            if not Path(urdf_path).exists():
-                raise FileNotFoundError(f"URDF file {urdf_path} does not exist.")
-
-            # Use MuJoCo's built-in function to load URDF
-            xml = mujoco.MjModel.from_urdf_file(
-                urdf_path, name=name, pos=pos, quat=quat
-            )
-            return xml.to_xml_string()
+        
 
     def remove(self, name: str) -> None:
         pass
 
     def step(self) -> None:
         """!Step the simulator forward by one time step."""
-        mujoco.mj_step(self.model, self.data)
-        # print("Stepping simulation...")
-        self.viewer.sync()
+        if self._all_available():
+            self._step_sim_components()
+            mujoco.mj_step(self.model, self.data)
+            self.viewer.sync()
+            self._simulation_time = self.data.time
+
+        else:
+            log.panda("Did not step")
+            pass
 
     def shutdown_backend(self) -> None:
         self.viewer.close()
