@@ -65,7 +65,7 @@ class MujocoCameraDriver(CameraDriver):
         self.cam.fixedcamid = 0  # or whatever camera id you want
         self.width = 640
         self.height = 200
-        self.xml_config = [None, '<camera name="fixed_cam" pos="0 -0.5 0.3" euler="45 0 0"/>', None]
+        self.xml_config = [None, '<camera name="fixed_cam" pos="0 0 10" euler="0 0 0"/>', None]
 
     def update_ids(self, model, data) -> None:
         self.model = model
