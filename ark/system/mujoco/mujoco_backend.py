@@ -107,8 +107,20 @@ class MujocoBackend(SimulatorBackend):
         if self.global_config.get("objects", None):
             for obj_name, obj_config in self.global_config["objects"].items():
                 asset_xml , body_xml, default_xml = self.add_sim_component(obj_name, obj_config)
-                print(f"Adding object {obj_name}")
-                print(body_xml)
+                self.world_model_dict["objects"].append(
+                    body_xml
+                )
+                if asset_xml:
+                    self.world_model_dict["assets"].append(asset_xml)
+                if default_xml:
+                    self.world_model_dict["defaults"].append(default_xml)
+
+
+        if self.global_config.get("sensors", None):
+            for sensor_name, sensor_config in self.global_config["sensors"].items():
+                assert "type" in sensor_config, f"Sensor {sensor_name} has no type defined."
+                sensor_type = sensor_config.get("type")
+                asset_xml , body_xml, default_xml = self.add_sensor(sensor_name, sensor_type, sensor_config)
                 self.world_model_dict["objects"].append(
                     body_xml
                 )
@@ -135,6 +147,10 @@ class MujocoBackend(SimulatorBackend):
         for obj_key in self.object_ref.keys():
             obj = self.object_ref[obj_key]
             obj.update_ids(self.model, self.data)
+
+        for sensor_key in self.sensor_ref.keys():
+            sensor = self.sensor_ref[sensor_key]
+            sensor._driver.update_ids(self.model, self.data)
 
 
         timestep = 1 / self.global_config["simulator"]["config"].get(
@@ -175,22 +191,50 @@ class MujocoBackend(SimulatorBackend):
         """
 
     def reset_simulator(self) -> None:
-        pass
+        raise NotImplementedError(
+            "Resetting the Mujoco simulator is not implemented yet."
+        )  
 
     def add_robot(
         self,
         name: str,
         global_config: dict[str, Any],
     ) -> None:
-        pass
+        raise NotImplementedError(
+            "MujocoBackend does not support adding robots directly. Use MujocoMultiBody instead."
+        )
 
     def add_sensor(
         self,
         name: str,
         sensor_type: SensorType,
-        global_config: dict[str, Any],
-    ) -> None:
-        pass
+        sensor_config: dict[str, Any],
+    ) -> tuple[str, str, str]:
+        
+        class_path = Path(sensor_config["class_dir"])
+        if class_path.is_file():
+            class_path = class_path.parent
+
+        SensorClass, DriverClass = import_class_from_directory(class_path)
+        DriverClass = DriverClass.value
+
+        attached_body_id = None
+        if sensor_config["sim_config"].get("attach", None):
+            raise NotImplementedError(
+                "Attaching sensors to bodies is not implemented for Mujoco yet."
+            )
+
+        driver = DriverClass(name, sensor_config, attached_body_id, client=None)
+        sensor = SensorClass(
+            name=name,
+            driver=driver,
+            global_config=self.global_config,
+        )
+        self.sensor_ref[name] = sensor
+        xml_config = driver.get_xml_config()
+        return xml_config
+
+
 
     def add_sim_component(
         self,

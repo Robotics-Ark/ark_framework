@@ -1,0 +1,95 @@
+"""@file pybullet_camera_driver.py
+@brief Camera driver for the PyBullet simulator.
+"""
+
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Any, Optional, Dict, List
+
+from ark.tools.log import log
+from ark.system.driver.sensor_driver import CameraDriver
+
+import numpy as np
+import pybullet as p
+from scipy.spatial.transform import Rotation as R
+import mujoco
+
+
+def rotation_matrix_to_euler(R_world):
+    """!Convert a rotation matrix to Euler angles.
+
+    @param R_world ``3x3`` rotation matrix in row-major order.
+    @return Euler angles ``[roll, pitch, yaw]`` in degrees.
+    @rtype List[float]
+    """
+    r = R.from_matrix(R_world)
+    euler_angles = r.as_euler("xyz", degrees=True)
+    return euler_angles
+
+
+class CameraType(Enum):
+    """Supported camera models."""
+
+    FIXED = "fixed"
+    ATTACHED = "attached"
+
+
+class MujocoCameraDriver(CameraDriver):
+    """Camera driver implementation for Mujoco."""
+
+    def __init__(
+        self,
+        component_name: str,
+        component_config: Dict[str, Any],
+        attached_body_id: int = None,
+        client: Any = None,
+    ) -> None:
+        """!Create a new camera driver.
+
+        @param component_name Name of the camera component.
+        @param component_config Configuration dictionary for the camera.
+        @param attached_body_id ID of the body to attach the camera to.
+        @param client Optional PyBullet client.
+        @return ``None``
+        """
+        super().__init__(
+            component_name, component_config, True
+        )  # simulation is always True
+
+        print("MUJOCOCameraDriver init")
+        print(component_config)
+        # TODO: Does the unpack of the config to returnto generate the xml representation:
+        self.name = "fixed_cam"
+        self.cam = mujoco.MjvCamera()
+        self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+        self.width = 640
+        self.height = 480
+        self.xml_config = [None, '<camera name="fixed_cam" pos="0 -0.5 0.3" euler="45 0 0"/>', None]
+
+    def update_ids(self, model, data) -> None:
+        self.model = model
+        self.data = data
+        self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
+        self.cam.fixedcamid = self.id
+        self.scene = mujoco.MjvScene(self.model, maxgeom=1000)
+        self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_100)
+
+    def get_xml_config(self) -> tuple[str, str, Optional[str]]:
+        return self.xml_config
+
+    def get_images(self) -> Dict[str, np.ndarray]:
+        print("MUJOCOCameraDriver get_images")
+        rect = mujoco.MjrRect(0, 0, self.width, self.height)
+        mujoco.mjr_render(rect, self.scene, self.ctx)
+        mujoco.mjr_readPixels(self.rgb, self.depth, rect, self.ctx)
+        
+        # Flip the RGB and depth images (MuJoCo uses bottom-left as the origin)
+        rgb = np.flipud(self.rgb.copy())
+        depth = np.flipud(self.depth.copy())
+        return {
+            "color": rgb,
+            "depth": depth
+        }
+    
+    def shutdown_driver(self) -> None:
+        return super().shutdown_driver()
