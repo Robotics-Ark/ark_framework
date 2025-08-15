@@ -169,6 +169,9 @@ class MujocoBackend(SimulatorBackend):
         defaults = "\n".join(world_xml["defaults"])
         return f"""
         <mujoco model="dyn_world">
+        <visual>
+        <global offheight="640"/>
+        </visual>
         <compiler angle="degree" meshdir="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/tests/mujco_tests"/>
             {gravity}
         

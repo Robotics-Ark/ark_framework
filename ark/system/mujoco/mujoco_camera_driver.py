@@ -62,33 +62,35 @@ class MujocoCameraDriver(CameraDriver):
         self.name = "fixed_cam"
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+        self.cam.fixedcamid = 0  # or whatever camera id you want
         self.width = 640
-        self.height = 480
+        self.height = 200
         self.xml_config = [None, '<camera name="fixed_cam" pos="0 -0.5 0.3" euler="45 0 0"/>', None]
 
     def update_ids(self, model, data) -> None:
         self.model = model
         self.data = data
         self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
-        self.cam.fixedcamid = self.id
-        self.scene = mujoco.MjvScene(self.model, maxgeom=1000)
-        self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_100)
+        self.renderer = mujoco.Renderer(self.model, self.width, self.height)
 
     def get_xml_config(self) -> tuple[str, str, Optional[str]]:
         return self.xml_config
 
     def get_images(self) -> Dict[str, np.ndarray]:
         print("MUJOCOCameraDriver get_images")
-        rect = mujoco.MjrRect(0, 0, self.width, self.height)
-        mujoco.mjr_render(rect, self.scene, self.ctx)
-        mujoco.mjr_readPixels(self.rgb, self.depth, rect, self.ctx)
-        
+        self.renderer.update_scene(self.data, camera=self.cam)
+        rgb = self.renderer.render()
+        print("MUJOCOCameraDriver get_images rgb shape", rgb.shape)
+
+        import imageio
+        imageio.imwrite("frame.png", rgb)
+
         # Flip the RGB and depth images (MuJoCo uses bottom-left as the origin)
-        rgb = np.flipud(self.rgb.copy())
-        depth = np.flipud(self.depth.copy())
+        rgb = np.flipud(rgb.copy())
+        # depth = np.flipud(self.depth.copy())
         return {
             "color": rgb,
-            "depth": depth
+            "depth": np.zeros(rgb.shape[:2], dtype=np.float32)  # Placeholder for depth
         }
     
     def shutdown_driver(self) -> None:
