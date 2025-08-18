@@ -8,6 +8,8 @@ import math
 import cv2
 from pathlib import Path
 from typing import Any, Optional, Dict
+import glfw
+import numpy as np
 
 import mujoco
 import mujoco.viewer
@@ -116,34 +118,37 @@ class MujocoBackend(SimulatorBackend):
                     self.world_model_dict["defaults"].append(default_xml)
 
 
-        if self.global_config.get("sensors", None):
-            for sensor_name, sensor_config in self.global_config["sensors"].items():
-                assert "type" in sensor_config, f"Sensor {sensor_name} has no type defined."
-                sensor_type = sensor_config.get("type")
-                asset_xml , body_xml, default_xml = self.add_sensor(sensor_name, sensor_type, sensor_config)
-                self.world_model_dict["objects"].append(
-                    body_xml
-                )
-                if asset_xml:
-                    self.world_model_dict["assets"].append(asset_xml)
-                if default_xml:
-                    self.world_model_dict["defaults"].append(default_xml)
-
-
+        # setup model and data by initialsing the xml file
         world_xml = self.build_world(self.world_model_dict)
         print(f"World XML: {world_xml}")
         self.model, self.data = self.compile_model(world_xml)
 
+
+        # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
+        self.headless = True
         if self.global_config.get("connection_mode", "GUI") == "GUI":
-            # Launch the viewer in GUI mode
-            self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
+            self.headless = False
+            if not glfw.init():
+                raise RuntimeError("Could not initialize GLFW")
+            self.window = glfw.create_window(1200, 900, "Ark Mujoco Viewer", None, None)
+            if not self.window:
+                glfw.terminate()
+                raise RuntimeError("Could not create GLFW window")
+            glfw.make_context_current(self.window)
+            glfw.swap_interval(1)
+
+            self.cam = mujoco.MjvCamera()
+            self.opt = mujoco.MjvOption()
+            self.scene = mujoco.MjvScene(self.model, maxgeom=10000)
+            self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_100)
+            mujoco.mjv_defaultFreeCamera(self.model, self.cam)
+            self.cam.distance = max(2.0, np.linalg.norm(self.model.stat.extent) * 1.5)
         else:
             # Launch the viewer in passive mode (headless)
             raise NotImplementedError(
                 "Headless mode is not implemented for Mujoco yet."
             )
         
-        print("obj red", self.object_ref)
         for obj_key in self.object_ref.keys():
             obj = self.object_ref[obj_key]
             obj.update_ids(self.model, self.data)
@@ -153,7 +158,7 @@ class MujocoBackend(SimulatorBackend):
             sensor._driver.update_ids(self.model, self.data)
 
 
-        timestep = 1 / self.global_config["simulator"]["config"].get(
+        self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
 
@@ -167,49 +172,16 @@ class MujocoBackend(SimulatorBackend):
         gravity = world_xml["gravity"]
         assets = "\n".join(world_xml["assets"])
         defaults = "\n".join(world_xml["defaults"])
-        # return f"""
-        # <mujoco model="dyn_world">
-        # <include file="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/ark_robots/ark_franka/ark_franka/franka_fr3/fr3.xml"/>
-        # <visual>
-        # <global offheight="640"/>
-        # </visual>
-        # <compiler angle="degree" meshdir="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/tests/mujco_tests"/>
-        #     {gravity}
-        
-        # {assets}
-
-
-        # <default>
-        # {defaults}
-        # </default>
-
-        # <worldbody>
-        #     {bodies}
-        # </worldbody>
-        # </mujoco>
-        # """
-        # 
-        # 
-        # <include file="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/ark_robots/ark_franka/ark_franka/franka_fr3/fr3.xml"/>
 
         return f"""
-<mujoco model="fr3 scene">
-
-   
-    {gravity}
-    {assets}
-
-
-        <default>
-        {defaults}
-        </default>
+            <mujoco>
   <worldbody>
-            {bodies}
-        </worldbody>
-</mujoco>
-
-        
-"""
+    <light name="top" pos="0 0 1"/>
+    <geom name="red_box" type="box" size=".2 .2 .2" rgba="1 0 0 1"/>
+    <geom name="green_sphere" pos=".2 .2 .2" size=".1" rgba="0 1 0 1"/>
+  </worldbody>
+</mujoco>           
+            """
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> str:
         return f"""
@@ -303,10 +275,22 @@ class MujocoBackend(SimulatorBackend):
     def step(self) -> None:
         """!Step the simulator forward by one time step."""
         if self._all_available():
+            # step all the components
             self._step_sim_components()
+
+            # update the simulation 
             mujoco.mj_step(self.model, self.data)
-            self.viewer.sync()
+            
+            # update the viewer
+            if self.headless == False: 
+                mujoco.mjv_updateScene(self.model, self.data, self.opt, None, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scene)
+                fb_w, fb_h = glfw.get_framebuffer_size(self.window)
+                viewport = mujoco.MjrRect(0, 0, fb_w, fb_h)
+                mujoco.mjr_render(viewport, self.scene, self.ctx)
+            
+
             self._simulation_time = self.data.time
+            print(f"Simulation time: {self._simulation_time:.2f}s")
 
         else:
             log.panda("Did not step")
