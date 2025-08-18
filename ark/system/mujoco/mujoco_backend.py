@@ -167,26 +167,49 @@ class MujocoBackend(SimulatorBackend):
         gravity = world_xml["gravity"]
         assets = "\n".join(world_xml["assets"])
         defaults = "\n".join(world_xml["defaults"])
-        return f"""
-        <mujoco model="dyn_world">
-        <visual>
-        <global offheight="640"/>
-        </visual>
-        <compiler angle="degree" meshdir="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/tests/mujco_tests"/>
-            {gravity}
+        # return f"""
+        # <mujoco model="dyn_world">
+        # <include file="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/ark_robots/ark_franka/ark_franka/franka_fr3/fr3.xml"/>
+        # <visual>
+        # <global offheight="640"/>
+        # </visual>
+        # <compiler angle="degree" meshdir="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/tests/mujco_tests"/>
+        #     {gravity}
         
-        {assets}
+        # {assets}
+
+
+        # <default>
+        # {defaults}
+        # </default>
+
+        # <worldbody>
+        #     {bodies}
+        # </worldbody>
+        # </mujoco>
+        # """
+        # 
+        # 
+        # <include file="/Users/sarthakdas/Documents/Documents - Sarthak’s MacBook Pro 2020/Projects/Ark/ark_robots/ark_franka/ark_franka/franka_fr3/fr3.xml"/>
+
+        return f"""
+<mujoco model="fr3 scene">
+
+   
+    {gravity}
+    {assets}
 
 
         <default>
         {defaults}
         </default>
-
-        <worldbody>
+  <worldbody>
             {bodies}
         </worldbody>
-        </mujoco>
-        """
+</mujoco>
+
+        
+"""
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> str:
         return f"""
