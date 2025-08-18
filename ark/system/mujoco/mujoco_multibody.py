@@ -72,24 +72,86 @@ class MujocoMultiBody(SimComponent):
             if geom_type == "box":
                 if not half_extents:
                     raise ValueError("box needs visual/collision.halfExtents")
-                size_attr = (
-                    f'size="{half_extents[0]} {half_extents[1]} {half_extents[2]}"'
-                )
+                size_attr = f'size="{half_extents[0]} {half_extents[1]} {half_extents[2]}"'
+
+                # Add mass/inertia if mass is set
+                if base_mass and base_mass > 0:
+                    hx, hy, hz = half_extents
+                    Lx, Ly, Lz = 2 * hx, 2 * hy, 2 * hz
+                    Ix = (1/12) * base_mass * (Ly**2 + Lz**2)
+                    Iy = (1/12) * base_mass * (Lx**2 + Lz**2)
+                    Iz = (1/12) * base_mass * (Lx**2 + Ly**2)
+                    joint_xml = (
+                        f'<joint type="free"/>\n'
+                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{Ix} {Iy} {Iz}"/>'
+                    )
+                else:
+                    joint_xml = ""
+
+
             elif geom_type in ("sphere",):
                 r = vis_shape.get("radius") or col_shape.get("radius")
                 if r is None:
                     raise ValueError(f"{geom_type} needs radius")
                 size_attr = f'size="{r}"'
+                if base_mass and base_mass > 0:
+                    # Example: if you also know radius
+                    I = 0.4 * base_mass * (r ** 2)  # sphere inertia
+                    joint_xml = (
+                        f'<joint type="free"/>\n'
+                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{I} {I} {I}"/>'
+                    )
+                else:
+                    joint_xml = ""
+                
+
+
             elif geom_type in ("capsule", "cylinder"):
                 r = vis_shape.get("radius") or col_shape.get("radius")
                 hl = vis_shape.get("halfLength") or col_shape.get("halfLength")
                 if r is None or hl is None:
                     raise ValueError(f"{geom_type} needs radius and halfLength")
                 size_attr = f'size="{r} {hl}"'
+
+                if base_mass and base_mass > 0:
+                    h = 2 * hl
+                    if geom_type == "cylinder":
+                        Ix = Iy = (1/12) * base_mass * (3 * (r**2) + h**2)
+                        Iz = 0.5 * base_mass * (r**2)
+
+                    elif geom_type == "capsule":
+                        # Volume parts
+                        vol_cyl = 3.141592653589793 * r**2 * h
+                        vol_sph = (4/3) * 3.141592653589793 * r**3
+                        vol_total = vol_cyl + vol_sph
+                        mass_cyl = base_mass * (vol_cyl / vol_total)
+                        mass_sph = base_mass * (vol_sph / vol_total)
+                        # Cylinder inertia (centered)
+                        Icx = Icy = (1/12) * mass_cyl * (3 * r**2 + h**2)
+                        Icz = 0.5 * mass_cyl * r**2
+                        # Sphere inertia (centered on sphere's own center)
+                        Isx = Isy = (2/5) * mass_sph * r**2
+                        Isz = (2/5) * mass_sph * r**2
+                        # Offset sphere centers along z-axis by h/2
+                        d = h / 2
+                        offset = mass_sph * (d**2)
+                        # Parallel-axis theorem for spheres
+                        Isx += offset
+                        Isy += offset
+                        # Combine parts
+                        Ix = Icx + Isx
+                        Iy = Icy + Isy
+                        Iz = Icz + Isz
+                    joint_xml = (
+                        f'<joint type="free"/>\n'
+                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{Ix} {Iy} {Iz}"/>'
+                    )
+                else:
+                    joint_xml = ""
+            
             else:
                 raise ValueError(f"Unsupported geom type: {geom_type}")
 
-            joint_xml = '<joint type="free"/>' if base_mass and base_mass > 0 else ""
             body_xml = f"""
             <body name="{name}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[0]} {quat[1]} {quat[2]} {quat[3]}">
             {joint_xml}
