@@ -2,6 +2,7 @@
 @brief Backend implementation for running simulations in Mujoco.
 """
 
+from curses import window
 import importlib.util
 import sys, ast, os
 import math
@@ -25,8 +26,6 @@ from arktypes import *
 import textwrap
 
 
-
-
 def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     """!Load a class from ``path``.
 
@@ -42,6 +41,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     # Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
     file_path = path / f"{class_name}.py"
+    
     # get the full absolute path
     file_path = file_path.resolve()
     if not file_path.exists():
@@ -123,10 +123,10 @@ class MujocoBackend(SimulatorBackend):
         print(f"World XML: {world_xml}")
         self.model, self.data = self.compile_model(world_xml)
 
-
+        self.renderer = mujoco.Renderer(self.model, height=240, width=320)
+        self.__camera_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "main_cam")
         # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
-        self.headless = True
-        if self.global_config.get("connection_mode", "GUI") == "GUI":
+        if self.global_config['simulator']['config']['connection_mode'].upper() == "GUI":
             self.headless = False
             if not glfw.init():
                 raise RuntimeError("Could not initialize GLFW")
@@ -145,18 +145,9 @@ class MujocoBackend(SimulatorBackend):
             self.cam.distance = max(2.0, np.linalg.norm(self.model.stat.extent) * 1.5)
         else:
             # Launch the viewer in passive mode (headless)
-            raise NotImplementedError(
-                "Headless mode is not implemented for Mujoco yet."
-            )
-        
-        for obj_key in self.object_ref.keys():
-            obj = self.object_ref[obj_key]
-            obj.update_ids(self.model, self.data)
+            self.headless = True
 
-        for sensor_key in self.sensor_ref.keys():
-            sensor = self.sensor_ref[sensor_key]
-            sensor._driver.update_ids(self.model, self.data)
-
+        print("MujocoBackend initialized in headless mode." if self.headless else "MujocoBackend initialized in GUI mode.")
 
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
@@ -174,13 +165,29 @@ class MujocoBackend(SimulatorBackend):
         defaults = "\n".join(world_xml["defaults"])
 
         return f"""
-            <mujoco>
+            <mujoco model="cube_camera">
+  <compiler angle="degree" coordinate="local" />
+  <option timestep="0.002" />
+  <size />
+  <asset />
+  <default />
   <worldbody>
-    <light name="top" pos="0 0 1"/>
-    <geom name="red_box" type="box" size=".2 .2 .2" rgba="1 0 0 1"/>
-    <geom name="green_sphere" pos=".2 .2 .2" size=".1" rgba="0 1 0 1"/>
+    <body name="floor">
+      <geom type="plane" size="1 1 0.1" />
+    </body>
+    <body name="cube" pos="0 0 0.05">
+      <joint type="free" name="cube_root" />
+      <geom type="box" size="0.1 0.05 0.05" density="1000" rgba="1.0 0.4 0.2 1.0" />
+    </body>
+    <camera name="main_cam" pos="0.5 0.0 0.3" euler="0.0 25.0 180.0" fovy="60.0" />
   </worldbody>
-</mujoco>           
+  <actuator />
+  <sensor />
+  <tendon />
+  <equality />
+  <contact />
+  <keyframe />
+</mujoco>        
             """
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> str:
@@ -232,8 +239,6 @@ class MujocoBackend(SimulatorBackend):
         xml_config = driver.get_xml_config()
         return xml_config
 
-
-
     def add_sim_component(
         self,
         name: str,
@@ -273,10 +278,11 @@ class MujocoBackend(SimulatorBackend):
         pass
 
     def step(self) -> None:
+        print("Stepping the Mujoco simulation.")
         """!Step the simulator forward by one time step."""
         if self._all_available():
             # step all the components
-            self._step_sim_components()
+            # self._step_sim_components()
 
             # update the simulation 
             mujoco.mj_step(self.model, self.data)
@@ -292,9 +298,17 @@ class MujocoBackend(SimulatorBackend):
             self._simulation_time = self.data.time
             print(f"Simulation time: {self._simulation_time:.2f}s")
 
+            self.renderer.update_scene(self.data, camera=self.__camera_id)
+            frame = self.renderer.render()
+            print("Frame shape:", frame.shape)
+
         else:
             log.panda("Did not step")
             pass
+        print("Mujoco simulation step completed.")
 
     def shutdown_backend(self) -> None:
-        self.viewer.close()
+        if not self.headless:
+            glfw.destroy_window(self.window)
+            glfw.terminate()
+
