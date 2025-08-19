@@ -65,7 +65,11 @@ class MujocoCameraDriver(CameraDriver):
         self.cam.fixedcamid = 0  # or whatever camera id you want
         self.width = 640
         self.height = 200
-        self.xml_config = [None, '<camera name="fixed_cam" pos="0 0 10" euler="0 0 0"/>', None]
+        self.xml_config = [
+            None,
+            '<camera name="fixed_cam" pos="0 0 10" euler="0 0 0"/>',
+            None,
+        ]
 
     def update_ids(self, model, data) -> None:
         self.model = model
@@ -83,6 +87,7 @@ class MujocoCameraDriver(CameraDriver):
         print("MUJOCOCameraDriver get_images rgb shape", rgb.shape)
 
         import imageio
+
         imageio.imwrite("frame.png", rgb)
 
         # Flip the RGB and depth images (MuJoCo uses bottom-left as the origin)
@@ -90,8 +95,8 @@ class MujocoCameraDriver(CameraDriver):
         # depth = np.flipud(self.depth.copy())
         return {
             "color": rgb,
-            "depth": np.zeros(rgb.shape[:2], dtype=np.float32)  # Placeholder for depth
+            "depth": np.zeros(rgb.shape[:2], dtype=np.float32),  # Placeholder for depth
         }
-    
+
     def shutdown_driver(self) -> None:
         return super().shutdown_driver()

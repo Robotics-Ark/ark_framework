@@ -16,6 +16,7 @@ import mujoco
 
 import textwrap
 
+
 class SourceType(Enum):
     """Supported source types for object creation."""
 
@@ -24,6 +25,7 @@ class SourceType(Enum):
     SDF = "sdf"
     MJCF = "mjcf"
 
+
 SHAPE_MAP = {
     "GEOM_BOX": "box",
     "GEOM_SPHERE": "sphere",
@@ -31,164 +33,79 @@ SHAPE_MAP = {
     "GEOM_CYLINDER": "cylinder",
     # add more if you need
 }
+
+
 class MujocoMultiBody(SimComponent):
-    
+
     def __init__(
-            self,
-            name: str,
-            client: Any,
-            global_config: Dict[str, Any] = None,
-    ): 
-        print(global_config)
+        self,
+        name: str,
+        client: Any,
+        global_config: Dict[str, Any] = None,
+    ):
         super().__init__(name, global_config)
+        
+        source_str = self.config["source"]
+        source_type = getattr(SourceType, source_str.upper())
 
-        self.config = self._load_config_section(
-            global_config=global_config, name=name, type="objects"
-        )
-
-        # Pose
-        pos = self.config.get("base_position", [0, 0, 0])
-        quat = self.config.get("base_orientation", [0, 0, 0, 1])  # wxyz in MuJoCo (same order)
-
-        if self.config.get("source") == "primitive":
-            # Visual/collision (we’ll just build one geom; you can split into two if needed)
-            vis = self.config.get("visual", {})
-            col = self.config.get("collision", {})
-            stype = vis.get("shape_type") or col.get("shape_type") or "GEOM_BOX"
-            geom_type = SHAPE_MAP.get(stype, "box")
-
-            # Size: MuJoCo uses half-sizes directly for boxes and radii/half-lengths otherwise
-            vis_shape = vis.get("visual_shape", {})
-            col_shape = col.get("collision_shape", {})
-            half_extents = vis_shape.get("halfExtents") or col_shape.get("halfExtents")
-            # RGBA (optional)
-            rgba = vis_shape.get("rgbaColor", [0.6, 0.6, 0.6, 1.0])
-
-            # “Static” if baseMass == 0  → no joint. Otherwise, give it a free joint.
-            mb = self.config.get("multi_body", {})
-            base_mass = mb.get("baseMass", 0)
-
-            # Build <geom size="..."> attribute depending on type
-            if geom_type == "box":
-                if not half_extents:
-                    raise ValueError("box needs visual/collision.halfExtents")
-                size_attr = f'size="{half_extents[0]} {half_extents[1]} {half_extents[2]}"'
-
-                # Add mass/inertia if mass is set
-                if base_mass and base_mass > 0:
-                    hx, hy, hz = half_extents
-                    Lx, Ly, Lz = 2 * hx, 2 * hy, 2 * hz
-                    Ix = (1/12) * base_mass * (Ly**2 + Lz**2)
-                    Iy = (1/12) * base_mass * (Lx**2 + Lz**2)
-                    Iz = (1/12) * base_mass * (Lx**2 + Ly**2)
-                    joint_xml = (
-                        f'<joint type="free"/>\n'
-                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{Ix} {Iy} {Iz}"/>'
-                    )
-                else:
-                    joint_xml = ""
-
-
-            elif geom_type in ("sphere",):
-                r = vis_shape.get("radius") or col_shape.get("radius")
-                if r is None:
-                    raise ValueError(f"{geom_type} needs radius")
-                size_attr = f'size="{r}"'
-                if base_mass and base_mass > 0:
-                    # Example: if you also know radius
-                    I = 0.4 * base_mass * (r ** 2)  # sphere inertia
-                    joint_xml = (
-                        f'<joint type="free"/>\n'
-                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{I} {I} {I}"/>'
-                    )
-                else:
-                    joint_xml = ""
-                
-
-
-            elif geom_type in ("capsule", "cylinder"):
-                r = vis_shape.get("radius") or col_shape.get("radius")
-                hl = vis_shape.get("halfLength") or col_shape.get("halfLength")
-                if r is None or hl is None:
-                    raise ValueError(f"{geom_type} needs radius and halfLength")
-                size_attr = f'size="{r} {hl}"'
-
-                if base_mass and base_mass > 0:
-                    h = 2 * hl
-                    if geom_type == "cylinder":
-                        Ix = Iy = (1/12) * base_mass * (3 * (r**2) + h**2)
-                        Iz = 0.5 * base_mass * (r**2)
-
-                    elif geom_type == "capsule":
-                        # Volume parts
-                        vol_cyl = 3.141592653589793 * r**2 * h
-                        vol_sph = (4/3) * 3.141592653589793 * r**3
-                        vol_total = vol_cyl + vol_sph
-                        mass_cyl = base_mass * (vol_cyl / vol_total)
-                        mass_sph = base_mass * (vol_sph / vol_total)
-                        # Cylinder inertia (centered)
-                        Icx = Icy = (1/12) * mass_cyl * (3 * r**2 + h**2)
-                        Icz = 0.5 * mass_cyl * r**2
-                        # Sphere inertia (centered on sphere's own center)
-                        Isx = Isy = (2/5) * mass_sph * r**2
-                        Isz = (2/5) * mass_sph * r**2
-                        # Offset sphere centers along z-axis by h/2
-                        d = h / 2
-                        offset = mass_sph * (d**2)
-                        # Parallel-axis theorem for spheres
-                        Isx += offset
-                        Isy += offset
-                        # Combine parts
-                        Ix = Icx + Isx
-                        Iy = Icy + Isy
-                        Iz = Icz + Isz
-                    joint_xml = (
-                        f'<joint type="free"/>\n'
-                        f'<inertial pos="0 0 0" mass="{base_mass}" diaginertia="{Ix} {Iy} {Iz}"/>'
-                    )
-                else:
-                    joint_xml = ""
-            
-            else:
-                raise ValueError(f"Unsupported geom type: {geom_type}")
-
-            body_xml = f"""
-            <body name="{name}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[0]} {quat[1]} {quat[2]} {quat[3]}">
-            {joint_xml}
-            <geom name="{name}_geom" type="{geom_type}" {size_attr} rgba="{rgba[0]} {rgba[1]} {rgba[2]} {rgba[3]}"/>
-            </body>
-            """
-            xml_config = None, textwrap.dedent(body_xml).strip(), None
-
-        elif self.config.get("source") == "urdf":
+        if source_type == SourceType.URDF:
             raise NotImplementedError(
-                "URDF source is not implemented for Mujoco yet."
+                "Loading from URDF is not implemented for MujocoMultiBody."
             )
-        elif self.config.get("source") == "xml":
-            raise ValueError(f"Unsupported source type: {self.config.get('source')}")
-            # body_xml = f"""<body name="{name}" pos="{pos[0]} {pos[1]} {pos[2]}">
-            #                 <include file="{self.config.get("body_path", "")}"/>
-            #             </body>"""
-            # asset_xml = f"""
-            #             <include file="{self.config.get("asset_path", "")}"/>
-            #              """
+        elif source_type == SourceType.PRIMITIVE:
+            vis = self.config.get("visual")
+            if vis:
+                # map the type to mujoco shape
+                vis_shape_type = SHAPE_MAP[vis["shape_type"].upper()]
 
-            # default_xml = self.config.get("default_path", None)
+                
+                vis_opts = vis["visual_shape"]
+                print(f"Visual options: {vis_opts}, shape type: {vis_shape_type}")
 
-            # # print(f"Adding XML object {name} with path {body_xml}")
-            # xml_config = textwrap.dedent(asset_xml).strip(), textwrap.dedent(body_xml).strip(), default_xml
+                # multiply halfExtents by 2 to get real size
+                if vis_shape_type == "box":
+                    extents_size = [s * 2 for s in vis_opts["halfExtents"]]
+                
+                if vis_shape_type == "sphere":
+                    extents_size = [vis_opts["radius"]]
 
-        else:
-            raise ValueError(f"Unsupported source type: {self.config.get('source')}")
+                rgba = vis_opts.get("rgbaColor", [1, 1, 1, 1])  # default to white if not provided
+            else:
+                raise ValueError(
+                    "Visual configuration is required for primitive shapes."
+                )
 
-        self.xml_config = xml_config
+            col = self.config.get("collision")
+            if col:
+                log.warning(
+                    "Collision shapes are not supported in MujocoMultiBody yet, it is defaulted to visual sizes"
+                )
 
-        # setup communication
-        self.publisher_name = self.name + "/ground_truth/sim"
-        if self.publish_ground_truth:
-            self.state_publisher = self.component_channels_init(
-                {self.publisher_name: rigid_body_state_t}
+
+            multi_body = self.config["multi_body"]
+            base_position = self.config["base_position"]
+            base_orientation = self.config["base_orientation"]
+            base_orientation = [base_orientation[1], base_orientation[2], base_orientation[3], base_orientation[0]] # swap orientation to be xyzw
+
+            if multi_body["baseMass"] == 0:
+                free = False
+                mass = 0.001  # default small mass for fixed base
+            else:
+                free = True
+                mass = multi_body["baseMass"]
+
+
+            client.load_object(
+                name=name,
+                shape=vis_shape_type,
+                size=extents_size,
+                pos=base_position,
+                quat=base_orientation,
+                rgba=rgba,
+                free=free,
+                mass=mass
             )
+
 
     def update_ids(self, model, data) -> None:
         self.model = model
