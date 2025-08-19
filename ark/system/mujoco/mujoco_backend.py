@@ -123,26 +123,10 @@ class MujocoBackend(SimulatorBackend):
         print(f"World XML: {world_xml}")
         self.model, self.data = self.compile_model(world_xml)
 
-        self.renderer = mujoco.Renderer(self.model, height=240, width=320)
-        self.__camera_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "main_cam")
         # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
         if self.global_config['simulator']['config']['connection_mode'].upper() == "GUI":
             self.headless = False
-            if not glfw.init():
-                raise RuntimeError("Could not initialize GLFW")
-            self.window = glfw.create_window(1200, 900, "Ark Mujoco Viewer", None, None)
-            if not self.window:
-                glfw.terminate()
-                raise RuntimeError("Could not create GLFW window")
-            glfw.make_context_current(self.window)
-            glfw.swap_interval(1)
-
-            self.cam = mujoco.MjvCamera()
-            self.opt = mujoco.MjvOption()
-            self.scene = mujoco.MjvScene(self.model, maxgeom=10000)
-            self.ctx = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_100)
-            mujoco.mjv_defaultFreeCamera(self.model, self.cam)
-            self.cam.distance = max(2.0, np.linalg.norm(self.model.stat.extent) * 1.5)
+            self.viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=False, show_right_ui=False)
         else:
             # Launch the viewer in passive mode (headless)
             self.headless = True
@@ -169,7 +153,7 @@ class MujocoBackend(SimulatorBackend):
   <compiler angle="degree" coordinate="local" />
   <option timestep="0.002" />
   <size />
-  <asset />
+  <asset /> 
   <default />
   <worldbody>
     <body name="floor">
@@ -179,7 +163,6 @@ class MujocoBackend(SimulatorBackend):
       <joint type="free" name="cube_root" />
       <geom type="box" size="0.1 0.05 0.05" density="1000" rgba="1.0 0.4 0.2 1.0" />
     </body>
-    <camera name="main_cam" pos="0.5 0.0 0.3" euler="0.0 25.0 180.0" fovy="60.0" />
   </worldbody>
   <actuator />
   <sensor />
@@ -278,7 +261,7 @@ class MujocoBackend(SimulatorBackend):
         pass
 
     def step(self) -> None:
-        print("Stepping the Mujoco simulation.")
+        # print("Stepping the Mujoco simulation.")
         """!Step the simulator forward by one time step."""
         if self._all_available():
             # step all the components
@@ -289,23 +272,15 @@ class MujocoBackend(SimulatorBackend):
             
             # update the viewer
             if self.headless == False: 
-                mujoco.mjv_updateScene(self.model, self.data, self.opt, None, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scene)
-                fb_w, fb_h = glfw.get_framebuffer_size(self.window)
-                viewport = mujoco.MjrRect(0, 0, fb_w, fb_h)
-                mujoco.mjr_render(viewport, self.scene, self.ctx)
+                self.viewer.sync()
             
 
             self._simulation_time = self.data.time
-            print(f"Simulation time: {self._simulation_time:.2f}s")
-
-            self.renderer.update_scene(self.data, camera=self.__camera_id)
-            frame = self.renderer.render()
-            print("Frame shape:", frame.shape)
-
+        
         else:
             log.panda("Did not step")
             pass
-        print("Mujoco simulation step completed.")
+        # print("Mujoco simulation step completed.")
 
     def shutdown_backend(self) -> None:
         if not self.headless:
