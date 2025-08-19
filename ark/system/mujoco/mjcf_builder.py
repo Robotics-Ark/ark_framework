@@ -249,6 +249,15 @@ class MJCFBuilder:
         )
         return self
 
+    def load_camera(self, parent, pos, euler=None, fovy=45, **kwargs) -> "MJCFBuilder":
+        """Convenience: create a camera under `parent` with specified position and orientation."""
+        if euler is not None:
+            quat = _euler_xyz_to_quat(*euler, degrees=True)
+        else:
+            quat = None
+        self.add_camera(parent=parent, pos=pos, quat=quat, fovy=fovy, **kwargs)
+        return self
+
     def load_robot_from_spec(self, root: BodySpec, parent: str = "__WORLD__") -> "MJCFBuilder":
         """Recursively create a robot from a BodySpec tree."""
         def _recurse(spec: BodySpec, parent_body: str):

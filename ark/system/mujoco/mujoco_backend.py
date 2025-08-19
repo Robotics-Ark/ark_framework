@@ -115,18 +115,25 @@ class MujocoBackend(SimulatorBackend):
             for obj_name, obj_config in self.global_config["objects"].items():
                 self.add_sim_component(obj_name, obj_config)
 
+        self.builder.load_camera(
+            name="overview",
+            parent="__WORLD__",
+            pos=[1.2, -1.0, 1.0],
+            euler=[20, 0, 35],  # convenient orientation
+            fovy=170
+        )
+       
 
-        self.builder.add_texture("grid", type="2d", builtin="checker", width=512, height=512)
-        self.builder.add_material("mat_grid", texture="grid", reflectance="0.2")
-        # self.builder.add_body("floor")
-        # self.builder.add_geom("floor", type="plane", size=[5, 5, 0.1], material="mat_grid")
-
+        
 
         self.builder.make_spawn_keyframe(name="spawn")
         xml_string = self.builder.to_string(pretty=True)
 
         self.model = mujoco.MjModel.from_xml_string(xml_string)
         self.data = mujoco.MjData(self.model)
+
+        self.cam_id   = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, 'overview')
+        self.renderer = mujoco.Renderer(self.model, 100, 100) 
 
         # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
         if (
@@ -276,6 +283,10 @@ class MujocoBackend(SimulatorBackend):
             # update the viewer
             if self.headless == False:
                 self.viewer.sync()
+
+                self.renderer.update_scene(self.data, camera=self.cam_id)
+                rgb = self.renderer.render()
+                print("Rendering frame with shape:", rgb.shape)
 
             self._simulation_time = self.data.time
 
