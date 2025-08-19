@@ -15,6 +15,9 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
+from ark.system.mujoco.mjcf_builder import MJCFBuilder, BodySpec
+
+
 from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.system.pybullet.pybullet_robot_driver import BulletRobotDriver
@@ -41,7 +44,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     # Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
     file_path = path / f"{class_name}.py"
-    
+
     # get the full absolute path
     file_path = file_path.resolve()
     if not file_path.exists():
@@ -95,43 +98,54 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 class MujocoBackend(SimulatorBackend):
 
     def initialize(self) -> None:
-        self.world_model_dict = {}
-        # set gravity if specified in the global config
+        self.builder  = MJCFBuilder("ARK Mujoco").set_compiler(
+            angle="radian",
+            meshdir="ark_mujoco_assets"
+        )
 
+        # ===== Set Gravity =====
         gravity = self.global_config["simulator"]["config"].get(
             "gravity", [0, 0, -9.81]
         )
-        self.world_model_dict["gravity"] = self.set_gravity(gravity)
+        self.set_gravity(gravity)
 
-        self.world_model_dict["objects"] = []
-        self.world_model_dict["assets"] = []
-        self.world_model_dict["defaults"] = []
+
+        # ===== Set Objects =====
         if self.global_config.get("objects", None):
             for obj_name, obj_config in self.global_config["objects"].items():
-                asset_xml , body_xml, default_xml = self.add_sim_component(obj_name, obj_config)
-                self.world_model_dict["objects"].append(
-                    body_xml
-                )
-                if asset_xml:
-                    self.world_model_dict["assets"].append(asset_xml)
-                if default_xml:
-                    self.world_model_dict["defaults"].append(default_xml)
+                self.add_sim_component(obj_name, obj_config)
 
 
-        # setup model and data by initialsing the xml file
-        world_xml = self.build_world(self.world_model_dict)
-        print(f"World XML: {world_xml}")
-        self.model, self.data = self.compile_model(world_xml)
+        self.builder.add_texture("grid", type="2d", builtin="checker", width=512, height=512)
+        self.builder.add_material("mat_grid", texture="grid", reflectance="0.2")
+        # self.builder.add_body("floor")
+        # self.builder.add_geom("floor", type="plane", size=[5, 5, 0.1], material="mat_grid")
+
+
+        self.builder.make_spawn_keyframe(name="spawn")
+        xml_string = self.builder.to_string(pretty=True)
+
+        self.model = mujoco.MjModel.from_xml_string(xml_string)
+        self.data = mujoco.MjData(self.model)
 
         # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
-        if self.global_config['simulator']['config']['connection_mode'].upper() == "GUI":
+        if (
+            self.global_config["simulator"]["config"]["connection_mode"].upper()
+            == "GUI"
+        ):
             self.headless = False
-            self.viewer = mujoco.viewer.launch_passive(self.model, self.data, show_left_ui=False, show_right_ui=False)
+            self.viewer = mujoco.viewer.launch_passive(
+                self.model, self.data, show_left_ui=False, show_right_ui=False
+            )
         else:
             # Launch the viewer in passive mode (headless)
             self.headless = True
 
-        print("MujocoBackend initialized in headless mode." if self.headless else "MujocoBackend initialized in GUI mode.")
+        print(
+            "MujocoBackend initialized in headless mode."
+            if self.headless
+            else "MujocoBackend initialized in GUI mode."
+        )
 
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
@@ -143,10 +157,6 @@ class MujocoBackend(SimulatorBackend):
         return model, data
 
     def build_world(self, world_xml: dict) -> str:
-        bodies = "\n".join(world_xml["objects"])
-        gravity = world_xml["gravity"]
-        assets = "\n".join(world_xml["assets"])
-        defaults = "\n".join(world_xml["defaults"])
 
         return f"""
             <mujoco model="cube_camera">
@@ -174,14 +184,12 @@ class MujocoBackend(SimulatorBackend):
             """
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> str:
-        return f"""
-        <option gravity="{gravity[0]} {gravity[1]} {gravity[2]}"/>
-        """
+        self.builder.set_option(gravity=gravity)
 
     def reset_simulator(self) -> None:
         raise NotImplementedError(
             "Resetting the Mujoco simulator is not implemented yet."
-        )  
+        )
 
     def add_robot(
         self,
@@ -198,7 +206,7 @@ class MujocoBackend(SimulatorBackend):
         sensor_type: SensorType,
         sensor_config: dict[str, Any],
     ) -> tuple[str, str, str]:
-        
+
         class_path = Path(sensor_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
@@ -226,20 +234,17 @@ class MujocoBackend(SimulatorBackend):
         self,
         name: str,
         obj_config: dict[str, Any],
-    ) -> tuple[str,str,str]:
+    ) -> None:
         """
         Returns an MJCF <body>...</body> snippet for a single object
         based on a PyBullet-like config.
         """
+        print(f"Adding simulation component: {name} with config: {obj_config}")
+        
         sim_component = MujocoMultiBody(
-            name=name,
-            client=None,
-            global_config=self.global_config,
+            name=name, client=self.builder, global_config=self.global_config
         )
         self.object_ref[name] = sim_component
-        xml_config = sim_component.get_xml_config()
-        return xml_config
-
 
     def _all_available(self):
         """!Check whether all registered components are active.
@@ -255,8 +260,6 @@ class MujocoBackend(SimulatorBackend):
                 return False
         return True
 
-        
-
     def remove(self, name: str) -> None:
         pass
 
@@ -267,16 +270,15 @@ class MujocoBackend(SimulatorBackend):
             # step all the components
             # self._step_sim_components()
 
-            # update the simulation 
+            # update the simulation
             mujoco.mj_step(self.model, self.data)
-            
+
             # update the viewer
-            if self.headless == False: 
+            if self.headless == False:
                 self.viewer.sync()
-            
 
             self._simulation_time = self.data.time
-        
+
         else:
             log.panda("Did not step")
             pass
@@ -284,6 +286,5 @@ class MujocoBackend(SimulatorBackend):
 
     def shutdown_backend(self) -> None:
         if not self.headless:
-            glfw.destroy_window(self.window)
-            glfw.terminate()
-
+            # close the viewer
+            self.viewer.close()
