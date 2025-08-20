@@ -249,13 +249,13 @@ class MJCFBuilder:
         )
         return self
 
-    def load_camera(self, parent, pos, euler=None, fovy=45, **kwargs) -> "MJCFBuilder":
+    def load_camera(self, name, parent, pos, euler=None, quat=None, fov=45, **kwargs) -> "MJCFBuilder":
         """Convenience: create a camera under `parent` with specified position and orientation."""
         if euler is not None:
             quat = _euler_xyz_to_quat(*euler, degrees=True)
         else:
             quat = None
-        self.add_camera(parent=parent, pos=pos, quat=quat, fovy=fovy, **kwargs)
+        self.add_camera(name=name, parent=parent, pos=pos, quat=quat, fovy=fov)
         return self
 
     def load_robot_from_spec(self, root: BodySpec, parent: str = "__WORLD__") -> "MJCFBuilder":

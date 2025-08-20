@@ -55,21 +55,23 @@ class MujocoCameraDriver(CameraDriver):
         super().__init__(
             component_name, component_config, True
         )  # simulation is always True
+        
+        self.name = component_name
+        self.parent = "__WORLD__" #HARDCODED FOR NOW: as all cameras are fixed to the world
 
-        print("MUJOCOCameraDriver init")
-        print(component_config)
-        # TODO: Does the unpack of the config to returnto generate the xml representation:
-        self.name = "fixed_cam"
-        self.cam = mujoco.MjvCamera()
-        self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-        self.cam.fixedcamid = 0  # or whatever camera id you want
-        self.width = 640
-        self.height = 200
-        self.xml_config = [
-            None,
-            '<camera name="fixed_cam" pos="0 0 10" euler="0 0 0"/>',
-            None,
-        ]
+        sim_config = component_config.get("sim_config", {})
+        self.fov = sim_config.get("fov", 45)  # Default field of view
+
+        if "quaternion" in sim_config:
+            self.quaternion = sim_config.get("quaternion")
+            self.quaternion = [self.quaternion[3], self.quaternion[0], self.quaternion[1], self.quaternion[2]]
+        else:
+            self.quaternion = [1.0, 0.0, 0.0, 0.0]
+            
+        self.position = sim_config.get("position", [0.0, 0.0, 1.5])
+        
+        print(client)
+        client.load_camera(name=self.name, parent=self.parent, pos=self.position, quat=self.quaternion, fov=self.fov)
 
     def update_ids(self, model, data) -> None:
         self.model = model
