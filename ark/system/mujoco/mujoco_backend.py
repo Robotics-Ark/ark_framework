@@ -128,7 +128,6 @@ class MujocoBackend(SimulatorBackend):
             euler=[20, 0, 35],  # convenient orientation
             fovy=170
         )
-       
 
         self.builder.make_spawn_keyframe(name="spawn")
         xml_string = self.builder.to_string(pretty=True)
@@ -167,34 +166,7 @@ class MujocoBackend(SimulatorBackend):
         data = mujoco.MjData(model)
         return model, data
 
-    def build_world(self, world_xml: dict) -> str:
-
-        return f"""
-            <mujoco model="cube_camera">
-  <compiler angle="degree" coordinate="local" />
-  <option timestep="0.002" />
-  <size />
-  <asset /> 
-  <default />
-  <worldbody>
-    <body name="floor">
-      <geom type="plane" size="1 1 0.1" />
-    </body>
-    <body name="cube" pos="0 0 0.05">
-      <joint type="free" name="cube_root" />
-      <geom type="box" size="0.1 0.05 0.05" density="1000" rgba="1.0 0.4 0.2 1.0" />
-    </body>
-  </worldbody>
-  <actuator />
-  <sensor />
-  <tendon />
-  <equality />
-  <contact />
-  <keyframe />
-</mujoco>        
-            """
-
-    def set_gravity(self, gravity: tuple[float, float, float]) -> str:
+    def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         self.builder.set_option(gravity=gravity)
 
     def reset_simulator(self) -> None:
