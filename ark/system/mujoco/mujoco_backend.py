@@ -115,6 +115,12 @@ class MujocoBackend(SimulatorBackend):
             for obj_name, obj_config in self.global_config["objects"].items():
                 self.add_sim_component(obj_name, obj_config)
 
+        # TODO ADD robot loading here-> 
+
+        if self.global_config.get("sensors", None):
+            for sensor_name, sensor_config in self.global_config["sensors"].items():
+                self.add_sensor(sensor_name, sensor_config)
+
         self.builder.load_camera(
             name="overview",
             parent="__WORLD__",
@@ -123,8 +129,6 @@ class MujocoBackend(SimulatorBackend):
             fovy=170
         )
        
-
-        
 
         self.builder.make_spawn_keyframe(name="spawn")
         xml_string = self.builder.to_string(pretty=True)
@@ -210,11 +214,12 @@ class MujocoBackend(SimulatorBackend):
     def add_sensor(
         self,
         name: str,
-        sensor_type: SensorType,
         sensor_config: dict[str, Any],
-    ) -> tuple[str, str, str]:
+    ) -> None:
 
+        sensor_type = sensor_config["type"]
         class_path = Path(sensor_config["class_dir"])
+
         if class_path.is_file():
             class_path = class_path.parent
 
@@ -227,15 +232,15 @@ class MujocoBackend(SimulatorBackend):
                 "Attaching sensors to bodies is not implemented for Mujoco yet."
             )
 
-        driver = DriverClass(name, sensor_config, attached_body_id, client=None)
+        driver = DriverClass(name, sensor_config, attached_body_id, client=self.builder)
         sensor = SensorClass(
             name=name,
             driver=driver,
             global_config=self.global_config,
         )
         self.sensor_ref[name] = sensor
-        xml_config = driver.get_xml_config()
-        return xml_config
+        
+    
 
     def add_sim_component(
         self,
