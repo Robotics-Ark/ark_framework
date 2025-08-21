@@ -227,7 +227,7 @@ class MJCFBuilder:
         shape: str,
         size: Union[List[float], float],
         pos=(0, 0, 0),
-        quat: Optional[List[float]] = None, #wxyz
+        quat: Optional[List[float]] = None,
         density: Optional[float] = None,
         mass: Optional[float] = None,
         rgba: Optional[List[float]] = None,
@@ -247,15 +247,6 @@ class MJCFBuilder:
             rgba=rgba,
             **geom_kwargs,
         )
-        return self
-
-    def load_camera(self, name, parent, pos, euler=None, quat=None, fov=45, **kwargs) -> "MJCFBuilder":
-        """Convenience: create a camera under `parent` with specified position and orientation."""
-        if euler is not None:
-            quat = _euler_xyz_to_quat(*euler, degrees=True)
-        else:
-            quat = None
-        self.add_camera(name=name, parent=parent, pos=pos, quat=quat, fovy=fov)
         return self
 
     def load_robot_from_spec(self, root: BodySpec, parent: str = "__WORLD__") -> "MJCFBuilder":
@@ -302,37 +293,42 @@ class MJCFBuilder:
         fixed_base: bool = False,
         root_joint_name: Optional[str] = None,
         *,
-        # NEW: declare internal robot joints so we can build a correct qpos vector
-        internal_joints: Optional[List[Union[str, Dict]]] = None,
-        # NEW: initial joint configuration for those internal joints
-        joint_qpos: Optional[Dict[str, Union[float, List[float]]]] = None,
+        qpos: Optional[List[float]] = None,
     ) -> "MJCFBuilder":
         """
         Wrap an <include> in a named body so you can position the whole robot and
-        (optionally) give it a free root joint to control its world pose via keyframes.
+        (optionally) give it a free root joint to control base pose via keyframes.
 
         fixed_base:
-            If True, the robot's base is fixed to the world. If False (default),
-            a free joint named ``root_joint_name`` (or ``f"{name}_root"``) is added
-            so the entire robot can move.
+            If True, the robot's base is fixed to the world (no root joint).
+            If False, a free joint named ``root_joint_name`` (or ``f"{name}_root"``) is added.
 
-        internal_joints:
-            An ordered description of the robot's internal joints (as they appear in MuJoCo qpos).
-            Each entry can be:
-              - a string (joint name) -> treated as type='hinge', size=1
-              - a dict with keys: {name, type='hinge'|'slide'|'ball'|'free', size?}
-            This does NOT emit joint XML (the include already has them); it only records order/size.
-
-        joint_qpos:
-            Mapping joint_name -> scalar/list that will be used as defaults in make_spawn_keyframe().
+        qpos:
+            Flat list of the robot's *internal* generalized coordinates (excluding any free base).
+            Stored as a single packed block for make_spawn_keyframe().
         """
+        import os, copy, xml.etree.ElementTree as ET
+
+        # Ensure internal bookkeeping exists
+        if not hasattr(self, "_joint_order"):
+            self._joint_order = []
+        if not hasattr(self, "_joint_defaults"):
+            self._joint_defaults = {}
+
         # 1) Create a wrapper body for the robot so we can position the entire model
         self.add_body(name, parent=parent, pos=pos, quat=quat, euler=euler)
 
         # 2) Optionally give the wrapper body a free joint to control base pose
         if not fixed_base:
             jname = root_joint_name if root_joint_name is not None else f"{name}_root"
-            self.add_joint(name, type="free", name=jname)
+
+            # Be defensive about builder signatures to avoid 'name' collisions.
+            # Preferred: add_joint(body=..., ...attrs)
+            try:
+                self.add_joint(body=name, type="free", name=jname)
+            except TypeError:
+                # Fallback: some builders use (parent_or_body_name, **attrs)
+                self.add_joint(name, **{"type": "free", "name": jname})
 
         # 3) Merge the referenced MJCF file into this model
         tree = ET.parse(file)
@@ -343,10 +339,10 @@ class MJCFBuilder:
         if comp is not None:
             attrs = dict(comp.attrib)
             if "meshdir" in attrs:
-                # Resolve meshdir relative to the robot file. Many robot MJCFs already
-                # prefix mesh filenames with the same subdirectory, so using only the
-                # directory of the robot file avoids duplicate "assets/assets" paths.
-                attrs["meshdir"] = os.path.dirname(file)
+                # Normalize to the directory of the robot file to avoid double prefixes
+                robot_dir = os.path.dirname(os.path.abspath(file))
+                attrs["meshdir"] = robot_dir
+            # Ensure self.compiler exists (your builder likely created it at init)
             _attrs(self.compiler, **attrs)
 
         # Merge assets, defaults, tendons, equalities, actuators, contacts
@@ -370,26 +366,12 @@ class MJCFBuilder:
             for body in wb:
                 wrapper.append(copy.deepcopy(body))
 
-        # 4) Record the robot's internal joints so make_spawn_keyframe() can build qpos
-        if internal_joints:
-            for j in internal_joints:
-                if isinstance(j, str):
-                    jn = j
-                    jt = "hinge"
-                    sz = self._joint_qpos_size(jt)
-                else:
-                    jn = j["name"]
-                    jt = j.get("type", "hinge")
-                    sz = j.get("size", self._joint_qpos_size(jt))
-                self._joint_order.append({"name": jn, "body": name, "type": jt, "size": sz})
-
-        # 5) Store any provided default joint configuration
-        if joint_qpos:
-            for jn, val in joint_qpos.items():
-                if isinstance(val, (int, float)):
-                    self._joint_defaults[jn] = [float(val)]
-                else:
-                    self._joint_defaults[jn] = [float(x) for x in val]
+        # 4) Record this robot's internal qpos as a single packed block
+        if qpos is not None:
+            block_name = f"{name}/*"  # synthetic ID for packed internal qpos
+            block_vals = [float(x) for x in qpos]
+            self._joint_order.append({"name": block_name, "body": name, "type": "packed", "size": len(block_vals)})
+            self._joint_defaults[block_name] = block_vals
 
         return self
 

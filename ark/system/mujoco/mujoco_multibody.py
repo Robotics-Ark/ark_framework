@@ -105,13 +105,20 @@ class MujocoMultiBody(SimComponent):
                 free=free,
                 mass=mass
             )
+        
+
+        # setup communication
+        self.publisher_name = self.name + "/ground_truth/sim"
+        if self.publish_ground_truth:
+            self.state_publisher = self.component_channels_init(
+                {self.publisher_name: rigid_body_state_t}
+            )
 
 
     def update_ids(self, model, data) -> None:
         self.model = model
         self.data = data
         self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
-        print("======", self.id)
 
     def get_xml_config(self) -> tuple[str, str, Optional[str]]:
         return self.xml_config

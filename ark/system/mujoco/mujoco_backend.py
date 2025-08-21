@@ -115,22 +115,19 @@ class MujocoBackend(SimulatorBackend):
             for obj_name, obj_config in self.global_config["objects"].items():
                 self.add_sim_component(obj_name, obj_config)
 
-        # TODO ADD robot loading here-> 
+        # TODO ADD robot loading here
+        if self.global_config.get("robots", None):
+            for robot_name, robot_config in self.global_config["robots"].items():
+                self.add_robot(robot_name, robot_config)
 
         if self.global_config.get("sensors", None):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
 
-        self.builder.load_camera(
-            name="overview",
-            parent="__WORLD__",
-            pos=[1.2, -1.0, 1.0],
-            euler=[20, 0, 35],  # convenient orientation
-            fovy=170
-        )
-
         self.builder.make_spawn_keyframe(name="spawn")
         xml_string = self.builder.to_string(pretty=True)
+
+        print(xml_string)
 
         self.model = mujoco.MjModel.from_xml_string(xml_string)
         self.data = mujoco.MjData(self.model)
@@ -157,31 +154,61 @@ class MujocoBackend(SimulatorBackend):
             else "MujocoBackend initialized in GUI mode."
         )
 
+        for obj in self.object_ref:
+            self.object_ref[obj].update_ids(self.model, self.data)
+
+        for sensor in self.sensor_ref:
+            self.sensor_ref[sensor]._driver.update_ids(self.model, self.data)
+
+        for robot in self.robot_ref:
+            self.robot_ref[robot]._driver.update_ids(self.model, self.data)
+            
+        self.reset_simulator()
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
-
-    def compile_model(self, xml: str):
-        model = mujoco.MjModel.from_xml_string(xml)
-        data = mujoco.MjData(model)
-        return model, data
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         self.builder.set_option(gravity=gravity)
 
     def reset_simulator(self) -> None:
-        raise NotImplementedError(
-            "Resetting the Mujoco simulator is not implemented yet."
-        )
+        key_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "spawn")
+        if key_id < 0:
+            raise ValueError(f"Keyframe 'spawn' not found")
+
+        # Load the keyframe (fills whatever the key defines)
+        mujoco.mj_resetDataKeyframe(self.model, self.data, key_id)
+
+        # Safety: hard-zero everything that could induce motion
+        self.data.qvel[:] = 0.0
+        self.data.qacc[:] = 0.0
+        if self.model.nu > 0:
+            self.data.ctrl[:] = 0.0
+        if self.model.na > 0:            # actuator internal states
+            self.data.act[:] = 0.0
+
+        # Recompute derived quantities (xpos/xquat/contacts/etc.)
+        mujoco.mj_forward(self.model, self.data)
 
     def add_robot(
         self,
         name: str,
         global_config: dict[str, Any],
     ) -> None:
-        raise NotImplementedError(
-            "MujocoBackend does not support adding robots directly. Use MujocoMultiBody instead."
+        
+        class_path = Path(global_config["class_dir"])
+        if class_path.is_file():
+            class_path = class_path.parent
+        RobotClass, DriverClass = import_class_from_directory(class_path)
+        DriverClass = DriverClass.value
+
+        driver = DriverClass(name, component_config=global_config, client=self.builder)
+        robot = RobotClass(
+            name=name,
+            driver=driver,
+            global_config=self.global_config,
         )
+        self.robot_ref[name] = robot
 
     def add_sensor(
         self,
@@ -211,8 +238,6 @@ class MujocoBackend(SimulatorBackend):
             global_config=self.global_config,
         )
         self.sensor_ref[name] = sensor
-        
-    
 
     def add_sim_component(
         self,
@@ -252,7 +277,7 @@ class MujocoBackend(SimulatorBackend):
         """!Step the simulator forward by one time step."""
         if self._all_available():
             # step all the components
-            # self._step_sim_components()
+            self._step_sim_components()
 
             # update the simulation
             mujoco.mj_step(self.model, self.data)
@@ -260,10 +285,6 @@ class MujocoBackend(SimulatorBackend):
             # update the viewer
             if self.headless == False:
                 self.viewer.sync()
-
-                self.renderer.update_scene(self.data, camera=self.cam_id)
-                rgb = self.renderer.render()
-                print("Rendering frame with shape:", rgb.shape)
 
             self._simulation_time = self.data.time
 
