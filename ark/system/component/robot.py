@@ -130,6 +130,7 @@ class Robot(SimToRealComponent):
             log.error(
                 f"Both 'urdf_path' and 'mjcf_path' are provided for robot '{self.name}'. Please provide only one of them."
             )
+            raise ValueError("Conflicting robot model paths provided.")
         elif self.robot_config.get("urdf_path", None):
             class_path = self.robot_config.get("class_dir", None)
             urdf_path = self.robot_config["urdf_path"]
@@ -151,18 +152,34 @@ class Robot(SimToRealComponent):
             root = tree.getroot()
             elements = root.findall("joint")
         elif self.robot_config.get("mjcf_path", None):
-            tree = ET.parse(self.robot_config["mjcf_path"])
+            class_path = self.robot_config.get("class_dir", None)
+            mjcf_path = self.robot_config["mjcf_path"]
+            if class_path is None:
+                mjcf_path = Path(class_path) / mjcf_path
+            else:
+                mjcf_path = Path(mjcf_path)
+
+            # Make the MJCF path absolute if it is not already
+            if not mjcf_path.is_absolute():
+                mjcf_path = Path(class_path) / mjcf_path
+
+            # Check if the MJCF path exists
+            if not mjcf_path.exists():
+                log.error(f"The MJCF path '{mjcf_path}' does not exist.")
+                return
+
+            tree = ET.parse(mjcf_path)
             root = tree.getroot()
             elements = root.findall(".//joint")
 
         print(
             f"Robot '{self.name}' has the following elements (Total: {len(elements)}):"
         )
-        print(f"{'Index':<8} {'Joint Name':<20} {'Type':<10}")
-        print("=" * 40)  # Separator
-        # Iterate over all joints and collect relevant info
+
+       
         for i, joint in enumerate(elements):
             name = joint.get("name")
+            print(name)
             joint_info = {}
             joint_info["index"] = i
             joint_info["type"] = joint.get("type")
@@ -172,43 +189,76 @@ class Robot(SimToRealComponent):
             else:
                 joint_info["actuated"] = False
 
-            # Get the parent and child link names (URDF and MJCF have different structures here)
-            if self.robot_config.get("urdf_path", None):  # URDF case
-                joint_info["parent Link"] = joint.find("parent").get("link")
-                joint_info["child Link"] = joint.find("child").get("link")
-            elif self.robot_config.get("mjcf_path", None):  # MJCF case
-                # In MJCF, 'parent' and 'child' are typically within bodies, we use a different approach
-                joint_info["parent Link"] = joint.attrib.get("parent", "N/A")
-                joint_info["child Link"] = joint.attrib.get("child", "N/A")
-
-            # If joint has limits (revolute or prismatic joints), get the limits
-            if joint_info["type"] in ["revolute", "prismatic"]:
-                limit = joint.find("limit")
-                if limit is not None:
-                    joint_info["lower_limit"] = limit.get("lower", None)
-                    joint_info["upper_limit"] = limit.get("upper", None)
-                    joint_info["effort_limit"] = limit.get("effort", None)
-                    joint_info["velocity_limit"] = limit.get("velocity", None)
+        try:
+            # Iterate over all joints and collect relevant info
+            for i, joint in enumerate(elements):
+                name = joint.get("name")
+                print(name)
+                joint_info = {}
+                joint_info["index"] = i
+                joint_info["type"] = joint.get("type")
+                if not joint_info["type"] == "fixed":
+                    self._all_actuated_joints.append(name)
+                    joint_info["actuated"] = True
                 else:
-                    joint_info["limits"] = "No limits defined"
-            self.joint_infos[joint.get("name")] = joint_info
-            # save dict of iniital cofngiruation of joints
-            self.initial_configuration[joint.get("name")] = self.robot_config[
-                "initial_configuration"
-            ][i]
-            # print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
-            # Print the joint summary
-            print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
-            print(f"   Parent Link: {joint_info['parent Link']}")
-            print(f"   Child Link: {joint_info['child Link']}")
-            if "lower_limit" in joint_info:
-                print(
-                    f"   Limits: {joint_info['lower_limit']} to {joint_info['upper_limit']}, "
-                    f"Effort: {joint_info['effort_limit']}, Velocity: {joint_info['velocity_limit']}"
-                )
-            else:
-                print(f"   Limits: {joint_info.get('limits', 'None')}")
-            print("-" * 40)  # Divider for each joint summary
+                    joint_info["actuated"] = False
+
+                # Get the parent and child link names (URDF and MJCF have different structures here)
+                if self.robot_config.get("urdf_path", None):  # URDF case
+                    joint_info["parent Link"] = joint.find("parent").get("link")
+                    joint_info["child Link"] = joint.find("child").get("link")
+                elif self.robot_config.get("mjcf_path", None):  # MJCF case
+                    # Build a parent map once (ideally outside your joint loop for efficiency)
+                    parent_map = {child: parent for parent in root.iter() for child in parent}
+
+                    # Find the owning <body> of this joint (walk up until we hit a body)
+                    body_el = joint
+                    while body_el is not None and body_el.tag != "body":
+                        body_el = parent_map.get(body_el)
+
+                    child_link = body_el.get("name") if body_el is not None else None
+
+                    # The parent link is the parent <body> of the owning body.
+                    parent_el = parent_map.get(body_el) if body_el is not None else None
+                    if parent_el is not None and parent_el.tag == "body":
+                        parent_link = parent_el.get("name")
+                    else:
+                        # owning body is directly under <worldbody> (i.e., world is the parent)
+                        parent_link = "__WORLD__"
+
+                    joint_info["parent Link"] = parent_link
+                    joint_info["child Link"]  = child_link
+
+                # If joint has limits (revolute or prismatic joints), get the limits
+                if joint_info["type"] in ["revolute", "prismatic"]:
+                    limit = joint.find("limit")
+                    if limit is not None:
+                        joint_info["lower_limit"] = limit.get("lower", None)
+                        joint_info["upper_limit"] = limit.get("upper", None)
+                        joint_info["effort_limit"] = limit.get("effort", None)
+                        joint_info["velocity_limit"] = limit.get("velocity", None)
+                    else:
+                        joint_info["limits"] = "No limits defined"
+                self.joint_infos[joint.get("name")] = joint_info
+                # save dict of iniital cofngiruation of joints
+                self.initial_configuration[joint.get("name")] = self.robot_config[
+                    "initial_configuration"
+                ][i]
+                # print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
+                # Print the joint summary
+                print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
+                print(f"   Parent Link: {joint_info['parent Link']}")
+                print(f"   Child Link: {joint_info['child Link']}")
+                if "lower_limit" in joint_info:
+                    print(
+                        f"   Limits: {joint_info['lower_limit']} to {joint_info['upper_limit']}, "
+                        f"Effort: {joint_info['effort_limit']}, Velocity: {joint_info['velocity_limit']}"
+                    )
+                else:
+                    print(f"   Limits: {joint_info.get('limits', 'None')}")
+                print("-" * 40)  # Divider for each joint summary
+        except: 
+            log.error("Error prasing MJCF/URDF file: Using fallback joint_info")
 
         # check if joint group is defined:
         if "joint_groups" in self.robot_config:

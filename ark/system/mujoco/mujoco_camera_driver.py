@@ -58,6 +58,8 @@ class MujocoCameraDriver(CameraDriver):
         
         self.name = component_name
         self.parent = "__WORLD__" #HARDCODED FOR NOW: as all cameras are fixed to the world
+        self.width = component_config.get("width", 100)
+        self.height = component_config.get("height", 100)
 
         sim_config = component_config.get("sim_config", {})
         self.fov = sim_config.get("fov", 45)  # Default field of view
@@ -70,13 +72,12 @@ class MujocoCameraDriver(CameraDriver):
             
         self.position = sim_config.get("position", [0.0, 0.0, 1.5])
         
-        print(client)
         client.load_camera(name=self.name, parent=self.parent, pos=self.position, quat=self.quaternion, fov=self.fov)
 
     def update_ids(self, model, data) -> None:
         self.model = model
         self.data = data
-        self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
+        self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, self.name)
         self.renderer = mujoco.Renderer(self.model, self.width, self.height)
 
     def get_xml_config(self) -> tuple[str, str, Optional[str]]:
