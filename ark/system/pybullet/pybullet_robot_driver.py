@@ -165,9 +165,8 @@ class BulletRobotDriver(SimRobotDriver):
         mjcf_path = self.config.get("mjcf_path", None)
         class_path = self.config.get("class_path", None)
         if mjcf_path and urdf_path:
-            log.error("Both urdf and mjcf paths are provided.")
-            return
-        elif urdf_path:
+            log.warning("Both urdf and mjcf paths are provided. Defaulting to URDF.")
+        if urdf_path:
             # Append the URDF path to the class path if provided
             if class_path is not None:
                 urdf_path = Path(class_path) / urdf_path

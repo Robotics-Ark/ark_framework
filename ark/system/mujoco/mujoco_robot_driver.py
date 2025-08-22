@@ -4,6 +4,7 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
+from pyexpat import model
 from typing import Any, Optional, Dict, List
 import os
 import pybullet as p
@@ -15,6 +16,25 @@ from ark.system.driver.robot_driver import SimRobotDriver, ControlType
 
 from ark.system.mujoco.mjcf_builder import MJCFBuilder, BodySpec
 from functools import cache
+
+
+def _is_in_subtree(model, body_id: int, root_id: int) -> bool:
+    """Return True if body_id is in the subtree rooted at root_id."""
+    # Fast check using body tree ranges (if available), else ascend parents
+    # MuJoCo doesn’t expose child ranges in Python, so ascend:
+    b = body_id
+    while b != -1:
+        if b == root_id:
+            return True
+        b = model.body_parentid[b]
+    return False
+
+def _joint_qpos_size(model, j: int) -> int:
+    t = model.jnt_type[j]
+    if t == mujoco.mjtJoint.mjJNT_FREE:  return 7
+    if t == mujoco.mjtJoint.mjJNT_BALL:  return 4
+    return 1  # hinge/slide
+
 
 def body_subtree(model, root_body_id):
     """Return a list of body IDs in the subtree rooted at root_body_id (incl. root)."""
@@ -219,7 +239,7 @@ class MujocoRobotDriver(SimRobotDriver):
 
         use_fixed_base = self.config.get("use_fixed_base", False)
         root_joint_name = f"{self.name}_root"
-        qpos = self.config.get("initial_configuration", None)
+        self.qpos = self.config.get("initial_configuration", None)
 
 
         print(f"Loading Mujoco robot '{self.name}' with MJCF path: {mjcf_path}")
@@ -231,58 +251,39 @@ class MujocoRobotDriver(SimRobotDriver):
             quat=orientation,  # base orientation in WXYZ quaternion
             fixed_base=use_fixed_base,
             root_joint_name=root_joint_name,
-            qpos=qpos,
+            qpos=self.qpos,
         )
-
-        # # Include the Franka Panda robot with an initial base pose and joint configuration
-        # builder.include_robot(
-        #     name="panda",
-        #     file="franka_emika_panda/panda.xml",
-        #     pos=[0.0, 0.0, 0.0],  # base position (x, y, z)
-        #     quat=[1, 0, 0, 0],     # base orientation in WXYZ Euler angles
-        #     fixed_base=True,
-        #     root_joint_name="panda_root",
-        #     qpos=[
-        #         0.0,
-        #         -0.6,
-        #         0.0,
-        #         -2.2,
-        #         0.0,
-        #         1.6,
-        #         0.8,
-        #         0.04,
-        #         0.04,
-        #     ],
-        # )
     
+    # expects: self.name (root body name), self.qpos (list/array of desired joint angles)
     def update_ids(self, model, data) -> None:
         self.model = model
-        self.data = data
+        self.data  = data
 
-        for i in range(model.njnt):
-            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
-            addr = model.jnt_qposadr[i]
-            print(f"Joint {i}: {name}, qpos index {addr}")
+        # --- Print all joints with their qpos indices (debug) ---
+        for j in range(model.njnt):
+            jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
+            adr   = model.jnt_qposadr[j]
+            print(f"Joint {j}: {jname}, qpos index {adr}")
 
+        # --- Find this robot's root body id ---
         self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
+        if self.id < 0:
+            raise ValueError(f"Body '{self.name}' not found in model.")
         print(f"Robot '{self.name}' ID: {self.id}")
 
-        # get all the joint names:
-        self.actuated_joints = {}
-        state = get_robot_state(self.model, self.data, self.id, as_dict=True)
-        for joint in state["per_joint"]:
-            joint_name = joint["name"]
-            self.actuated_joints[joint_name] = joint["id"]
-            
+        # --- Collect actuators that control joints inside this robot subtree ---
+        self.actuated_joints = {f"joint{i}": mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"actuator{i}")
+        for i in range(1,8)}
+        self.grip = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "actuator8")  # tendon
 
-        print(f"Actuated joints for robot '{self.name}': {self.actuated_joints}")
+        self.actuated_joints = {**self.actuated_joints, "gripper": self.grip}
+        for i,(name, j) in enumerate(self.actuated_joints.items()):
+            data.ctrl[j] = self.qpos[i]
 
-        joints = joints_for_body(model, self.id)
-        print("All joints under robot:")
-        for jid, name in joints:
-            s = joint_qpos_slice(model, jid)
-            acts = actuators_for_joint(model, jid)
-            print(f"  {jid:>3}  {name:<24} qpos[{s.start}:{s.stop}]  actuators={acts}")
+        # Gripper (per your ctrlrange 0..255): 0=open, 255=closed
+        data.ctrl[self.grip] = 180  # half-closed
+
+
 
     def check_torque_status(self) -> bool:
         raise NotImplementedError("MujocoRobotDriver.check_torque_status is not implemented yet.")
@@ -291,14 +292,22 @@ class MujocoRobotDriver(SimRobotDriver):
         raise NotImplementedError("MujocoRobotDriver.pass_joint_efforts is not implemented yet.")
 
     def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
-        raise NotImplementedError("MujocoRobotDriver.pass_joint_group_control_cmd is not implemented yet.")
+        print(f"Control mode: {control_mode}, cmd: {cmd}, {kwargs}")
+        print(len(self.qpos), len(self.actuated_joints))
+
+        vals = cmd.values()       # dict_values object
+        vals_list = list(vals)  # [1, 2, 3]
+
+        for i,(name, j) in enumerate(self.actuated_joints.items()):
+            self.data.ctrl[j] = vals_list[i]
+        # raise NotImplementedError("MujocoRobotDriver.pass_joint_group_control_cmd is not implemented yet.")
 
     def pass_joint_positions(self, positions: Dict[str, float]) -> Dict[str, float]:
         state = get_robot_state(self.model, self.data, self.id, as_dict=True)
         pos = {}
         for i,joint in enumerate(self.actuated_joints):
             pos[joint] = state["qpos"][i]
-        return pos
+        return pos 
 
     def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
         raise NotImplementedError("MujocoRobotDriver.pass_joint_velocities is not implemented yet.")
