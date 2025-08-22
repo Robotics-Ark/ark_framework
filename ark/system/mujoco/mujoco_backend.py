@@ -115,7 +115,6 @@ class MujocoBackend(SimulatorBackend):
             for obj_name, obj_config in self.global_config["objects"].items():
                 self.add_sim_component(obj_name, obj_config)
 
-        # TODO ADD robot loading here
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
                 self.add_robot(robot_name, robot_config)
@@ -153,7 +152,7 @@ class MujocoBackend(SimulatorBackend):
             if self.headless
             else "MujocoBackend initialized in GUI mode."
         )
-
+        
         for obj in self.object_ref:
             self.object_ref[obj].update_ids(self.model, self.data)
 
@@ -163,7 +162,7 @@ class MujocoBackend(SimulatorBackend):
         for robot in self.robot_ref:
             self.robot_ref[robot]._driver.update_ids(self.model, self.data)
             
-        self.reset_simulator()
+        
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )

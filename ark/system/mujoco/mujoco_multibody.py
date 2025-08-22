@@ -62,9 +62,9 @@ class MujocoMultiBody(SimComponent):
                 vis_opts = vis["visual_shape"]
                 print(f"Visual options: {vis_opts}, shape type: {vis_shape_type}")
 
-                # multiply halfExtents by 2 to get real size
+                # multiply halfExtents by 1 to get real size
                 if vis_shape_type == "box":
-                    extents_size = [s * 2 for s in vis_opts["halfExtents"]]
+                    extents_size = [s * 1 for s in vis_opts["halfExtents"]]
                 
                 if vis_shape_type == "sphere":
                     extents_size = [vis_opts["radius"]]

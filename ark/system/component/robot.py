@@ -127,11 +127,11 @@ class Robot(SimToRealComponent):
         if self.robot_config.get("urdf_path", None) and self.robot_config.get(
             "mjcf_path", None
         ):
-            log.error(
-                f"Both 'urdf_path' and 'mjcf_path' are provided for robot '{self.name}'. Please provide only one of them."
+            log.warning(
+                f"Both 'urdf_path' and 'mjcf_path' are provided for robot '{self.name}'. Defaulting to URDF."
             )
-            raise ValueError("Conflicting robot model paths provided.")
-        elif self.robot_config.get("urdf_path", None):
+        
+        if self.robot_config.get("urdf_path", None):
             class_path = self.robot_config.get("class_dir", None)
             urdf_path = self.robot_config["urdf_path"]
             if class_path is None:
