@@ -44,7 +44,7 @@ class MujocoMultiBody(SimComponent):
         global_config: Dict[str, Any] = None,
     ):
         super().__init__(name, global_config)
-        
+
         source_str = self.config["source"]
         source_type = getattr(SourceType, source_str.upper())
 
@@ -58,18 +58,19 @@ class MujocoMultiBody(SimComponent):
                 # map the type to mujoco shape
                 vis_shape_type = SHAPE_MAP[vis["shape_type"].upper()]
 
-                
                 vis_opts = vis["visual_shape"]
                 print(f"Visual options: {vis_opts}, shape type: {vis_shape_type}")
 
                 # multiply halfExtents by 1 to get real size
                 if vis_shape_type == "box":
                     extents_size = [s * 1 for s in vis_opts["halfExtents"]]
-                
+
                 if vis_shape_type == "sphere":
                     extents_size = [vis_opts["radius"]]
 
-                rgba = vis_opts.get("rgbaColor", [1, 1, 1, 1])  # default to white if not provided
+                rgba = vis_opts.get(
+                    "rgbaColor", [1, 1, 1, 1]
+                )  # default to white if not provided
             else:
                 raise ValueError(
                     "Visual configuration is required for primitive shapes."
@@ -81,11 +82,15 @@ class MujocoMultiBody(SimComponent):
                     "Collision shapes are not supported in MujocoMultiBody yet, it is defaulted to visual sizes"
                 )
 
-
             multi_body = self.config["multi_body"]
             base_position = self.config["base_position"]
             base_orientation = self.config["base_orientation"]
-            base_orientation = [base_orientation[1], base_orientation[2], base_orientation[3], base_orientation[0]] # swap orientation to be xyzw
+            base_orientation = [
+                base_orientation[1],
+                base_orientation[2],
+                base_orientation[3],
+                base_orientation[0],
+            ]  # swap orientation to be xyzw
 
             if multi_body["baseMass"] == 0:
                 free = False
@@ -93,7 +98,6 @@ class MujocoMultiBody(SimComponent):
             else:
                 free = True
                 mass = multi_body["baseMass"]
-
 
             client.load_object(
                 name=name,
@@ -103,9 +107,8 @@ class MujocoMultiBody(SimComponent):
                 quat=base_orientation,
                 rgba=rgba,
                 free=free,
-                mass=mass
+                mass=mass,
             )
-        
 
         # setup communication
         self.publisher_name = self.name + "/ground_truth/sim"
@@ -113,7 +116,6 @@ class MujocoMultiBody(SimComponent):
             self.state_publisher = self.component_channels_init(
                 {self.publisher_name: rigid_body_state_t}
             )
-
 
     def update_ids(self, model, data) -> None:
         self.model = model

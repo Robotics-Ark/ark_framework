@@ -130,7 +130,7 @@ class Robot(SimToRealComponent):
             log.warning(
                 f"Both 'urdf_path' and 'mjcf_path' are provided for robot '{self.name}'. Defaulting to URDF."
             )
-        
+
         if self.robot_config.get("urdf_path", None):
             class_path = self.robot_config.get("class_dir", None)
             urdf_path = self.robot_config["urdf_path"]
@@ -176,7 +176,6 @@ class Robot(SimToRealComponent):
             f"Robot '{self.name}' has the following elements (Total: {len(elements)}):"
         )
 
-       
         for i, joint in enumerate(elements):
             name = joint.get("name")
             print(name)
@@ -209,7 +208,9 @@ class Robot(SimToRealComponent):
                     joint_info["child Link"] = joint.find("child").get("link")
                 elif self.robot_config.get("mjcf_path", None):  # MJCF case
                     # Build a parent map once (ideally outside your joint loop for efficiency)
-                    parent_map = {child: parent for parent in root.iter() for child in parent}
+                    parent_map = {
+                        child: parent for parent in root.iter() for child in parent
+                    }
 
                     # Find the owning <body> of this joint (walk up until we hit a body)
                     body_el = joint
@@ -227,7 +228,7 @@ class Robot(SimToRealComponent):
                         parent_link = "__WORLD__"
 
                     joint_info["parent Link"] = parent_link
-                    joint_info["child Link"]  = child_link
+                    joint_info["child Link"] = child_link
 
                 # If joint has limits (revolute or prismatic joints), get the limits
                 if joint_info["type"] in ["revolute", "prismatic"]:
@@ -257,7 +258,7 @@ class Robot(SimToRealComponent):
                 else:
                     print(f"   Limits: {joint_info.get('limits', 'None')}")
                 print("-" * 40)  # Divider for each joint summary
-        except: 
+        except:
             log.error("Error prasing MJCF/URDF file: Using fallback joint_info")
 
         # check if joint group is defined:

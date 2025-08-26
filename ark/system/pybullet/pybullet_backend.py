@@ -393,6 +393,11 @@ class PyBulletBackend(SimulatorBackend):
         image = p.getCameraImage(
             width, height, viewMatrix=view_matrix, projectionMatrix=projection_matrix
         )
+        print(
+            f"width:{width}, height:{height}, viewMatrix:{view_matrix}, projectionMatrix:{projection_matrix}"
+        )
+        print("DEBUG")
+        print(f"DEBUG1: {type(image)}")
 
         # image[2] contains the color image (RGBA) as a numpy array
         rgba = image[2]
