@@ -98,9 +98,8 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 class MujocoBackend(SimulatorBackend):
 
     def initialize(self) -> None:
-        self.builder  = MJCFBuilder("ARK Mujoco").set_compiler(
-            angle="radian",
-            meshdir="ark_mujoco_assets"
+        self.builder = MJCFBuilder("ARK Mujoco").set_compiler(
+            angle="radian", meshdir="ark_mujoco_assets"
         )
 
         # ===== Set Gravity =====
@@ -108,7 +107,6 @@ class MujocoBackend(SimulatorBackend):
             "gravity", [0, 0, -9.81]
         )
         self.set_gravity(gravity)
-
 
         # ===== Set Objects =====
         if self.global_config.get("objects", None):
@@ -131,8 +129,10 @@ class MujocoBackend(SimulatorBackend):
         self.model = mujoco.MjModel.from_xml_string(xml_string)
         self.data = mujoco.MjData(self.model)
 
-        self.cam_id   = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, 'overview')
-        self.renderer = mujoco.Renderer(self.model, 100, 100) 
+        self.cam_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_CAMERA, "overview"
+        )
+        self.renderer = mujoco.Renderer(self.model, 100, 100)
 
         # SET UP THE PHYSICS SIMULATOR WITH GUI/DIRECT
         if (
@@ -152,7 +152,7 @@ class MujocoBackend(SimulatorBackend):
             if self.headless
             else "MujocoBackend initialized in GUI mode."
         )
-        
+
         for obj in self.object_ref:
             self.object_ref[obj].update_ids(self.model, self.data)
 
@@ -161,8 +161,7 @@ class MujocoBackend(SimulatorBackend):
 
         for robot in self.robot_ref:
             self.robot_ref[robot]._driver.update_ids(self.model, self.data)
-            
-        
+
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
@@ -183,7 +182,7 @@ class MujocoBackend(SimulatorBackend):
         self.data.qacc[:] = 0.0
         if self.model.nu > 0:
             self.data.ctrl[:] = 0.0
-        if self.model.na > 0:            # actuator internal states
+        if self.model.na > 0:  # actuator internal states
             self.data.act[:] = 0.0
 
         # Recompute derived quantities (xpos/xquat/contacts/etc.)
@@ -194,7 +193,7 @@ class MujocoBackend(SimulatorBackend):
         name: str,
         global_config: dict[str, Any],
     ) -> None:
-        
+
         class_path = Path(global_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
@@ -248,7 +247,7 @@ class MujocoBackend(SimulatorBackend):
         based on a PyBullet-like config.
         """
         print(f"Adding simulation component: {name} with config: {obj_config}")
-        
+
         sim_component = MujocoMultiBody(
             name=name, client=self.builder, global_config=self.global_config
         )

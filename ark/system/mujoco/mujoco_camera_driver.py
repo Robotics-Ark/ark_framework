@@ -55,9 +55,11 @@ class MujocoCameraDriver(CameraDriver):
         super().__init__(
             component_name, component_config, True
         )  # simulation is always True
-        
+
         self.name = component_name
-        self.parent = "__WORLD__" #HARDCODED FOR NOW: as all cameras are fixed to the world
+        self.parent = (
+            "__WORLD__"  # HARDCODED FOR NOW: as all cameras are fixed to the world
+        )
         self.width = component_config.get("width", 100)
         self.height = component_config.get("height", 100)
 
@@ -66,13 +68,24 @@ class MujocoCameraDriver(CameraDriver):
 
         if "quaternion" in sim_config:
             self.quaternion = sim_config.get("quaternion")
-            self.quaternion = [self.quaternion[3], self.quaternion[0], self.quaternion[1], self.quaternion[2]]
+            self.quaternion = [
+                self.quaternion[3],
+                self.quaternion[0],
+                self.quaternion[1],
+                self.quaternion[2],
+            ]
         else:
             self.quaternion = [1.0, 0.0, 0.0, 0.0]
-            
+
         self.position = sim_config.get("position", [0.0, 0.0, 1.5])
-        
-        client.load_camera(name=self.name, parent=self.parent, pos=self.position, quat=self.quaternion, fov=self.fov)
+
+        client.load_camera(
+            name=self.name,
+            parent=self.parent,
+            pos=self.position,
+            quat=self.quaternion,
+            fov=self.fov,
+        )
 
     def update_ids(self, model, data) -> None:
         self.model = model

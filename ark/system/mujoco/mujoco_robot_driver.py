@@ -29,10 +29,13 @@ def _is_in_subtree(model, body_id: int, root_id: int) -> bool:
         b = model.body_parentid[b]
     return False
 
+
 def _joint_qpos_size(model, j: int) -> int:
     t = model.jnt_type[j]
-    if t == mujoco.mjtJoint.mjJNT_FREE:  return 7
-    if t == mujoco.mjtJoint.mjJNT_BALL:  return 4
+    if t == mujoco.mjtJoint.mjJNT_FREE:
+        return 7
+    if t == mujoco.mjtJoint.mjJNT_BALL:
+        return 4
     return 1  # hinge/slide
 
 
@@ -51,6 +54,7 @@ def body_subtree(model, root_body_id):
                 stack.append(child)
     return descendants
 
+
 def joints_for_body(model, body_id):
     """Return all joint IDs (and names) attached to body_id and its descendants."""
     joint_ids = []
@@ -60,8 +64,10 @@ def joints_for_body(model, body_id):
         for k in range(count):
             jid = start + k
             joint_ids.append(jid)
-    return [(jid, mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid) or "") 
-            for jid in joint_ids]
+    return [
+        (jid, mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid) or "")
+        for jid in joint_ids
+    ]
 
 
 def joint_qpos_slice(model, joint_id):
@@ -121,11 +127,12 @@ def _joints_in_subtree(model, root_body_id):
     jids = []
     for b in _body_subtree(model, root_body_id):
         start = model.body_jntadr[b]
-        num   = model.body_jntnum[b]
+        num = model.body_jntnum[b]
         for k in range(num):
             jids.append(start + k)
     # stable order in generalized coordinates
     return sorted(jids, key=lambda j: model.jnt_qposadr[j])
+
 
 # --- main ---------------------------------------------------------------
 def get_robot_state(model, data, root_body_id, as_dict=True):
@@ -156,19 +163,22 @@ def get_robot_state(model, data, root_body_id, as_dict=True):
 
         # qpos slice
         qa = model.jnt_qposadr[j]
-        qpos = data.qpos[qa:qa+qpos_w] if qpos_w > 1 else np.array([data.qpos[qa]])
+        qpos = data.qpos[qa : qa + qpos_w] if qpos_w > 1 else np.array([data.qpos[qa]])
 
         # qvel/qacc slice (indexed by dof address)
         da = model.jnt_dofadr[j]
-        qvel = data.qvel[da:da+qvel_w] if qvel_w > 1 else np.array([data.qvel[da]])
-        qacc = data.qacc[da:da+qvel_w] if qvel_w > 1 else np.array([data.qacc[da]])
+        qvel = data.qvel[da : da + qvel_w] if qvel_w > 1 else np.array([data.qvel[da]])
+        qacc = data.qacc[da : da + qvel_w] if qvel_w > 1 else np.array([data.qacc[da]])
 
-        per_joint.append({
-            "id": j, "name": name,
-            "qpos": qpos.copy(),
-            "qvel": qvel.copy(),
-            "qacc": qacc.copy(),
-        })
+        per_joint.append(
+            {
+                "id": j,
+                "name": name,
+                "qpos": qpos.copy(),
+                "qvel": qvel.copy(),
+                "qacc": qacc.copy(),
+            }
+        )
         qpos_chunks.append(qpos)
         qvel_chunks.append(qvel)
         qacc_chunks.append(qacc)
@@ -221,7 +231,6 @@ class MujocoRobotDriver(SimRobotDriver):
             else:
                 mjcf_path = Path(mjcf_path)
 
-
             # Make the MJCF path absolute if it is not already
             if not mjcf_path.is_absolute():
                 mjcf_path = Path(self.config["class_dir"]) / mjcf_path
@@ -231,7 +240,7 @@ class MujocoRobotDriver(SimRobotDriver):
                 log.error(f"The URDF path '{mjcf_path}' does not exist.")
                 log.error(f"Full path: {mjcf_path.resolve()}")
                 return
-            
+
         position = self.config.get("base_position", [0.0, 0.0, 0.0])
         orientation = self.config.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
         # convert xyzw to wxyz
@@ -240,7 +249,6 @@ class MujocoRobotDriver(SimRobotDriver):
         use_fixed_base = self.config.get("use_fixed_base", False)
         root_joint_name = f"{self.name}_root"
         self.qpos = self.config.get("initial_configuration", None)
-
 
         print(f"Loading Mujoco robot '{self.name}' with MJCF path: {mjcf_path}")
 
@@ -253,16 +261,16 @@ class MujocoRobotDriver(SimRobotDriver):
             root_joint_name=root_joint_name,
             qpos=self.qpos,
         )
-    
+
     # expects: self.name (root body name), self.qpos (list/array of desired joint angles)
     def update_ids(self, model, data) -> None:
         self.model = model
-        self.data  = data
+        self.data = data
 
         # --- Print all joints with their qpos indices (debug) ---
         for j in range(model.njnt):
             jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
-            adr   = model.jnt_qposadr[j]
+            adr = model.jnt_qposadr[j]
             print(f"Joint {j}: {jname}, qpos index {adr}")
 
         # --- Find this robot's root body id ---
@@ -272,45 +280,59 @@ class MujocoRobotDriver(SimRobotDriver):
         print(f"Robot '{self.name}' ID: {self.id}")
 
         # --- Collect actuators that control joints inside this robot subtree ---
-        self.actuated_joints = {f"joint{i}": mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"actuator{i}")
-        for i in range(1,8)}
-        self.grip = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "actuator8")  # tendon
+        self.actuated_joints = {
+            f"joint{i}": mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"actuator{i}"
+            )
+            for i in range(1, 8)
+        }
+        self.grip = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_ACTUATOR, "actuator8"
+        )  # tendon
 
         self.actuated_joints = {**self.actuated_joints, "gripper": self.grip}
-        for i,(name, j) in enumerate(self.actuated_joints.items()):
+        for i, (name, j) in enumerate(self.actuated_joints.items()):
             data.ctrl[j] = self.qpos[i]
 
         # Gripper (per your ctrlrange 0..255): 0=open, 255=closed
         data.ctrl[self.grip] = 180  # half-closed
 
-
-
     def check_torque_status(self) -> bool:
-        raise NotImplementedError("MujocoRobotDriver.check_torque_status is not implemented yet.")
+        raise NotImplementedError(
+            "MujocoRobotDriver.check_torque_status is not implemented yet."
+        )
 
     def pass_joint_efforts(self, joints: List[str]) -> Dict[str, float]:
-        raise NotImplementedError("MujocoRobotDriver.pass_joint_efforts is not implemented yet.")
+        raise NotImplementedError(
+            "MujocoRobotDriver.pass_joint_efforts is not implemented yet."
+        )
 
-    def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
+    def pass_joint_group_control_cmd(
+        self, control_mode: str, cmd: Dict[str, float], **kwargs
+    ) -> None:
         print(f"Control mode: {control_mode}, cmd: {cmd}, {kwargs}")
         print(len(self.qpos), len(self.actuated_joints))
 
-        vals = cmd.values()       # dict_values object
+        vals = cmd.values()  # dict_values object
         vals_list = list(vals)  # [1, 2, 3]
 
-        for i,(name, j) in enumerate(self.actuated_joints.items()):
+        for i, (name, j) in enumerate(self.actuated_joints.items()):
             self.data.ctrl[j] = vals_list[i]
         # raise NotImplementedError("MujocoRobotDriver.pass_joint_group_control_cmd is not implemented yet.")
 
     def pass_joint_positions(self, positions: Dict[str, float]) -> Dict[str, float]:
         state = get_robot_state(self.model, self.data, self.id, as_dict=True)
         pos = {}
-        for i,joint in enumerate(self.actuated_joints):
+        for i, joint in enumerate(self.actuated_joints):
             pos[joint] = state["qpos"][i]
-        return pos 
+        return pos
 
     def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
-        raise NotImplementedError("MujocoRobotDriver.pass_joint_velocities is not implemented yet.")
-    
-    def sim_reset(self, base_pos: List[float], base_orn: List[float], init_pos: List[float]) -> None:
+        raise NotImplementedError(
+            "MujocoRobotDriver.pass_joint_velocities is not implemented yet."
+        )
+
+    def sim_reset(
+        self, base_pos: List[float], base_orn: List[float], init_pos: List[float]
+    ) -> None:
         raise NotImplementedError("MujocoRobotDriver.sim_reset is not implemented yet.")

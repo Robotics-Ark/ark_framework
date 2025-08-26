@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 # ----------------------------- Utilities -----------------------------
 
+
 def _attrs(el: ET.Element, **kwargs):
     """Set attributes on an XML element, converting lists/tuples to space-separated strings."""
     for k, v in kwargs.items():
@@ -24,7 +25,9 @@ def _attrs(el: ET.Element, **kwargs):
     return el
 
 
-def _euler_xyz_to_quat(ex: float, ey: float, ez: float, *, degrees: bool = True) -> List[float]:
+def _euler_xyz_to_quat(
+    ex: float, ey: float, ez: float, *, degrees: bool = True
+) -> List[float]:
     """Convert intrinsic XYZ Euler to quaternion [w, x, y, z]."""
     if degrees:
         ex, ey, ez = math.radians(ex), math.radians(ey), math.radians(ez)
@@ -40,6 +43,7 @@ def _euler_xyz_to_quat(ex: float, ey: float, ez: float, *, degrees: bool = True)
 
 # ------------------------------ Data ---------------------------------
 
+
 @dataclass
 class BodySpec:
     name: str
@@ -54,6 +58,7 @@ class BodySpec:
 
 
 # --------------------------- MJCF Builder ----------------------------
+
 
 class MJCFBuilder:
     """
@@ -99,7 +104,7 @@ class MJCFBuilder:
         self._bodies: Dict[str, ET.Element] = {"__WORLD__": self.worldbody}
 
         # Track joint order and body pose for keyframe synthesis
-        self._joint_order: List[Dict] = []     # each: {name, body, type, size}
+        self._joint_order: List[Dict] = []  # each: {name, body, type, size}
         self._body_pose: Dict[str, Dict] = {}  # body -> {pos:[3], quat:[4]}
 
         # Global defaults for make_spawn_keyframe (merged with per-call overrides)
@@ -129,7 +134,9 @@ class MJCFBuilder:
             self._materials[name] = kwargs
         return self
 
-    def add_mesh(self, name: str, file: Optional[str] = None, **kwargs) -> "MJCFBuilder":
+    def add_mesh(
+        self, name: str, file: Optional[str] = None, **kwargs
+    ) -> "MJCFBuilder":
         if name not in self._meshes:
             m = ET.SubElement(self.asset, "mesh")
             _attrs(m, name=name, file=file, **kwargs)
@@ -161,7 +168,7 @@ class MJCFBuilder:
         if quat is not None:
             q = quat
         elif euler is not None:
-            deg = (self.compiler.get("angle", "radian") == "degree")
+            deg = self.compiler.get("angle", "radian") == "degree"
             q = _euler_xyz_to_quat(*euler, degrees=deg)
         else:
             q = [1, 0, 0, 0]
@@ -193,12 +200,14 @@ class MJCFBuilder:
         _attrs(j, **kwargs)
 
         if jtype is not None:
-            self._joint_order.append({
-                "name": jname,
-                "body": body,
-                "type": jtype,
-                "size": self._joint_qpos_size(jtype),
-            })
+            self._joint_order.append(
+                {
+                    "name": jname,
+                    "body": body,
+                    "type": jtype,
+                    "size": self._joint_qpos_size(jtype),
+                }
+            )
         return self
 
     def add_site(self, body: str, **kwargs) -> "MJCFBuilder":
@@ -208,7 +217,9 @@ class MJCFBuilder:
         return self
 
     # ---------- Cameras ----------
-    def add_camera(self, parent: str = "__WORLD__", name: Optional[str] = None, **kwargs) -> "MJCFBuilder":
+    def add_camera(
+        self, parent: str = "__WORLD__", name: Optional[str] = None, **kwargs
+    ) -> "MJCFBuilder":
         p = self._bodies[parent]
         c = ET.SubElement(p, "camera")
         _attrs(c, name=name, **kwargs)
@@ -249,10 +260,19 @@ class MJCFBuilder:
         )
         return self
 
-    def load_robot_from_spec(self, root: BodySpec, parent: str = "__WORLD__") -> "MJCFBuilder":
+    def load_robot_from_spec(
+        self, root: BodySpec, parent: str = "__WORLD__"
+    ) -> "MJCFBuilder":
         """Recursively create a robot from a BodySpec tree."""
+
         def _recurse(spec: BodySpec, parent_body: str):
-            self.add_body(spec.name, parent=parent_body, pos=spec.pos, quat=spec.quat, euler=spec.euler)
+            self.add_body(
+                spec.name,
+                parent=parent_body,
+                pos=spec.pos,
+                quat=spec.quat,
+                euler=spec.euler,
+            )
             for j in spec.joints:
                 self.add_joint(spec.name, **j)
             for g in spec.geoms:
@@ -370,7 +390,14 @@ class MJCFBuilder:
         if qpos is not None:
             block_name = f"{name}/*"  # synthetic ID for packed internal qpos
             block_vals = [float(x) for x in qpos]
-            self._joint_order.append({"name": block_name, "body": name, "type": "packed", "size": len(block_vals)})
+            self._joint_order.append(
+                {
+                    "name": block_name,
+                    "body": name,
+                    "type": "packed",
+                    "size": len(block_vals),
+                }
+            )
             self._joint_defaults[block_name] = block_vals
 
         return self
@@ -445,9 +472,13 @@ class MJCFBuilder:
                 val = merged_defaults[jn]
                 # allow scalar for 1-dof
                 if len(val) == 1 and sz > 1:
-                    raise ValueError(f"Default for joint '{jn}' must have length {sz}, got 1")
+                    raise ValueError(
+                        f"Default for joint '{jn}' must have length {sz}, got 1"
+                    )
                 if len(val) != sz:
-                    raise ValueError(f"joint_defaults[{jn}] length {len(val)} != expected {sz}")
+                    raise ValueError(
+                        f"joint_defaults[{jn}] length {len(val)} != expected {sz}"
+                    )
                 qpos.extend(val)
                 continue
 
@@ -468,6 +499,7 @@ class MJCFBuilder:
     # ---------- Serialization ----------
     def to_string(self, pretty: bool = True) -> str:
         """Return the MJCF XML as a string."""
+
         def indent(elem, level=0):
             i = "\n" + level * "  "
             if len(elem):
@@ -484,10 +516,11 @@ class MJCFBuilder:
             indent(self.root)
         return ET.tostring(self.root, encoding="unicode")
 
-    
     def update_on_load(self, model):
         for robots in self.robots:
-            root_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "panda_root")
+            root_joint_id = mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_JOINT, "panda_root"
+            )
             pass
 
 
@@ -502,17 +535,18 @@ if __name__ == "__main__":
     )
 
     # Ground
-    builder.add_body("floor", pos=[0, 0, 0]) \
-           .add_geom("floor", type="plane", size=[10, 10, 0.1], rgba=[0.8, 0.8, 0.8, 1])
+    builder.add_body("floor", pos=[0, 0, 0]).add_geom(
+        "floor", type="plane", size=[10, 10, 0.1], rgba=[0.8, 0.8, 0.8, 1]
+    )
 
     # Include a Franka Panda, wrapped in a poseable body with a free root joint
     # Provide its internal joint list in the correct qpos order and initial joint angles.
     builder.include_robot(
         name="panda",
         file="franka_emika_panda/panda.xml",
-        pos=[0.3, -0.2, 0.0],           # initial XYZ
-        euler=[0, 0, 0],                # initial orientation (XYZ Euler)
-        fixed_base=False,               # add a free joint controlling base pose
+        pos=[0.3, -0.2, 0.0],  # initial XYZ
+        euler=[0, 0, 0],  # initial orientation (XYZ Euler)
+        fixed_base=False,  # add a free joint controlling base pose
         root_joint_name="panda_root",
         internal_joints=[
             # order MUST match the MuJoCo qpos order inside the included file
