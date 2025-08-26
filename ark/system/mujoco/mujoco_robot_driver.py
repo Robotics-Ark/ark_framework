@@ -10,164 +10,169 @@ from ark.tools.log import log
 from ark.system.driver.robot_driver import SimRobotDriver
 
 
-def body_subtree(model: mujoco.MjModel, root_body_id: int) -> List[int]:
-    """Return IDs of bodies in the subtree rooted at ``root_body_id``."""
-    descendants: List[int] = []
-    stack = [root_body_id]
-    visited = {root_body_id}
-    while stack:
-        current_id = stack.pop()
-        descendants.append(current_id)
-        for child in range(model.nbody):
-            if model.body_parentid[child] == current_id and child not in visited:
-                visited.add(child)
-                stack.append(child)
-    return descendants
-
-
-def joints_for_body(model: mujoco.MjModel, body_id: int) -> List[Tuple[int, str]]:
-    """Return ``(joint_id, joint_name)`` for ``body_id`` and its descendants."""
-    joint_ids: List[int] = []
-    for current_id in body_subtree(model, body_id):
-        start = model.body_jntadr[current_id]
-        count = model.body_jntnum[current_id]
-        for offset in range(count):
-            joint_ids.append(start + offset)
-    return [
-        (jid, mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid) or "")
-        for jid in joint_ids
-    ]
-
-
-def joint_qpos_slice(model: mujoco.MjModel, joint_id: int) -> slice:
-    """Return slice in ``data.qpos`` corresponding to ``joint_id``."""
-    address = model.jnt_qposadr[joint_id]
-    joint_type = model.jnt_type[joint_id]
-    if joint_type == mujoco.mjtJoint.mjJNT_FREE:
-        width = 7
-    elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
-        width = 4
-    else:
-        width = 1
-    return slice(address, address + width)
-
-
-def actuators_for_joint(model: mujoco.MjModel, joint_id: int) -> List[int]:
-    """Return actuator indices driving any degree of freedom of ``joint_id``."""
-    actuator_indices: List[int] = []
-    for actuator_index in range(model.nu):
-        dof = model.actuator_trnid[actuator_index][0]
-        if dof >= 0 and model.dof_jntid[dof] == joint_id:
-            actuator_indices.append(actuator_index)
-    return actuator_indices
-
-
-def _joint_widths(model: mujoco.MjModel, joint_index: int) -> Tuple[int, int]:
-    """Return ``(qpos_width, qvel_width)`` for ``joint_index``."""
-    joint_type = model.jnt_type[joint_index]
-    if joint_type == mujoco.mjtJoint.mjJNT_FREE:
-        return 7, 6
-    if joint_type == mujoco.mjtJoint.mjJNT_BALL:
-        return 4, 3
-    return 1, 1
-
-
-def _joints_in_subtree(model: mujoco.MjModel, root_body_id: int) -> List[int]:
-    """List joint IDs under the body subtree in ``qpos`` order."""
-    joint_ids: List[int] = []
-    for body_id in body_subtree(model, root_body_id):
-        start = model.body_jntadr[body_id]
-        num = model.body_jntnum[body_id]
-        for offset in range(num):
-            joint_ids.append(start + offset)
-    return sorted(joint_ids, key=lambda jid: model.jnt_qposadr[jid])
-
-
-def get_robot_state(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    root_body_id: int,
-    as_dict: bool = True,
-):
-    """Return joint positions, velocities and accelerations.
-
-    Parameters
-    ----------
-    model
-        MuJoCo model instance.
-    data
-        MuJoCo data instance.
-    root_body_id
-        Root body identifier for the robot.
-    as_dict
-        If ``True``, return a dictionary representation.
-
-    Returns
-    -------
-    dict | tuple
-        Either a dictionary with per-joint information or a tuple of
-        concatenated ``(qpos, qvel, qacc)`` arrays.
-    """
-    per_joint: List[Dict[str, Any]] = []
-    qpos_chunks: List[np.ndarray] = []
-    qvel_chunks: List[np.ndarray] = []
-    qacc_chunks: List[np.ndarray] = []
-
-    for joint_index in _joints_in_subtree(model, root_body_id):
-        name = (
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, joint_index)
-            or f"joint_{joint_index}"
-        )
-        qpos_w, qvel_w = _joint_widths(model, joint_index)
-
-        qpos_addr = model.jnt_qposadr[joint_index]
-        qpos = (
-            data.qpos[qpos_addr : qpos_addr + qpos_w]
-            if qpos_w > 1
-            else np.array([data.qpos[qpos_addr]])
-        )
-
-        dof_addr = model.jnt_dofadr[joint_index]
-        qvel = (
-            data.qvel[dof_addr : dof_addr + qvel_w]
-            if qvel_w > 1
-            else np.array([data.qvel[dof_addr]])
-        )
-        qacc = (
-            data.qacc[dof_addr : dof_addr + qvel_w]
-            if qvel_w > 1
-            else np.array([data.qacc[dof_addr]])
-        )
-
-        per_joint.append(
-            {
-                "id": joint_index,
-                "name": name,
-                "qpos": qpos.copy(),
-                "qvel": qvel.copy(),
-                "qacc": qacc.copy(),
-            }
-        )
-        qpos_chunks.append(qpos)
-        qvel_chunks.append(qvel)
-        qacc_chunks.append(qacc)
-
-    qpos_cat = np.concatenate(qpos_chunks) if qpos_chunks else np.array([])
-    qvel_cat = np.concatenate(qvel_chunks) if qvel_chunks else np.array([])
-    qacc_cat = np.concatenate(qacc_chunks) if qacc_chunks else np.array([])
-
-    if as_dict:
-        return {
-            "per_joint": per_joint,
-            "qpos": qpos_cat,
-            "qvel": qvel_cat,
-            "qacc": qacc_cat,
-        }
-    return qpos_cat, qvel_cat, qacc_cat
-
-
 class MujocoRobotDriver(SimRobotDriver):
     """Robot driver for MuJoCo simulations."""
+
+    @staticmethod
+    def body_subtree(model: mujoco.MjModel, root_body_id: int) -> List[int]:
+        """Return IDs of bodies in the subtree rooted at ``root_body_id``."""
+        descendants: List[int] = []
+        stack = [root_body_id]
+        visited = {root_body_id}
+        while stack:
+            current_id = stack.pop()
+            descendants.append(current_id)
+            for child in range(model.nbody):
+                if model.body_parentid[child] == current_id and child not in visited:
+                    visited.add(child)
+                    stack.append(child)
+        return descendants
+
+    @classmethod
+    def joints_for_body(
+        cls, model: mujoco.MjModel, body_id: int
+    ) -> List[Tuple[int, str]]:
+        """Return ``(joint_id, joint_name)`` for ``body_id`` and its descendants."""
+        joint_ids: List[int] = []
+        for current_id in cls.body_subtree(model, body_id):
+            start = model.body_jntadr[current_id]
+            count = model.body_jntnum[current_id]
+            for offset in range(count):
+                joint_ids.append(start + offset)
+        return [
+            (jid, mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid) or "")
+            for jid in joint_ids
+        ]
+
+    @staticmethod
+    def joint_qpos_slice(model: mujoco.MjModel, joint_id: int) -> slice:
+        """Return slice in ``data.qpos`` corresponding to ``joint_id``."""
+        address = model.jnt_qposadr[joint_id]
+        joint_type = model.jnt_type[joint_id]
+        if joint_type == mujoco.mjtJoint.mjJNT_FREE:
+            width = 7
+        elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
+            width = 4
+        else:
+            width = 1
+        return slice(address, address + width)
+
+    @staticmethod
+    def actuators_for_joint(model: mujoco.MjModel, joint_id: int) -> List[int]:
+        """Return actuator indices driving any degree of freedom of ``joint_id``."""
+        actuator_indices: List[int] = []
+        for actuator_index in range(model.nu):
+            dof = model.actuator_trnid[actuator_index][0]
+            if dof >= 0 and model.dof_jntid[dof] == joint_id:
+                actuator_indices.append(actuator_index)
+        return actuator_indices
+
+    @staticmethod
+    def _joint_widths(model: mujoco.MjModel, joint_index: int) -> Tuple[int, int]:
+        """Return ``(qpos_width, qvel_width)`` for ``joint_index``."""
+        joint_type = model.jnt_type[joint_index]
+        if joint_type == mujoco.mjtJoint.mjJNT_FREE:
+            return 7, 6
+        if joint_type == mujoco.mjtJoint.mjJNT_BALL:
+            return 4, 3
+        return 1, 1
+
+    @classmethod
+    def _joints_in_subtree(
+        cls, model: mujoco.MjModel, root_body_id: int
+    ) -> List[int]:
+        """List joint IDs under the body subtree in ``qpos`` order."""
+        joint_ids: List[int] = []
+        for body_id in cls.body_subtree(model, root_body_id):
+            start = model.body_jntadr[body_id]
+            num = model.body_jntnum[body_id]
+            for offset in range(num):
+                joint_ids.append(start + offset)
+        return sorted(joint_ids, key=lambda jid: model.jnt_qposadr[jid])
+
+    @classmethod
+    def get_robot_state(
+        cls,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        root_body_id: int,
+        as_dict: bool = True,
+    ):
+        """Return joint positions, velocities and accelerations.
+
+        Parameters
+        ----------
+        model
+            MuJoCo model instance.
+        data
+            MuJoCo data instance.
+        root_body_id
+            Root body identifier for the robot.
+        as_dict
+            If ``True``, return a dictionary representation.
+
+        Returns
+        -------
+        dict | tuple
+            Either a dictionary with per-joint information or a tuple of
+            concatenated ``(qpos, qvel, qacc)`` arrays.
+        """
+        per_joint: List[Dict[str, Any]] = []
+        qpos_chunks: List[np.ndarray] = []
+        qvel_chunks: List[np.ndarray] = []
+        qacc_chunks: List[np.ndarray] = []
+
+        for joint_index in cls._joints_in_subtree(model, root_body_id):
+            name = (
+                mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, joint_index)
+                or f"joint_{joint_index}"
+            )
+            qpos_w, qvel_w = cls._joint_widths(model, joint_index)
+
+            qpos_addr = model.jnt_qposadr[joint_index]
+            qpos = (
+                data.qpos[qpos_addr : qpos_addr + qpos_w]
+                if qpos_w > 1
+                else np.array([data.qpos[qpos_addr]])
+            )
+
+            dof_addr = model.jnt_dofadr[joint_index]
+            qvel = (
+                data.qvel[dof_addr : dof_addr + qvel_w]
+                if qvel_w > 1
+                else np.array([data.qvel[dof_addr]])
+            )
+            qacc = (
+                data.qacc[dof_addr : dof_addr + qvel_w]
+                if qvel_w > 1
+                else np.array([data.qacc[dof_addr]])
+            )
+
+            per_joint.append(
+                {
+                    "id": joint_index,
+                    "name": name,
+                    "qpos": qpos.copy(),
+                    "qvel": qvel.copy(),
+                    "qacc": qacc.copy(),
+                }
+            )
+            qpos_chunks.append(qpos)
+            qvel_chunks.append(qvel)
+            qacc_chunks.append(qacc)
+
+        qpos_cat = np.concatenate(qpos_chunks) if qpos_chunks else np.array([])
+        qvel_cat = np.concatenate(qvel_chunks) if qvel_chunks else np.array([])
+        qacc_cat = np.concatenate(qacc_chunks) if qacc_chunks else np.array([])
+
+        if as_dict:
+            return {
+                "per_joint": per_joint,
+                "qpos": qpos_cat,
+                "qvel": qvel_cat,
+                "qacc": qacc_cat,
+            }
+        return qpos_cat, qvel_cat, qacc_cat
 
     def __init__(
         self,
@@ -258,7 +263,7 @@ class MujocoRobotDriver(SimRobotDriver):
 
     def pass_joint_positions(self, positions: Dict[str, float]) -> Dict[str, float]:
         """Return current joint positions for all actuated joints."""
-        state = get_robot_state(self.model, self.data, self.body_id, as_dict=True)
+        state = self.get_robot_state(self.model, self.data, self.body_id, as_dict=True)
         positions_dict: Dict[str, float] = {}
         for i, joint in enumerate(self.actuated_joints):
             positions_dict[joint] = state["qpos"][i]
