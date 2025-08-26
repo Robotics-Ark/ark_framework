@@ -1,20 +1,14 @@
 """@file mujoco_multibody.py
-@brief Abstractions for multi-body objects in MuJoCo.
-"""
+@brief Abstractions for multi-body objects in MuJoCo."""
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Union
 from enum import Enum
-from pathlib import Path
-import yaml
-import os
+from typing import Any, Dict, Optional
+
+import mujoco
 
 from ark.tools.log import log
 from ark.system.component.sim_component import SimComponent
-from arktypes import flag_t, rigid_body_state_t
-import mujoco
-
-import textwrap
+from arktypes import rigid_body_state_t
 
 
 class SourceType(Enum):
@@ -36,13 +30,21 @@ SHAPE_MAP = {
 
 
 class MujocoMultiBody(SimComponent):
+    """MuJoCo multi-body simulation component."""
 
     def __init__(
         self,
         name: str,
-        client: Any,
-        global_config: Dict[str, Any] = None,
-    ):
+        builder: Any,
+        global_config: Dict[str, Any] | None = None,
+    ) -> None:
+        """!Initialize a multi-body object.
+
+        @param name Name of the component.
+        @param builder MJCF builder used to generate the object.
+        @param global_config Global configuration dictionary.
+        @return ``None``
+        """
         super().__init__(name, global_config)
 
         source_str = self.config["source"]
@@ -53,36 +55,31 @@ class MujocoMultiBody(SimComponent):
                 "Loading from URDF is not implemented for MujocoMultiBody."
             )
         elif source_type == SourceType.PRIMITIVE:
-            vis = self.config.get("visual")
-            if vis:
-                # map the type to mujoco shape
-                vis_shape_type = SHAPE_MAP[vis["shape_type"].upper()]
+            visual_config = self.config.get("visual")
+            if visual_config:
+                visual_shape_type = SHAPE_MAP[visual_config["shape_type"].upper()]
 
-                vis_opts = vis["visual_shape"]
-                print(f"Visual options: {vis_opts}, shape type: {vis_shape_type}")
+                visual_shape = visual_config["visual_shape"]
 
-                # multiply halfExtents by 1 to get real size
-                if vis_shape_type == "box":
-                    extents_size = [s * 1 for s in vis_opts["halfExtents"]]
+                if visual_shape_type == "box":
+                    extents_size = [s * 1 for s in visual_shape["halfExtents"]]
 
-                if vis_shape_type == "sphere":
-                    extents_size = [vis_opts["radius"]]
+                if visual_shape_type == "sphere":
+                    extents_size = [visual_shape["radius"]]
 
-                rgba = vis_opts.get(
-                    "rgbaColor", [1, 1, 1, 1]
-                )  # default to white if not provided
+                rgba = visual_shape.get("rgbaColor", [1, 1, 1, 1])
             else:
                 raise ValueError(
                     "Visual configuration is required for primitive shapes."
                 )
 
-            col = self.config.get("collision")
-            if col:
+            collision_config = self.config.get("collision")
+            if collision_config:
                 log.warning(
                     "Collision shapes are not supported in MujocoMultiBody yet, it is defaulted to visual sizes"
                 )
 
-            multi_body = self.config["multi_body"]
+            multibody_config = self.config["multi_body"]
             base_position = self.config["base_position"]
             base_orientation = self.config["base_orientation"]
             base_orientation = [
@@ -90,18 +87,18 @@ class MujocoMultiBody(SimComponent):
                 base_orientation[2],
                 base_orientation[3],
                 base_orientation[0],
-            ]  # swap orientation to be xyzw
+            ]
 
-            if multi_body["baseMass"] == 0:
+            if multibody_config["baseMass"] == 0:
                 free = False
-                mass = 0.001  # default small mass for fixed base
+                mass = 0.001
             else:
                 free = True
-                mass = multi_body["baseMass"]
+                mass = multibody_config["baseMass"]
 
-            client.load_object(
+            builder.load_object(
                 name=name,
-                shape=vis_shape_type,
+                shape=visual_shape_type,
                 size=extents_size,
                 pos=base_position,
                 quat=base_orientation,
@@ -110,50 +107,56 @@ class MujocoMultiBody(SimComponent):
                 mass=mass,
             )
 
-        # setup communication
         self.publisher_name = self.name + "/ground_truth/sim"
         if self.publish_ground_truth:
             self.state_publisher = self.component_channels_init(
                 {self.publisher_name: rigid_body_state_t}
             )
 
-    def update_ids(self, model, data) -> None:
+    def update_ids(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """!Update internal identifiers from MuJoCo.
+
+        @param model MuJoCo model instance.
+        @param data MuJoCo data instance.
+        @return ``None``
+        """
         self.model = model
         self.data = data
-        self.id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
+        self.body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.name)
 
     def get_xml_config(self) -> tuple[str, str, Optional[str]]:
+        """!Return the XML configuration snippet for this object."""
         return self.xml_config
 
-    def pack_data(self, data_dict) -> dict[str, Any]:
-        """Pack object data into the message format."""
+    def pack_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """!Pack object data into the message format."""
         msg = rigid_body_state_t()
-        msg.name = data_dict["name"]
-        msg.position = data_dict["position"]
-        msg.orientation = data_dict["orientation"]
-        msg.lin_velocity = data_dict["lin_velocity"]
-        msg.ang_velocity = data_dict["ang_velocity"]
+        msg.name = data["name"]
+        msg.position = data["position"]
+        msg.orientation = data["orientation"]
+        msg.lin_velocity = data["lin_velocity"]
+        msg.ang_velocity = data["ang_velocity"]
         return {self.publisher_name: msg}
 
     def get_object_data(self) -> Any:
-        """Retrieve the current state of the simulated object."""
-        pos = self.data.xpos[self.id]  # shape (3,) [x, y, z]
-        orn = self.data.xquat[self.id]  # shape (4,) [w, x, y, z]
-        # convert to xyzw
-        orn = [orn[1], orn[2], orn[3], orn[0]]
+        """!Retrieve the current state of the simulated object."""
+        position = self.data.xpos[self.body_id]
+        orientation = self.data.xquat[self.body_id]
+        orientation = [orientation[1], orientation[2], orientation[3], orientation[0]]
 
-        vel = self.data.cvel[self.id]  # shape (3,) [vx, vy, vz, wx, wy, wz]
-        lin_vel = vel[:3]  # linear velocity
-        ang_vel = vel[3:]  # angular velocity
+        velocity = self.data.cvel[self.body_id]
+        linear_velocity = velocity[:3]
+        angular_velocity = velocity[3:]
         return {
             "name": self.name,
-            "position": pos.tolist(),
-            "orientation": orn,
-            "lin_velocity": lin_vel.tolist(),
-            "ang_velocity": ang_vel.tolist(),
+            "position": position.tolist(),
+            "orientation": orientation,
+            "lin_velocity": linear_velocity.tolist(),
+            "ang_velocity": angular_velocity.tolist(),
         }
 
-    def reset_component(self, channel, msg) -> None:
+    def reset_component(self, channel: str, msg: Any) -> None:
+        """!Reset the component (not implemented)."""
         raise NotImplementedError(
             "Resetting components is not implemented for MujocoMultiBody."
         )
