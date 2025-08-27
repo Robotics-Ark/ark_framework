@@ -78,9 +78,7 @@ class MujocoRobotDriver(SimRobotDriver):
         return 1, 1
 
     @classmethod
-    def _joints_in_subtree(
-        cls, model: mujoco.MjModel, root_body_id: int
-    ) -> List[int]:
+    def _joints_in_subtree(cls, model: mujoco.MjModel, root_body_id: int) -> List[int]:
         """List joint IDs under the body subtree in ``qpos`` order."""
         joint_ids: List[int] = []
         for body_id in cls.body_subtree(model, root_body_id):
@@ -188,7 +186,11 @@ class MujocoRobotDriver(SimRobotDriver):
         class_path = self.config.get("class_path")
         mjcf_path = self.config.get("mjcf_path")
         if mjcf_path:
-            mjcf_path = Path(class_path) / mjcf_path if class_path is not None else Path(mjcf_path)
+            mjcf_path = (
+                Path(class_path) / mjcf_path
+                if class_path is not None
+                else Path(mjcf_path)
+            )
 
             if not mjcf_path.is_absolute():
                 mjcf_path = Path(self.config["class_dir"]) / mjcf_path
@@ -280,4 +282,3 @@ class MujocoRobotDriver(SimRobotDriver):
     ) -> None:
         """Reset the robot simulation (not implemented)."""
         raise NotImplementedError("MujocoRobotDriver.sim_reset is not implemented yet.")
-
