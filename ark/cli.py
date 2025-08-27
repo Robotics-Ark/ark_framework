@@ -12,6 +12,7 @@ app = typer.Typer()
 app.add_typer(registry.app, name="registry")
 app.add_typer(ark_graph.app, name="graph")
 app.add_typer(launcher.app, name="launcher")
+
 # Network inspection utilities
 app.add_typer(network.node, name="node")
 app.add_typer(network.channel, name="channel")

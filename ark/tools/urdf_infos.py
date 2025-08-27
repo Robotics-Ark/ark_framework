@@ -2,8 +2,7 @@ import xml.etree.ElementTree as ET
 
 
 # Copy the path to your robots urdf file here
-path = "/nfs/rlteam/sarthakdas/ark/examples/robots/viper_300s/vx300s.urdf"
-
+path = ""
 
 # Load your URDF file
 tree = ET.parse(path)
