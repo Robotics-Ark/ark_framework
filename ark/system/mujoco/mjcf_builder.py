@@ -24,15 +24,6 @@ def _attrs(el: ET.Element, **kwargs):
     return el
 
 
-def _euler_xyz_to_quat(
-    ex: float, ey: float, ez: float, *, degrees: bool = True
-) -> list[float]:
-    """Convert intrinsic XYZ Euler to quaternion [w, x, y, z]."""
-    r = R.from_euler('xyz', [ex, ey, ez], degrees=degrees)
-    q = r.as_quat()  # returns [x, y, z, w]
-    # Convert to [w, x, y, z]
-    return [q[3], q[0], q[1], q[2]]
-
 
 # ------------------------------ Data ---------------------------------
 
@@ -138,7 +129,7 @@ class MJCFBuilder:
 
     # ---------- Bodies / Robots / Objects ----------
     @staticmethod
-    def _joint_qpos_size(self, jtype: Optional[str]) -> int:
+    def _joint_qpos_size(jtype: Optional[str]) -> int:
         if jtype == "free":
             return 7
         if jtype == "ball":
@@ -163,7 +154,8 @@ class MJCFBuilder:
             q = quat
         elif euler is not None:
             deg = self.compiler.get("angle", "radian") == "degree"
-            q = _euler_xyz_to_quat(*euler, degrees=deg)
+            r = R.from_euler('xyz', euler, degrees=deg)
+            q = r.as_quat(scalar_first=True).tolist()
         else:
             q = [1, 0, 0, 0]
         p = pos if pos is not None else [0, 0, 0]

@@ -54,9 +54,7 @@ class MultiChannelPublisher(MultiCommHandler):
                     )
 
                 publisher.publish(message)
-                # log.info(f"Message Published for channel '{channel_name}'.")
             except:
                 log.warning(
                     f"Error Occured when publishing on channel '{channel_name}'."
                 )
-                pass
