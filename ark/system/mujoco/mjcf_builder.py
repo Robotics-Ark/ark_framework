@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
 import copy
 import math
 import os
+from scipy.spatial.transform import Rotation as R
 import xml.etree.ElementTree as ET
-
 
 # ----------------------------- Utilities -----------------------------
 
@@ -27,18 +26,12 @@ def _attrs(el: ET.Element, **kwargs):
 
 def _euler_xyz_to_quat(
     ex: float, ey: float, ez: float, *, degrees: bool = True
-) -> List[float]:
+) -> list[float]:
     """Convert intrinsic XYZ Euler to quaternion [w, x, y, z]."""
-    if degrees:
-        ex, ey, ez = math.radians(ex), math.radians(ey), math.radians(ez)
-    cx, cy, cz = math.cos(ex / 2), math.cos(ey / 2), math.cos(ez / 2)
-    sx, sy, sz = math.sin(ex / 2), math.sin(ey / 2), math.sin(ez / 2)
-    # intrinsic XYZ
-    w = cx * cy * cz - sx * sy * sz
-    x = sx * cy * cz + cx * sy * sz
-    y = cx * sy * cz - sx * cy * sz
-    z = cx * cy * sz + sx * sy * cz
-    return [w, x, y, z]
+    r = R.from_euler('xyz', [ex, ey, ez], degrees=degrees)
+    q = r.as_quat()  # returns [x, y, z, w]
+    # Convert to [w, x, y, z]
+    return [q[3], q[0], q[1], q[2]]
 
 
 # ------------------------------ Data ---------------------------------
@@ -144,6 +137,7 @@ class MJCFBuilder:
         return self
 
     # ---------- Bodies / Robots / Objects ----------
+    @staticmethod
     def _joint_qpos_size(self, jtype: Optional[str]) -> int:
         if jtype == "free":
             return 7
@@ -327,7 +321,6 @@ class MJCFBuilder:
             Flat list of the robot's *internal* generalized coordinates (excluding any free base).
             Stored as a single packed block for make_spawn_keyframe().
         """
-        import os, copy, xml.etree.ElementTree as ET
 
         # Ensure internal bookkeeping exists
         if not hasattr(self, "_joint_order"):
@@ -590,7 +583,3 @@ if __name__ == "__main__":
 
     xml_text = builder.to_string(pretty=True)
     print(xml_text)
-
-    # Runtime usage (outside this file):
-    # key_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "spawn")
-    # mujoco.mj_resetDataKeyframe(model, data, key_id)

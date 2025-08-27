@@ -1,10 +1,7 @@
-"""@file mujoco_backend.py
-@brief Backend implementation for running simulations in MuJoCo."""
-
 import importlib.util
 import sys, ast, os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import mujoco
 import mujoco.viewer
@@ -42,13 +39,16 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
     with open(file_path, "r", encoding="utf-8") as file:
         tree = ast.parse(file.read(), filename=file_path)
+
     # for imports
     module_dir = os.path.dirname(file_path)
     sys.path.insert(0, module_dir)
+
     # Extract class names from the AST
     class_names = [
         node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
     ]
+
     # check if Sensor_Drivers is in the class_names
     if "Drivers" in class_names:
         # Load the module dynamically
@@ -142,7 +142,7 @@ class MujocoBackend(SimulatorBackend):
             self.robot_ref[robot_name]._driver.update_ids(self.model, self.data)
 
         self.timestep = 1 / self.global_config["simulator"]["config"].get(
-            "sim_frequency", 240.0
+            "sim_frequency", 500.0
         )
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
@@ -261,7 +261,7 @@ class MujocoBackend(SimulatorBackend):
 
     def remove(self, name: str) -> None:
         """!Remove a component from the simulation."""
-        pass
+        raise NotImplementedError("Mujoco does not support removing objects once loaded into XML.")
 
     def step(self) -> None:
         """!Step the simulator forward by one time step."""

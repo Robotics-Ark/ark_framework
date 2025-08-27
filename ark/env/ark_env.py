@@ -219,7 +219,6 @@ class ArkEnv(Env, InstanceNode, ABC):
             request.n = len(q_init)
             request.q_init = q_init
 
-        # elif name in [sensor["name"] for sensor in self.global_config["sensors"]]:
         elif name in self.global_config["sensors"]:
             log.error(f"Can't reset a sensor (called for {name}).")
 
@@ -357,9 +356,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         @return Dictionary with component names as keys and their configurations
                 as values.
         """
-        # { "name" : { ... } },
-        #   "name" : { ... } }
-        section_config = {}
+        section_config: Dict[str, Any] = {}
 
         for item in cfg.get(section_name, []):
             if isinstance(item, dict):  # If it's an inline configuration

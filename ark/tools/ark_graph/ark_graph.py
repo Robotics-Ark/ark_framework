@@ -518,7 +518,7 @@ def parse_args():
         argparse.Namespace: The parsed arguments with `registry_host` and `registry_port`.
     """
     parser = argparse.ArgumentParser(
-        description="ArkGraph - Visualize your NOAHR network."
+        description="ArkGraph"
     )
     parser.add_argument(
         "--registry_host",

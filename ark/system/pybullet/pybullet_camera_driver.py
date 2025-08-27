@@ -92,15 +92,6 @@ class BulletCameraDriver(CameraDriver):
             # for visualization of the camera
             view_matrix_np = np.array(view_matrix).reshape(4, 4).T
             self.current_position = -view_matrix_np[:3, :3].T @ view_matrix_np[:3, 3]
-            # Hack
-            # R_test = np.array([-0.4480736, -0.7992300, -0.4005763, 0.0000000, -0.4480736, 0.8939967, -0.8939967, 0.4005763, 0.2007700]).reshape(3, 3)
-            # R = np.eye(4)
-            # R[:3, :3] = R_test
-            # Ry = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-            # T_curr = np.eye(4)
-            # T_curr[:3, :3] = view_matrix_np[:3, :3].T
-            # T_curr[:3, 3] = self.current_position
-            # T = T_curr @ R
             self.current_orientation = self.client.getQuaternionFromEuler(
                 rotation_matrix_to_euler(view_matrix_np[:3, :3].T)
             )
@@ -170,7 +161,6 @@ class BulletCameraDriver(CameraDriver):
             self.current_orientation = orientation
 
         if self.visualize:
-            # TODO urdf
             visual_shape = self.client.createVisualShape(
                 shapeType=p.GEOM_BOX,
                 halfExtents=[0.005, 0.02, 0.01],  # x,y,z
