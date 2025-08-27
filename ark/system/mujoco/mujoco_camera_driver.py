@@ -1,6 +1,3 @@
-"""@file mujoco_camera_driver.py
-@brief Camera driver for the MuJoCo simulator."""
-
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -9,19 +6,6 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from ark.system.driver.sensor_driver import CameraDriver
-
-
-def rotation_matrix_to_euler(rotation_matrix: np.ndarray) -> List[float]:
-    """!Convert a rotation matrix to Euler angles.
-
-    @param rotation_matrix ``3x3`` rotation matrix in row-major order.
-    @return Euler angles ``[roll, pitch, yaw]`` in degrees.
-    @rtype List[float]
-    """
-    rotation = R.from_matrix(rotation_matrix)
-    euler_angles = rotation.as_euler("xyz", degrees=True)
-    return euler_angles
-
 
 class CameraType(Enum):
     """Supported camera models."""

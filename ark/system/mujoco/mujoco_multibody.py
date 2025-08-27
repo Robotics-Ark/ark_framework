@@ -1,8 +1,5 @@
-"""@file mujoco_multibody.py
-@brief Abstractions for multi-body objects in MuJoCo."""
-
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import mujoco
 
@@ -36,7 +33,7 @@ class MujocoMultiBody(SimComponent):
         self,
         name: str,
         builder: Any,
-        global_config: Dict[str, Any] | None = None,
+        global_config: dict[str, Any] | None = None,
     ) -> None:
         """!Initialize a multi-body object.
 

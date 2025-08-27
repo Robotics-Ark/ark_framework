@@ -282,29 +282,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# def parse_args():
-#     """Parse command-line arguments."""
-#     parser = argparse.ArgumentParser(description="Registry Server")
-#     parser.add_argument("--registry_host", type=str, default="127.0.0.1", help="The host address for the registry server.")
-#     parser.add_argument("--registry_port", type=int, default=1234, help="The port for the registry server.")
-#     return parser.parse_args()
-
-
-# @app.command()
-# def start_server(registry_host: str = "127.0.0.1", registry_port: int = 1234):
-#     """Starts the Registry server with specified host and port."""
-#     server = Registry(registry_host=registry_host, registry_port=registry_port)
-#     server.start()
-
-# def main():
-#     """Entry point for the CLI."""
-#     app()  # Initializes the Typer CLI
-
-# if __name__ == "__main__":
-#     main()
-# # Parse command-line arguments
-# args = parse_args()
-
-# # Create Registry server instance with command-line arguments
-# server = Registry(registry_host=args.registry_host, registry_port=args.registry_port)
-# server.start()

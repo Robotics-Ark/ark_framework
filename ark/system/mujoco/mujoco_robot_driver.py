@@ -1,7 +1,5 @@
-"""Robot driver handling MuJoCo specific commands."""
-
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -14,9 +12,9 @@ class MujocoRobotDriver(SimRobotDriver):
     """Robot driver for MuJoCo simulations."""
 
     @staticmethod
-    def body_subtree(model: mujoco.MjModel, root_body_id: int) -> List[int]:
+    def body_subtree(model: mujoco.MjModel, root_body_id: int) -> list[int]:
         """Return IDs of bodies in the subtree rooted at ``root_body_id``."""
-        descendants: List[int] = []
+        descendants: list[int] = []
         stack = [root_body_id]
         visited = {root_body_id}
         while stack:
@@ -31,9 +29,9 @@ class MujocoRobotDriver(SimRobotDriver):
     @classmethod
     def joints_for_body(
         cls, model: mujoco.MjModel, body_id: int
-    ) -> List[Tuple[int, str]]:
+    ) -> list[tuple[int, str]]:
         """Return ``(joint_id, joint_name)`` for ``body_id`` and its descendants."""
-        joint_ids: List[int] = []
+        joint_ids: list[int] = []
         for current_id in cls.body_subtree(model, body_id):
             start = model.body_jntadr[current_id]
             count = model.body_jntnum[current_id]
@@ -58,9 +56,9 @@ class MujocoRobotDriver(SimRobotDriver):
         return slice(address, address + width)
 
     @staticmethod
-    def actuators_for_joint(model: mujoco.MjModel, joint_id: int) -> List[int]:
+    def actuators_for_joint(model: mujoco.MjModel, joint_id: int) -> list[int]:
         """Return actuator indices driving any degree of freedom of ``joint_id``."""
-        actuator_indices: List[int] = []
+        actuator_indices: list[int] = []
         for actuator_index in range(model.nu):
             dof = model.actuator_trnid[actuator_index][0]
             if dof >= 0 and model.dof_jntid[dof] == joint_id:
@@ -68,8 +66,8 @@ class MujocoRobotDriver(SimRobotDriver):
         return actuator_indices
 
     @staticmethod
-    def _joint_widths(model: mujoco.MjModel, joint_index: int) -> Tuple[int, int]:
-        """Return ``(qpos_width, qvel_width)`` for ``joint_index``."""
+    def _joint_widths(model: mujoco.MjModel, joint_index: int) -> tuple[int, int]:
+        """Return ``(<qpos_width, qvel_width)`` for ``joint_index``."""
         joint_type = model.jnt_type[joint_index]
         if joint_type == mujoco.mjtJoint.mjJNT_FREE:
             return 7, 6
@@ -78,9 +76,9 @@ class MujocoRobotDriver(SimRobotDriver):
         return 1, 1
 
     @classmethod
-    def _joints_in_subtree(cls, model: mujoco.MjModel, root_body_id: int) -> List[int]:
+    def _joints_in_subtree(cls, model: mujoco.MjModel, root_body_id: int) -> list[int]:
         """List joint IDs under the body subtree in ``qpos`` order."""
-        joint_ids: List[int] = []
+        joint_ids: list[int] = []
         for body_id in cls.body_subtree(model, root_body_id):
             start = model.body_jntadr[body_id]
             num = model.body_jntnum[body_id]
@@ -94,7 +92,6 @@ class MujocoRobotDriver(SimRobotDriver):
         model: mujoco.MjModel,
         data: mujoco.MjData,
         root_body_id: int,
-        as_dict: bool = True,
     ):
         """Return joint positions, velocities and accelerations.
 
@@ -163,14 +160,12 @@ class MujocoRobotDriver(SimRobotDriver):
         qvel_cat = np.concatenate(qvel_chunks) if qvel_chunks else np.array([])
         qacc_cat = np.concatenate(qacc_chunks) if qacc_chunks else np.array([])
 
-        if as_dict:
-            return {
-                "per_joint": per_joint,
-                "qpos": qpos_cat,
-                "qvel": qvel_cat,
-                "qacc": qacc_cat,
-            }
-        return qpos_cat, qvel_cat, qacc_cat
+        return {
+            "per_joint": per_joint,
+            "qpos": qpos_cat,
+            "qvel": qvel_cat,
+            "qacc": qacc_cat,
+        }
 
     def __init__(
         self,
