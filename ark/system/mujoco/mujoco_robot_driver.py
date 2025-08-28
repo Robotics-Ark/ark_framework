@@ -112,10 +112,10 @@ class MujocoRobotDriver(SimRobotDriver):
             Either a dictionary with per-joint information or a tuple of
             concatenated ``(qpos, qvel, qacc)`` arrays.
         """
-        per_joint: List[Dict[str, Any]] = []
-        qpos_chunks: List[np.ndarray] = []
-        qvel_chunks: List[np.ndarray] = []
-        qacc_chunks: List[np.ndarray] = []
+        per_joint: list[dict[str, Any]] = []
+        qpos_chunks: list[np.ndarray] = []
+        qvel_chunks: list[np.ndarray] = []
+        qacc_chunks: list[np.ndarray] = []
 
         for joint_index in cls._joints_in_subtree(model, root_body_id):
             name = (
@@ -170,7 +170,7 @@ class MujocoRobotDriver(SimRobotDriver):
     def __init__(
         self,
         component_name: str,
-        component_config: Dict[str, Any] | None = None,
+        component_config: dict[str, Any] | None = None,
         builder: Any | None = None,
     ) -> None:
         """Create a robot driver for MuJoCo."""
@@ -245,35 +245,35 @@ class MujocoRobotDriver(SimRobotDriver):
             "MujocoRobotDriver.check_torque_status is not implemented yet."
         )
 
-    def pass_joint_efforts(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_efforts(self, joints: list[str]) -> dict[str, float]:
         """Retrieve joint efforts (not implemented)."""
         raise NotImplementedError(
             "MujocoRobotDriver.pass_joint_efforts is not implemented yet."
         )
 
     def pass_joint_group_control_cmd(
-        self, control_mode: str, cmd: Dict[str, float], **kwargs
+        self, control_mode: str, cmd: dict[str, float], **kwargs
     ) -> None:
         """Send a group control command to the robot."""
         for value, actuator_id in zip(cmd.values(), self.actuated_joints.values()):
             self.data.ctrl[actuator_id] = value
 
-    def pass_joint_positions(self, positions: Dict[str, float]) -> Dict[str, float]:
+    def pass_joint_positions(self, positions: dict[str, float]) -> dict[str, float]:
         """Return current joint positions for all actuated joints."""
-        state = self.get_robot_state(self.model, self.data, self.body_id, as_dict=True)
-        positions_dict: Dict[str, float] = {}
+        state = self.get_robot_state(self.model, self.data, self.body_id)
+        positions_dict: dict[str, float] = {}
         for i, joint in enumerate(self.actuated_joints):
             positions_dict[joint] = state["qpos"][i]
         return positions_dict
 
-    def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_velocities(self, joints: list[str]) -> dict[str, float]:
         """Return joint velocities (not implemented)."""
         raise NotImplementedError(
             "MujocoRobotDriver.pass_joint_velocities is not implemented yet."
         )
 
     def sim_reset(
-        self, base_pos: List[float], base_orn: List[float], init_pos: List[float]
+        self, base_pos: list[float], base_orn: list[float], init_pos: list[float]
     ) -> None:
         """Reset the robot simulation (not implemented)."""
         raise NotImplementedError("MujocoRobotDriver.sim_reset is not implemented yet.")
