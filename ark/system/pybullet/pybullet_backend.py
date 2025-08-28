@@ -21,7 +21,6 @@ from ark.system.pybullet.pybullet_multibody import PyBulletMultiBody
 from arktypes import *
 
 
-
 def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     """!Load a class from ``path``.
 
@@ -48,7 +47,9 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     module_dir = os.path.dirname(file_path)
     sys.path.insert(0, module_dir)
     # Extract class names from the AST
-    class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    class_names = [
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    ]
     # check if Sensor_Drivers is in the class_names
     if "Drivers" in class_names:
         # Load the module dynamically
@@ -66,10 +67,10 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     # Retrieve the class from the module (has to be list of one)
     class_ = getattr(module, class_names[0])
 
-
     if len(class_names) != 1:
-        raise ValueError(f"Expected exactly two class definition in {file_path}, but found {len(class_names)}.")
-
+        raise ValueError(
+            f"Expected exactly two class definition in {file_path}, but found {len(class_names)}."
+        )
 
     # Load the module dynamically
     spec = importlib.util.spec_from_file_location(class_name, file_path)
@@ -83,8 +84,6 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
     # Return the class
     return class_, drivers
-
-
 
 
 class PyBulletBackend(SimulatorBackend):
@@ -107,10 +106,14 @@ class PyBulletBackend(SimulatorBackend):
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # Render images from Pybullet and save
-        self.save_render_config = self.global_config["simulator"].get("save_render", None)
+        self.save_render_config = self.global_config["simulator"].get(
+            "save_render", None
+        )
         if self.save_render_config is not None:
             self._rendered_time = -1.0
-            self.save_path = Path(self.save_render_config.get("save_path", "output/save_render"))
+            self.save_path = Path(
+                self.save_render_config.get("save_path", "output/save_render")
+            )
             self.save_path.mkdir(parents=True, exist_ok=True)
 
             # Remove existing files
@@ -125,49 +128,55 @@ class PyBulletBackend(SimulatorBackend):
                 "look_at": [0, 0, 1.0],
                 "distance": 3,
                 "azimuth": 0,
-                "elevation": 0
+                "elevation": 0,
             }
             default_intrinsics = {
                 "width": 640,
                 "height": 480,
                 "field_of_view": 60,
                 "near_plane": 0.1,
-                "far_plane": 100.0
+                "far_plane": 100.0,
             }
             self.save_interval = self.save_render_config.get("save_interval", 1 / 30)
             self.overwrite_file = self.save_render_config.get("overwrite_file", False)
-            self.extrinsics = self.save_render_config.get("extrinsics", default_extrinsics)
-            self.intrinsics = self.save_render_config.get("intrinsics", default_intrinsics)
+            self.extrinsics = self.save_render_config.get(
+                "extrinsics", default_extrinsics
+            )
+            self.intrinsics = self.save_render_config.get(
+                "intrinsics", default_intrinsics
+            )
 
-        for additional_urdf_dir in self.global_config["simulator"]['config'].get("urdf_dirs", []):
+        for additional_urdf_dir in self.global_config["simulator"]["config"].get(
+            "urdf_dirs", []
+        ):
             self.client.setAdditionalSearchPath(additional_urdf_dir)
 
-        gravity = self.global_config["simulator"]['config'].get("gravity", [0, 0, -9.81])
+        gravity = self.global_config["simulator"]["config"].get(
+            "gravity", [0, 0, -9.81]
+        )
         self.set_gravity(gravity)
 
-        timestep = 1 / self.global_config["simulator"]['config'].get("sim_frequency", 240.0)
+        timestep = 1 / self.global_config["simulator"]["config"].get(
+            "sim_frequency", 240.0
+        )
         self.set_time_step(timestep)
 
         # Setup robots
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
-                self.add_robot(robot_name,
-                            robot_config)
+                self.add_robot(robot_name, robot_config)
 
         # Setup objects
         if self.global_config.get("objects", None):
             for obj_name, obj_config in self.global_config["objects"].items():
-                self.add_sim_component(obj_name,
-                                    obj_config)
+                self.add_sim_component(obj_name, obj_config)
 
         # Sensors have to be set up last, as e.g. cameras might need
         # a parent to attach to
         if self.global_config.get("sensors", None):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
-                self.add_sensor(sensor_name,
-                                sensor_config)
+                self.add_sensor(sensor_name, sensor_config)
         self.ready = True
-
 
     def is_ready(self) -> bool:
         """!Check whether the backend has finished initialization.
@@ -177,7 +186,6 @@ class PyBulletBackend(SimulatorBackend):
         @rtype bool
         """
         return self.ready
-
 
     def _connect_pybullet(self, config: dict[str, Any]):
         """!Create and return the Bullet client.
@@ -198,14 +206,12 @@ class PyBulletBackend(SimulatorBackend):
         connection_mode = getattr(p, connection_mode_str)
         return BulletClient(connection_mode, **kwargs)
 
-
     def set_gravity(self, gravity: tuple[float]) -> None:
         """!Set the world gravity.
 
         @param gravity Tuple ``(gx, gy, gz)`` specifying gravity in m/s^2.
         """
         self.client.setGravity(gravity[0], gravity[1], gravity[2])
-
 
     def set_time_step(self, time_step: float) -> None:
         """!Set the simulation timestep.
@@ -215,14 +221,11 @@ class PyBulletBackend(SimulatorBackend):
         self.client.setTimeStep(time_step)
         self._time_step = time_step
 
-
     ##########################################################
     ####            ROBOTS, SENSORS AND OBJECTS           ####
     ##########################################################
 
-    def add_robot(self,
-                  name: str,
-                  robot_config: Dict[str, Any]):
+    def add_robot(self, name: str, robot_config: Dict[str, Any]):
         """!Instantiate and register a robot in the simulation.
 
         @param name Identifier for the robot.
@@ -233,33 +236,27 @@ class PyBulletBackend(SimulatorBackend):
             class_path = class_path.parent
         RobotClass, DriverClass = import_class_from_directory(class_path)
         DriverClass = DriverClass.value
-        driver = DriverClass(name,
-                             robot_config,
-                             self.client)
-        robot = RobotClass(name = name,
-                           global_config = self.global_config,
-                           driver = driver)
+        driver = DriverClass(name, robot_config, self.client)
+        robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
 
         self.robot_ref[name] = robot
 
-    def add_sim_component(self,
-                          name: str,
-                          obj_config: Dict[str, Any],
-                          ) -> None:
+    def add_sim_component(
+        self,
+        name: str,
+        obj_config: Dict[str, Any],
+    ) -> None:
         """!Add a generic simulated object.
 
         @param name Name of the object.
         @param obj_config Object specific configuration dictionary.
         """
-        sim_component = PyBulletMultiBody(name=name,
-                                          client=self.client,
-                                          global_config=self.global_config)
+        sim_component = PyBulletMultiBody(
+            name=name, client=self.client, global_config=self.global_config
+        )
         self.object_ref[name] = sim_component
 
-    def add_sensor(self,
-                   name: str,
-                   sensor_config: Dict[str, Any]
-                   ) -> None:
+    def add_sensor(self, name: str, sensor_config: Dict[str, Any]) -> None:
         """!Instantiate and register a sensor.
 
         @param name Name of the sensor component.
@@ -278,20 +275,28 @@ class PyBulletBackend(SimulatorBackend):
 
             print(self.global_config["objects"].keys())
             # search through robots and objects to find attach link if needed
-            if sensor_config["sim_config"]["attach"]["parent_name"] in self.global_config["robots"].keys():
-                attached_body_id = self.robot_ref[sensor_config["sim_config"]["attach"]["parent_name"]]._driver.ref_body_id
-            elif sensor_config["sim_config"]["attach"]["parent_name"] in self.global_config["objects"].keys():
-                attached_body_id = self.object_ref[sensor_config["sim_config"]["attach"]["parent_name"]].ref_body_id
+            if (
+                sensor_config["sim_config"]["attach"]["parent_name"]
+                in self.global_config["robots"].keys()
+            ):
+                attached_body_id = self.robot_ref[
+                    sensor_config["sim_config"]["attach"]["parent_name"]
+                ]._driver.ref_body_id
+            elif (
+                sensor_config["sim_config"]["attach"]["parent_name"]
+                in self.global_config["objects"].keys()
+            ):
+                attached_body_id = self.object_ref[
+                    sensor_config["sim_config"]["attach"]["parent_name"]
+                ].ref_body_id
             else:
                 log.error(f"Parent to attach sensor " + name + " to does not exist !")
-        driver = DriverClass(name,
-                             sensor_config,
-                             attached_body_id,
-                             self.client)
-        sensor = SensorClass(name = name,
-                             driver = driver,
-                             global_config = self.global_config,
-                             )
+        driver = DriverClass(name, sensor_config, attached_body_id, self.client)
+        sensor = SensorClass(
+            name=name,
+            driver=driver,
+            global_config=self.global_config,
+        )
 
         self.sensor_ref[name] = sensor
 
@@ -313,7 +318,6 @@ class PyBulletBackend(SimulatorBackend):
             log.warning("Could not remove " + name + ", it does not exist.")
             return
         log.ok("Deleted " + name + " !")
-
 
     #######################################
     ####          SIMULATION           ####
@@ -368,10 +372,10 @@ class PyBulletBackend(SimulatorBackend):
         y = look_at[1] + distance * math.sin(azimuth)
         z = look_at[2] + self.extrinsics["elevation"]
 
-        view_matrix =p.computeViewMatrix(
+        view_matrix = p.computeViewMatrix(
             cameraEyePosition=[x, y, z],
             cameraTargetPosition=look_at,
-            cameraUpVector=[0, 0, 1]
+            cameraUpVector=[0, 0, 1],
         )
 
         # Calculate intrinsic matrix
@@ -382,11 +386,18 @@ class PyBulletBackend(SimulatorBackend):
             fov=self.intrinsics["field_of_view"],
             aspect=aspect,
             nearVal=self.intrinsics["near_plane"],
-            farVal=self.intrinsics["far_plane"]
+            farVal=self.intrinsics["far_plane"],
         )
 
         # Render the image
-        image = p.getCameraImage(width, height, viewMatrix=view_matrix, projectionMatrix=projection_matrix)
+        image = p.getCameraImage(
+            width, height, viewMatrix=view_matrix, projectionMatrix=projection_matrix
+        )
+        print(
+            f"width:{width}, height:{height}, viewMatrix:{view_matrix}, projectionMatrix:{projection_matrix}"
+        )
+        print("DEBUG")
+        print(f"DEBUG1: {type(image)}")
 
         # image[2] contains the color image (RGBA) as a numpy array
         rgba = image[2]

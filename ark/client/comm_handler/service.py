@@ -1,4 +1,3 @@
-
 import socket
 import struct
 import threading
@@ -8,6 +7,7 @@ import json
 import time
 from ark.tools.log import log
 from typing import Any
+
 
 class Service(CommHandler):
     def __init__(
@@ -20,7 +20,7 @@ class Service(CommHandler):
         registry_port: int,
         host: str = None,
         port: int = None,
-        is_default = False
+        is_default=False,
     ):
         """!
         Initialize the service.
@@ -59,7 +59,7 @@ class Service(CommHandler):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0)
         try:
-            s.connect(('10.254.254.254', 1))  # Connect to a non-local address
+            s.connect(("10.254.254.254", 1))  # Connect to a non-local address
             local_ip = s.getsockname()[0]
         except Exception:
             local_ip = "0.0.0.0"  # If it fails, use a fallback IP
@@ -91,18 +91,20 @@ class Service(CommHandler):
         }
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-               
+
                 s.connect((self.registry_host, self.registry_port))
                 encoded_req = json.dumps(registration).encode("utf-8")
-                
+
                 s.sendall(struct.pack("!I", len(encoded_req)))
-           
+
                 s.sendall(encoded_req)
                 # Receive response
                 raw_resp_len = self._recvall(s, 4)
 
                 if not raw_resp_len:
-                    log.error("Service: Failed to receive registration response length.")
+                    log.error(
+                        "Service: Failed to receive registration response length."
+                    )
                     return False
                 resp_len = struct.unpack("!I", raw_resp_len)[0]
                 data = self._recvall(s, resp_len)
@@ -115,11 +117,13 @@ class Service(CommHandler):
                         f"Service: Successfully registered '{self.service_name}' with registry."
                     )
                 else:
-                    log.error(f"Service: Registration failed - {response.get('message')}")
+                    log.error(
+                        f"Service: Registration failed - {response.get('message')}"
+                    )
                     return False
         except Exception as e:
             # log.error(f"Service: Error registering with registry - {e}")
-            return 
+            return
         return True
 
     def _serve(self):
@@ -133,11 +137,11 @@ class Service(CommHandler):
                 try:
                     s.settimeout(1.0)
                     conn, addr = s.accept()
-                
+
                 except socket.timeout:
                     continue
                 with conn:
-            
+
                     try:
                         # Receive message length
                         raw_msglen = self._recvall(conn, 4)
@@ -145,7 +149,7 @@ class Service(CommHandler):
                             print("Service: No message length received.")
                             continue
                         msglen = struct.unpack("!I", raw_msglen)[0]
-                        
+
                         # Receive the actual message
                         data = self._recvall(conn, msglen)
                         if not data:
@@ -153,12 +157,12 @@ class Service(CommHandler):
                             continue
                         # Decode the request
                         request = self.req_type.decode(data)
-                        
+
                         # Process the request
                         response = self.callback(self.service_name, request)
                         # Encode the response
                         encoded_resp = response.encode()
-                        
+
                         # Send the length of the response first
                         conn.sendall(struct.pack("!I", len(encoded_resp)))
                         # Then send the actual response
@@ -184,17 +188,17 @@ class Service(CommHandler):
 
     def __repr__(self):
         """
-        Returns a string representation of the communication handler, including 
+        Returns a string representation of the communication handler, including
         the channel name and the types of messages it handles.
 
         The string is formatted as:
         "channel_name[request_type, response_type]".
 
-        @return: A string representation of the handler, formatted as 
+        @return: A string representation of the handler, formatted as
                 "channel_name[request_type,response_type]".
         """
         return f"{self.service_name}[{self.req_type},{self.resp_type}]"
-    
+
     def restart(self):
         """!
         Restart the service communication handlers.
@@ -230,33 +234,43 @@ class Service(CommHandler):
                 encoded_req = json.dumps(deregistration).encode("utf-8")
                 s.sendall(struct.pack("!I", len(encoded_req)))
                 s.sendall(encoded_req)
-                log.info(f"Service: Sending deregistration request for '{self.service_name}'.")
+                log.info(
+                    f"Service: Sending deregistration request for '{self.service_name}'."
+                )
 
                 # Receive response length
                 raw_resp_len = self._recvall(s, 4)
                 if not raw_resp_len:
-                    log.error("Service: Failed to receive deregistration response length.")
+                    log.error(
+                        "Service: Failed to receive deregistration response length."
+                    )
                     return False
                 resp_len = struct.unpack("!I", raw_resp_len)[0]
 
                 # Receive the actual response data
                 data = self._recvall(s, resp_len)
                 if not data:
-                    log.error("Service: Failed to receive deregistration response data.")
+                    log.error(
+                        "Service: Failed to receive deregistration response data."
+                    )
                     return False
 
                 # Parse the response
                 response = json.loads(data.decode("utf-8"))
                 if response.get("status") == "OK":
-                    log.info(f"Service: Successfully deregistered '{self.service_name}' from registry.")
+                    log.info(
+                        f"Service: Successfully deregistered '{self.service_name}' from registry."
+                    )
                     return True
                 else:
-                    log.error(f"Service: Deregistration failed - {response.get('message')}")
+                    log.error(
+                        f"Service: Deregistration failed - {response.get('message')}"
+                    )
                     return False
         except Exception as e:
             log.error(f"Service: Error deregistering from registry - {e}")
             return False
-        
+
     def get_info(self):
         """!
         Return a dictionary describing this service instance.
@@ -268,7 +282,7 @@ class Service(CommHandler):
             "service_port": self.port,
             "registry_host": self.registry_host,
             "registry_port": self.registry_port,
-            "request_type": self.req_type.__name__, 
+            "request_type": self.req_type.__name__,
             "response_type": self.resp_type.__name__,
             "default_service": self.is_default_service,
         }
@@ -276,30 +290,40 @@ class Service(CommHandler):
         return info
 
 
-def send_service_request(registry_host, registry_port, service_name: str, request: object, response_type: type, timeout: int = 1) -> Any:
-        """!
-        Send a request to a service discovered from a registry.
+def send_service_request(
+    registry_host,
+    registry_port,
+    service_name: str,
+    request: object,
+    response_type: type,
+    timeout: int = 1,
+) -> Any:
+    """!
+    Send a request to a service discovered from a registry.
 
-        @param registry_host: Host address of the service registry.
-        @param registry_port: Port of the service registry.
-        @param service_name: Name of the service to discover.
-        @param request: Request object to send.
-        @param response_type: Expected response type.
-        @param timeout: Timeout in seconds.
-        @return: The response from the service.
-        """
-        # TODO timeout addition
-        try:
-            # Discover the host and port of the service from the registry
-            host, port = __discover_service(registry_host, registry_port, service_name)
-            # Call the discovered service with the provided request
-            response = __call_service(host, port, request, response_type)
-            return response
-        except Exception as e:
-            log.error(f"Client Error: {e}")
-        pass
+    @param registry_host: Host address of the service registry.
+    @param registry_port: Port of the service registry.
+    @param service_name: Name of the service to discover.
+    @param request: Request object to send.
+    @param response_type: Expected response type.
+    @param timeout: Timeout in seconds.
+    @return: The response from the service.
+    """
+    # TODO timeout addition
+    try:
+        # Discover the host and port of the service from the registry
+        host, port = __discover_service(registry_host, registry_port, service_name)
+        # Call the discovered service with the provided request
+        response = __call_service(host, port, request, response_type)
+        return response
+    except Exception as e:
+        log.error(f"Client Error: {e}")
+    pass
 
-def __call_service(service_host: str, service_port: int, request, response_type: type) -> Any:
+
+def __call_service(
+    service_host: str, service_port: int, request, response_type: type
+) -> Any:
     """!
     Call a specific service with the given request and return the response.
 
@@ -313,13 +337,13 @@ def __call_service(service_host: str, service_port: int, request, response_type:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # Connect to the service
         s.connect((service_host, service_port))
-        
+
         # Encode the request into bytes
         encoded_req = request.encode()
 
         # Send the length of the request first
         s.sendall(struct.pack("!I", len(encoded_req)))
-        
+
         # Then send the actual request data
         s.sendall(encoded_req)
 
@@ -328,15 +352,16 @@ def __call_service(service_host: str, service_port: int, request, response_type:
         if not raw_resp_len:
             raise RuntimeError("Client: Failed to receive response length.")
         resp_len = struct.unpack("!I", raw_resp_len)[0]
-        
+
         # Receive the actual response data
         data = __recvall(s, resp_len)
         if not data:
             raise RuntimeError("Client: Failed to receive response data.")
-        
+
         # Decode the response into the specified response type
         response = response_type.decode(data)
         return response
+
 
 def __recvall(conn: socket.socket, n: int) -> bytes:
     """!
@@ -355,6 +380,7 @@ def __recvall(conn: socket.socket, n: int) -> bytes:
         data.extend(packet)
     return bytes(data)
 
+
 def __discover_service(registry_host: str, registry_port: int, service_name: str):
     """!
     Discover the host and port of a service by querying the registry.
@@ -370,16 +396,16 @@ def __discover_service(registry_host: str, registry_port: int, service_name: str
         # Create a socket connection to the registry
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((registry_host, registry_port))
-            
+
             # Encode the discovery request to send it over the socket
             encoded_req = json.dumps(discovery_request).encode("utf-8")
-            
+
             # Send the length of the request first
             s.sendall(struct.pack("!I", len(encoded_req)))
-            
+
             # Send the actual discovery request
             s.sendall(encoded_req)
-            
+
             # Receive the length of the response (first 4 bytes)
             raw_resp_len = __recvall(s, 4)
             if not raw_resp_len:
@@ -387,15 +413,15 @@ def __discover_service(registry_host: str, registry_port: int, service_name: str
                     "Client: Failed to receive discovery response length."
                 )
             resp_len = struct.unpack("!I", raw_resp_len)[0]
-            
+
             # Receive the actual response data
             data = __recvall(s, resp_len)
             if not data:
                 raise RuntimeError("Client: Failed to receive discovery response data.")
-            
+
             # Decode the response
             response = json.loads(data.decode("utf-8"))
-            
+
             # If the service was successfully discovered, return the host and port
             if response.get("status") == "OK":
                 host = response.get("host")

@@ -1,4 +1,3 @@
-
 import time
 from lcm import LCM
 from ark.tools.log import log
@@ -41,7 +40,6 @@ class Subscriber(CommHandler):
         self._callback_args: list[object] = callback_args
         self.comm_type = "Subscriber"
         self.subscribe()
-        
 
     def subscriber_callback(self, channel_name: str, data: bytes) -> None:
         """!
@@ -77,7 +75,6 @@ class Subscriber(CommHandler):
         """
         self.subscribe()
         self.active = True
-        
 
     def suspend(self) -> None:
         """!
@@ -98,6 +95,6 @@ class Subscriber(CommHandler):
             "comms_type": "Subscriber",
             "channel_name": self.channel_name,
             "channel_type": self.channel_type.__name__,
-            "channel_status": self.active
+            "channel_status": self.active,
         }
         return info
