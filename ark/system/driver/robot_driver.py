@@ -1,4 +1,3 @@
-
 """! Robot driver base classes.
 
 This module defines abstract interfaces for robot drivers used by the ARK
@@ -33,11 +32,12 @@ class RobotDriver(ComponentDriver):
     backend system.
     """
 
-    def __init__(self,
-                 component_name: str,
-                 component_config: Dict[str, Any] = None,
-                 sim: bool = True,
-                 ) -> None:
+    def __init__(
+        self,
+        component_name: str,
+        component_config: Dict[str, Any] = None,
+        sim: bool = True,
+    ) -> None:
         """! Construct the driver.
 
         @param component_name Name of the robot component.
@@ -45,9 +45,9 @@ class RobotDriver(ComponentDriver):
         @param sim True if the driver interfaces with a simulator.
         """
 
-        super().__init__(component_name=component_name,
-                         component_config=component_config,
-                         sim=sim)
+        super().__init__(
+            component_name=component_name, component_config=component_config, sim=sim
+        )
 
     #####################
     ##    get infos    ##
@@ -97,7 +97,9 @@ class RobotDriver(ComponentDriver):
     #####################
 
     @abstractmethod
-    def pass_joint_group_control_cmd(self, control_mode: str, cmd: Dict[str, float], **kwargs) -> None:
+    def pass_joint_group_control_cmd(
+        self, control_mode: str, cmd: Dict[str, float], **kwargs
+    ) -> None:
         """! Send a control command to a group of joints.
 
         @param control_mode One of :class:`ControlType` specifying the command type.
@@ -108,15 +110,15 @@ class RobotDriver(ComponentDriver):
         pass
 
 
-
 class SimRobotDriver(RobotDriver, ABC):
     """! Base class for drivers controlling simulated robots."""
 
-    def __init__(self,
-                 component_name: str,
-                 component_config: Dict[str, Any] = None,
-                 sim: bool = True,
-                 ) -> None:
+    def __init__(
+        self,
+        component_name: str,
+        component_config: Dict[str, Any] = None,
+        sim: bool = True,
+    ) -> None:
         """! Initialize the simulation driver.
 
         @param component_name Name of the robot component.
@@ -127,10 +129,9 @@ class SimRobotDriver(RobotDriver, ABC):
         super().__init__(component_name, component_config, True)
 
     @abstractmethod
-    def sim_reset(self,
-                  base_pos : List[float],
-                  base_orn : List[float],
-                  init_pos : List[float]) -> None:
+    def sim_reset(
+        self, base_pos: List[float], base_orn: List[float], init_pos: List[float]
+    ) -> None:
         """! Reset the robot's state in the simulator."""
 
         ...

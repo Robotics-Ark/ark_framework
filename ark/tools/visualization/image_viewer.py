@@ -1,4 +1,3 @@
-
 from ark.client.comm_infrastructure.base_node import BaseNode, main
 from arktypes import image_t
 from arktypes.utils import unpack
@@ -16,6 +15,7 @@ num_channels = {
 
 app = typer.Typer()
 
+
 class ImageViewNode(BaseNode):
 
     def __init__(self, channel_name: str = "image/sim", image_type: str = "image"):
@@ -26,6 +26,7 @@ class ImageViewNode(BaseNode):
         if image_type == "rgbd":
             try:
                 from arktypes import rgbd_t
+
                 msg_type = rgbd_t
                 self.image_type = "rgbd"
                 self.create_subscriber(channel_name, rgbd_t, self._display_image)
@@ -52,7 +53,7 @@ class ImageViewNode(BaseNode):
     def _display_image(self, channel_name: str, t, msg: image_t):
         print(f"Received message on channel {channel_name} at time {t}")
         if self.image_type == "rgbd":
-            image,depth = unpack.rgbd(msg)
+            image, depth = unpack.rgbd(msg)
         elif self.image_type == "depth":
             image = unpack.image(msg)
         elif self.image_type == "image":
@@ -72,20 +73,21 @@ class ImageViewNode(BaseNode):
         if depth is not None:
             if isinstance(depth, np.ndarray):
                 # Display depth image
-                depth_display = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                depth_display = cv2.normalize(
+                    depth, None, 0, 255, cv2.NORM_MINMAX
+                ).astype(np.uint8)
                 cv2.imshow(f"{self.channel_name}_depth", depth_display)
-        
+
         cv2.waitKey(1)
 
     def kill_node(self):
         cv2.destroyAllWindows()
         super().kill_node()
 
+
 @app.command()
 def start(
-    channel: str = typer.Option(
-        "image/sim", help="Channel to listen to"
-    ),
+    channel: str = typer.Option("image/sim", help="Channel to listen to"),
     image_type: str = typer.Option(
         "image",
         help="Type of image message: image, depth, or rgbd",
@@ -94,9 +96,10 @@ def start(
     """Start the image viewer node."""
     main(ImageViewNode, channel, image_type)
 
+
 def cli_main():
     app()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     cli_main()
-    
