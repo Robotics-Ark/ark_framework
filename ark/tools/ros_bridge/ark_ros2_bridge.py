@@ -16,29 +16,34 @@ __doc__ = """ARK ⟷ ROS 2 translator/bridge"""
 
 class ArkRos2Bridge(BaseNode):
     """
-    Bridge Ark <-> ROS 2 using rclpy. Expects a mapping_table with:
-      mapping_table = {
-          "ros_to_ark": [
-              {
-                  "ros_channel": "/chatter",
-                  "ros_type": std_msgs.msg.String,
-                  "ark_channel": "ark/chatter",
-                  "ark_type": string_t,
-                  "translator_callback": callable,  # f(ros_msg, ros_ch, ros_type, ark_ch, ark_type) -> ark_msg
-              },
-              ...
-          ],
-          "ark_to_ros": [
-              {
-                  "ark_channel": "ark/cmd",
-                  "ark_type": string_t,
-                  "ros_channel": "/cmd",
-                  "ros_type": std_msgs.msg.String,
-                  "translator_callback": callable,  # f(t, ark_ch, ark_msg) -> ros_msg
-              },
-              ...
-          ],
-      }
+    Bridge Ark ⟷ ROS 2 using `rclpy`.
+
+    The bridge is bidirectional and driven by a user-supplied `mapping_table`
+    that declares which topics/channels to connect and how to translate messages.
+
+    Mapping table schema:
+        mapping_table = {
+            "ros_to_ark": [
+                {
+                    "ros_channel": "/chatter",                 # str: ROS 2 topic name
+                    "ros_type": std_msgs.msg.String,           # type: ROS 2 msg class
+                    "ark_channel": "ark/chatter",              # str: Ark channel name
+                    "ark_type": string_t,                      # type: Ark message type (class/struct)
+                    "translator_callback": callable,           # (ros_msg, ros_channel, ros_type, ark_channel, ark_type) -> ark_msg
+                },
+                ...
+            ],
+            "ark_to_ros": [
+                {
+                    "ark_channel": "ark/cmd",                  # str: Ark channel name
+                    "ark_type": string_t,                      # type: Ark message type (class/struct)
+                    "ros_channel": "/cmd",                     # str: ROS 2 topic name
+                    "ros_type": std_msgs.msg.String,           # type: ROS 2 msg class
+                    "translator_callback": callable,           # (t, ark_channel, ark_msg) -> ros_msg
+                },
+                ...
+            ],
+        }
     """
 
     def __init__(
@@ -48,6 +53,14 @@ class ArkRos2Bridge(BaseNode):
         global_config: Optional[Dict[str, Any]] = None,
         qos_profile: Optional[QoSProfile] = None,
     ):
+        """
+        Initialize the bridge and wire up all declared mappings.
+
+        mapping_table See class docs for full schema. Missing keys default to empty lists.
+        node_name Name for both the Ark BaseNode and the underlying rclpy node.
+        global_config Optional Ark node configuration passed to BaseNode.
+        qos_profile Optional ROS 2 QoS profile. If omitted, uses RELIABLE/KEEP_LAST(10)/VOLATILE.
+        """
         super().__init__(node_name, global_config=global_config)
 
         # ---- ROS 2 node setup ----
