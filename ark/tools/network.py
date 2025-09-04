@@ -23,20 +23,6 @@ def _fetch_network_info(host: str, port: int) -> dict:
     return network_info_lcm_to_dict(lcm_msg)
 
 
-def _extract_channel_type(ch: dict) -> str:
-    """
-    Try a few common keys to determine the data type used on a channel.
-    Falls back to '?' if nothing is present.
-    """
-    return (
-        ch.get("channel_type")
-        or ch.get("type")
-        or ch.get("message_type")
-        or ch.get("msg_type")
-        or "?"
-    )
-
-
 @node.callback(invoke_without_command=True)
 def show_node(
     ctx: typer.Context,
@@ -69,17 +55,15 @@ def show_node(
                     print("  <none>")
                 else:
                     for it in items:
-                        dtype = (
-                            it.get("channel_type")
-                            if "channel_type" in it
-                            else it.get("request_type")
+                        print(
+                            f"  {it.get(key)} ({it.get('channel_type') if 'channel_type' in it else it.get('request_type')}"
+                            + (
+                                f" -> {it.get('response_type')}"
+                                if "response_type" in it
+                                else ""
+                            )
+                            + ")"
                         )
-                        extra = (
-                            f" -> {it.get('response_type')}"
-                            if "response_type" in it
-                            else ""
-                        )
-                        print(f"  {it.get(key)} ({dtype}{extra})")
 
             _print_section("Listeners", comms.get("listeners", []), "channel_name")
             _print_section("Publishers", comms.get("publishers", []), "channel_name")
@@ -90,11 +74,11 @@ def show_node(
                 print("  <none>")
             else:
                 for srv in services:
-                    sname = srv.get("service_name")
-                    if not verbose and sname.startswith(DEFAULT_SERVICE_DECORATOR):
+                    name = srv.get("service_name")
+                    if not verbose and name.startswith(DEFAULT_SERVICE_DECORATOR):
                         continue
                     print(
-                        f"  {sname} ({srv.get('request_type')} -> {srv.get('response_type')})"
+                        f"  {name} ({srv.get('request_type')} -> {srv.get('response_type')})"
                     )
             return
     typer.echo(f"Node '{name}' not found.")
@@ -110,37 +94,17 @@ def list_nodes(host: str = "127.0.0.1", port: int = 1234):
 
 @channel.command("list")
 def list_channels(host: str = "127.0.0.1", port: int = 1234):
-    """
-    List active channels with their message types.
-
-    Output format:
-      <channel_name> (<type>[, <type2>...])
-    """
+    """List active channels."""
     data = _fetch_network_info(host, port)
-
-    # Map channel_name -> set of discovered types
-    channel_types: dict[str, set[str]] = {}
-
+    channels = set()
     for node_info in data.get("nodes", []):
-        comms = node_info.get("comms", {}) or {}
+        comms = node_info.get("comms", {})
         for comp in ("listeners", "subscribers", "publishers"):
-            for ch in comms.get(comp, []) or []:
-                if not ch.get("channel_status"):
-                    continue
-                name = ch.get("channel_name")
-                if not name:
-                    continue
-                dtype = _extract_channel_type(ch)
-                if name not in channel_types:
-                    channel_types[name] = set()
-                if dtype:
-                    channel_types[name].add(dtype)
-
-    for ch_name in sorted(channel_types.keys()):
-        types_str = ", ".join(sorted(t for t in channel_types[ch_name] if t))
-        if not types_str:
-            types_str = "?"
-        print(f"{ch_name} ({types_str})")
+            for ch in comms.get(comp, []):
+                if ch.get("channel_status"):
+                    channels.add(ch.get("channel_name"))
+    for ch in sorted(channels):
+        print(ch)
 
 
 @service.command("list")
