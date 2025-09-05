@@ -3,17 +3,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
 [![GitHub Stars](https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social)](https://github.com/Robotics-Ark/ark_framework/stargazers)
 
----
-
 ⭐ **Star us on GitHub — your support motivates us a lot!** 🙏😊
 
----
 ### 🔗 Share this project
 
 [![Share on X](https://img.shields.io/badge/Share%20on-X-black?logo=x&logoColor=white)](https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework)
 [![Facebook](https://img.shields.io/badge/Share%20on-Facebook-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework)
 [![Telegram](https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework)
-
+[![Share on LinkedIn](https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework)
 
 ---
 
