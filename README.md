@@ -12,7 +12,7 @@
 [![Telegram](https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework)
 [![Share on LinkedIn](https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework)
 
- 🔥 **Why Ark is the way to go in robotics — find out about the [Ark project]((https://robotics-ark.github.io/ark_robotics.github.io/)**.
+ 🔥 Why Ark is the way to go in robotics — find out about the [Ark project]((https://robotics-ark.github.io/ark_robotics.github.io/).
 
 
 ## Installation
