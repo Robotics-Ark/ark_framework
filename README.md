@@ -1,14 +1,35 @@
-# A Python framework for robotics research and development.
-
 <p align="center">
-    <a href="https://pepy.tech/project/ark-robotics"> <img src="https://static.pepy.tech/badge/ark-robotics" alt="PyPI Downloads"> </a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg"></a>
-  <a href="https://github.com/Robotics-Ark/ark_framework/commits/main"><img src="https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework"></a>
-  <a href="https://github.com/Robotics-Ark/ark_framework/stargazers"><img src="https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social"></a>
+  <img src="Logo.png" alt="Ark Framework Logo" width="500">
 </p>
 
+<h1 align="center">A Python framework for robotics research and development.</h1>
 
-⭐ **Star us on GitHub — your support motivates us a lot!** 🙏😊
+<p align="center">
+  <em>Lightweight, flexible, and designed for researchers and developers in robotics.</em>
+</p>
+
+<p align="center">
+  <a href="https://pepy.tech/project/ark-robotics">
+    <img src="https://static.pepy.tech/badge/ark-robotics" alt="PyPI Downloads">
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-green.svg">
+  </a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/commits/main">
+    <img src="https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework">
+  </a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/stargazers">
+    <img src="https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social">
+  </a>
+</p>
+
+---
+
+<p align="center">
+  ⭐ <b>Star us on GitHub — your support motivates us a lot!</b> 🙏😊
+</p>
+
+---
 
 ### 🔗 Share this project
 
@@ -27,13 +48,7 @@
   </a>
 </p>
 
- 🔥 Why Ark is the way to go in robotics — find out about the [Ark project](https://robotics-ark.github.io/ark_robotics.github.io/).
- 
- 👨‍🏫 How to get started with Ark step by step — check out the [Tutorials](https://arkrobotics.notion.site/ARK-Home-22be053d9c6f8096bcdbefd6276aba61).
- 
- 📄 How to navigate our software - read the [Documentation](https://robotics-ark.github.io/ark_robotics.github.io/docs/html/index.html).
-
-
+---
 ## Installation
 
 The framework depends on [ARK Types](https://github.com/Robotics-Ark/ark_types) and
