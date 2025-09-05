@@ -1,7 +1,8 @@
 # Ark
 
-[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics) ![license](https://img.shields.io/badge/license-MIT-green) 
+[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics) ![license](https://img.shields.io/badge/license-MIT-green) [![GitHub stars](https://img.shields.io/github/stars/OWNER/REPO?style=social)](https://github.com/OWNER/REPO/stargazers)
 
+ 
 This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
 
 [![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+this+project:+https://github.com/Robotics-Ark)
