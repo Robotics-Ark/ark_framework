@@ -1,11 +1,32 @@
 # Ark
 
-[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics) ![license](https://img.shields.io/badge/license-MIT-green) 
+
+# Robotics-Ark
+
+[![Release](https://img.shields.io/github/v/release/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/releases)
+[![License](https://img.shields.io/github/license/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/blob/main/LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/Robotics-Ark/Robotics-Ark?style=social)](https://github.com/Robotics-Ark/Robotics-Ark/stargazers)
+
+[![Build](https://img.shields.io/github/actions/workflow/status/Robotics-Ark/Robotics-Ark/ci.yml?branch=main)](https://github.com/Robotics-Ark/Robotics-Ark/actions)
+
+---
+
+⭐ Star us on GitHub — your support motivates us a lot! 🙏😊
+
+---
+
+### 🔗 Share this project
+
+[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+out+this+cool+project:+https://github.com/Robotics-Ark/Robotics-Ark)
+[![Share on Facebook](https://img.shields.io/badge/share-facebook-blue?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/Robotics-Ark)
+[![Share on Telegram](https://img.shields.io/badge/share-telegram-blue?logo=telegram)](https://t.me/share/url?url=https://github.com/Robotics-Ark/Robotics-Ark&text=Check+out+this+cool+project!)
+
+---
+
 
  
 This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
-
-[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+this+project:+https://github.com/Robotics-Ark) [![Share on Facebook](https://img.shields.io/badge/share-facebook-blue?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark)
 
 
 ## Installation
