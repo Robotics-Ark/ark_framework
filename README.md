@@ -23,14 +23,9 @@
   </a>
 </p>
 
-
 <p align="center">
   ⭐ <b>Star us on GitHub — your support motivates us a lot!</b> 🙏😊
 </p>
-
-
-
-### 🔗 Share this project
 
 <p align="center">
   <a href="https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework">
