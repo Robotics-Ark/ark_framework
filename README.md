@@ -23,13 +23,12 @@
   </a>
 </p>
 
----
 
 <p align="center">
   ⭐ <b>Star us on GitHub — your support motivates us a lot!</b> 🙏😊
 </p>
 
----
+
 
 ### 🔗 Share this project
 
@@ -48,7 +47,7 @@
   </a>
 </p>
 
----
+
 ## Installation
 
 The framework depends on [ARK Types](https://github.com/Robotics-Ark/ark_types) and
