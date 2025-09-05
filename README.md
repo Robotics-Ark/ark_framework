@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Logo.png" alt="Ark Framework Logo" width="500">
+  <img src="Logo.png" alt="Ark Framework Logo" width="1500">
 </p>
 
 <h1 align="center">A Python framework for robotics research and development.</h1>
