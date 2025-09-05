@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="Logo.png" alt="Ark Framework Logo" width="500">
+  <img src="assets/logo.png" alt="Ark Framework Logo" width="500">
 </p>
 
 <h1 align="center">A Python framework for robotics research and development.</h1>
 
 <p align="center">
-  <em>Lightweight, flexible, and designed for researchers and developers in robotics.</em>
+  <em>Lightweight and flexible — built for robotics researchers and developers.</em>
 </p>
 
 <p align="center">
@@ -23,32 +23,6 @@
   </a>
 </p>
 
----
-
-<p align="center">
-  ⭐ <b>Star us on GitHub — your support motivates us a lot!</b> 🙏😊
-</p>
-
----
-
-### 🔗 Share this project
-
-<p align="center">
-  <a href="https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework">
-    <img src="https://img.shields.io/badge/Share%20on-X-black?logo=x&logoColor=white">
-  </a>
-  <a href="https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework">
-    <img src="https://img.shields.io/badge/Share%20on-Facebook-1877F2?logo=facebook&logoColor=white">
-  </a>
-  <a href="https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework">
-    <img src="https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white">
-  </a>
-  <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework">
-    <img src="https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white">
-  </a>
-</p>
-
----
 ## Installation
 
 The framework depends on [ARK Types](https://github.com/Robotics-Ark/ark_types) and
