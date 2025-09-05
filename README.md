@@ -1,6 +1,7 @@
 # A Python framework for robotics research and development.
 
 <p align="center">
+  [![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics)
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg"></a>
   <a href="https://github.com/Robotics-Ark/ark_framework/commits/main"><img src="https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework"></a>
   <a href="https://github.com/Robotics-Ark/ark_framework/stargazers"><img src="https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social"></a>
