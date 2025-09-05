@@ -4,6 +4,7 @@
 
 This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
 
+[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+this+project:+https://github.com/OWNER/REPO)
 
 ## Installation
 
