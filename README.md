@@ -1,11 +1,11 @@
 # Ark
 
-[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics) ![license](https://img.shields.io/badge/license-MIT-green) [![GitHub stars](https://img.shields.io/github/stars/OWNER/REPO?style=social)]([https://github.com/OWNER/REPO/stargazers](https://github.com/Robotics-Ark/ark_framework))
+[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics) ![license](https://img.shields.io/badge/license-MIT-green) 
 
  
 This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
 
-[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+this+project:+https://github.com/Robotics-Ark)
+[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+this+project:+https://github.com/Robotics-Ark) [![Share on Facebook](https://img.shields.io/badge/share-facebook-blue?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark)
 
 
 ## Installation
