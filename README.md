@@ -1,4 +1,4 @@
-# Ark
+# Robotics in Python made simple with Ark Framework”
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
 [![GitHub Stars](https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social)](https://github.com/Robotics-Ark/ark_framework/stargazers)
@@ -12,11 +12,7 @@
 [![Telegram](https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework)
 [![Share on LinkedIn](https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework)
 
----
-
- 
-This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
-
+ 🔥 Why Ark is the way to go in robotics — find out about the **Ark project**: [website](https://robotics-ark.github.io/ark_robotics.github.io/).
 
 ## Installation
 
