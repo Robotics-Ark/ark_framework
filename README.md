@@ -1,4 +1,4 @@
-# A lightweight Python framework for robotics research and development.
+# A Python framework for robotics research and development.
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg"></a>
