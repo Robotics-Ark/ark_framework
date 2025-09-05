@@ -7,10 +7,20 @@
 
 ### 🔗 Share this project
 
-[![Share on X](https://img.shields.io/badge/Share%20on-X-black?logo=x&logoColor=white)](https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework)
-[![Facebook](https://img.shields.io/badge/Share%20on-Facebook-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework)
-[![Telegram](https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework)
-[![Share on LinkedIn](https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework)
+<p align="center">
+  <a href="https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-X-black?logo=x&logoColor=white">
+  </a>
+  <a href="https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-Facebook-1877F2?logo=facebook&logoColor=white">
+  </a>
+  <a href="https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white">
+  </a>
+  <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white">
+  </a>
+</p>
 
  🔥 Why Ark is the way to go in robotics — find out about the [Ark project](https://robotics-ark.github.io/ark_robotics.github.io/).
 
