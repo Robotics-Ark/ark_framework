@@ -1,26 +1,24 @@
 # Ark
 
+# ark_framework
 
-# Robotics-Ark
-
-[![Release](https://img.shields.io/github/v/release/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/releases)
-[![License](https://img.shields.io/github/license/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/Robotics-Ark)](https://github.com/Robotics-Ark/Robotics-Ark/commits/main)
-[![GitHub stars](https://img.shields.io/github/stars/Robotics-Ark/Robotics-Ark?style=social)](https://github.com/Robotics-Ark/Robotics-Ark/stargazers)
-
-[![Build](https://img.shields.io/github/actions/workflow/status/Robotics-Ark/Robotics-Ark/ci.yml?branch=main)](https://github.com/Robotics-Ark/Robotics-Ark/actions)
+[![Release](https://img.shields.io/github/v/release/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/releases)
+[![License](https://img.shields.io/github/license/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/blob/main/LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
+[![GitHub Stars](https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social)](https://github.com/Robotics-Ark/ark_framework/stargazers)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Robotics-Ark/ark_framework/ci.yml?branch=main)](https://github.com/Robotics-Ark/ark_framework/actions)
 
 ---
 
-⭐ Star us on GitHub — your support motivates us a lot! 🙏😊
+⭐ **Star us on GitHub — your support motivates us a lot!** 🙏😊
 
 ---
 
-### 🔗 Share this project
+###  Share this project
 
-[![Share on Twitter](https://img.shields.io/badge/share-twitter-blue?logo=twitter)](https://twitter.com/intent/tweet?text=Check+out+this+cool+project:+https://github.com/Robotics-Ark/Robotics-Ark)
-[![Share on Facebook](https://img.shields.io/badge/share-facebook-blue?logo=facebook)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/Robotics-Ark)
-[![Share on Telegram](https://img.shields.io/badge/share-telegram-blue?logo=telegram)](https://t.me/share/url?url=https://github.com/Robotics-Ark/Robotics-Ark&text=Check+out+this+cool+project!)
+[![Share on Twitter](https://img.shields.io/badge/Share-on-Twitter-1DA1F2?logo=twitter&logoColor=white)](https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework)
+[![Share on Facebook](https://img.shields.io/badge/Share-on-Facebook-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework)
+[![Share on Telegram](https://img.shields.io/badge/Share-on-Telegram-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework)
 
 ---
 
