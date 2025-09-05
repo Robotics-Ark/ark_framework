@@ -1,12 +1,7 @@
 # Ark
 
-# ark_framework
-
-[![Release](https://img.shields.io/github/v/release/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/releases)
-[![License](https://img.shields.io/github/license/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
 [![GitHub Stars](https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social)](https://github.com/Robotics-Ark/ark_framework/stargazers)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Robotics-Ark/ark_framework/ci.yml?branch=main)](https://github.com/Robotics-Ark/ark_framework/actions)
 
 ---
 
