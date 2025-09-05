@@ -1,7 +1,11 @@
-# Robotics in Python made simple with Ark Framework
+# A lightweight Python framework for robotics research and development.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)[![Last Commit](https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework)](https://github.com/Robotics-Ark/ark_framework/commits/main)
-[![GitHub Stars](https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social)](https://github.com/Robotics-Ark/ark_framework/stargazers)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/commits/main"><img src="https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework"></a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/stargazers"><img src="https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social"></a>
+</p>
+
 
 ⭐ **Star us on GitHub — your support motivates us a lot!** 🙏😊
 
