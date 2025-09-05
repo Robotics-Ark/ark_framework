@@ -17,7 +17,6 @@
 
 ---
 
-
  
 This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
 
