@@ -28,6 +28,8 @@
 </p>
 
  🔥 Why Ark is the way to go in robotics — find out about the [Ark project](https://robotics-ark.github.io/ark_robotics.github.io/).
+ 👨‍🏫 How to get started with Ark step by step — check out the [Tutorials](https://arkrobotics.notion.site/ARK-Home-22be053d9c6f8096bcdbefd6276aba61).
+ 📄 How to navigate our software - read the [Documentation](https://robotics-ark.github.io/ark_robotics.github.io/docs/html/index.html).
 
 
 ## Installation
