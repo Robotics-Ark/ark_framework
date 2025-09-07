@@ -1,8 +1,56 @@
-# Ark
+<p align="center">
+  <img src="Logo.png" alt="Ark Framework Logo" width="1500">
+</p>
 
-[![PyPI Downloads](https://static.pepy.tech/badge/ark-robotics)](https://pepy.tech/projects/ark-robotics)
+<h1 align="center">A Python framework for robotics research and development.</h1>
 
-This is part of the **Ark project** see [website](https://robotics-ark.github.io/ark_robotics.github.io/).
+<p align="center">
+  <em>Lightweight, flexible, and designed for researchers and developers in robotics.</em>
+</p>
+
+<p align="center">
+  <a href="https://pepy.tech/project/ark-robotics">
+    <img src="https://static.pepy.tech/badge/ark-robotics" alt="PyPI Downloads">
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-green.svg">
+  </a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/commits/main">
+    <img src="https://img.shields.io/github/last-commit/Robotics-Ark/ark_framework">
+  </a>
+  <a href="https://github.com/Robotics-Ark/ark_framework/stargazers">
+    <img src="https://img.shields.io/github/stars/Robotics-Ark/ark_framework?style=social">
+  </a>
+</p>
+
+<p align="center">
+  ⭐ <b>Star us on GitHub — your support motivates us a lot!</b> 🙏😊
+</p>
+
+<p align="center">
+  <a href="https://twitter.com/intent/tweet?text=Check+out+ark_framework:+https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-X-black?logo=x&logoColor=white">
+  </a>
+  <a href="https://www.facebook.com/sharer/sharer.php?u=https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-Facebook-1877F2?logo=facebook&logoColor=white">
+  </a>
+  <a href="https://t.me/share/url?url=https://github.com/Robotics-Ark/ark_framework&text=Check+out+ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-Telegram-0088CC?logo=telegram&logoColor=white">
+  </a>
+  <a href="https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Robotics-Ark/ark_framework">
+    <img src="https://img.shields.io/badge/Share%20on-LinkedIn-0A66C2?logo=linkedin&logoColor=white">
+  </a>
+</p>
+
+## What is this About? 
+
+Ark is a Python-first playground for robot learning. Instead of wrestling with C++ and fragmented tools, you can collect data, train policies, and switch between simulation and real robots with just a few lines of code. Think of it as the PyTorch + Gym for robotics — simple, modular, and built for rapid prototyping of intelligent robots. 
+
+📚 **Learn more:**  
+- [📖 Tutorials](https://arkrobotics.notion.site/ARK-Home-22be053d9c6f8096bcdbefd6276aba61)  
+- [⚙️ Documentation](https://robotics-ark.github.io/ark_robotics.github.io/docs/html/index.html)  
+- [📄 Research Paper](https://robotics-ark.github.io/ark_robotics.github.io/static/images/2506.21628v2.pdf)  
+
 
 ## Installation
 
