@@ -14,30 +14,30 @@ __doc__ = """ARK ⟷ ROS 2 translator/bridge"""
 
 class ArkRos2Bridge(BaseNode):
     """
-    Bridge Ark ⟷ ROS 2 using `rclpy`.
+    Bridge Ark ⟷ ROS2 using `rclpy`.
 
     The bridge is bidirectional and driven by a user-supplied `mapping_table`
     that declares which topics/channels to connect and how to translate messages.
 
     Mapping table schema:
         mapping_table = {
-            "ros_to_ark": [
+            "ros2_to_ark": [
                 {
-                    "ros_channel": "/chatter",                 # str: ROS 2 topic name
-                    "ros_type": std_msgs.msg.String,           # type: ROS 2 msg class
+                    "ros2_channel": "/chatter",                 # str: ROS2 topic name
+                    "ros2_type": std_msgs.msg.String,           # type: ROS2 msg class
                     "ark_channel": "ark/chatter",              # str: Ark channel name
                     "ark_type": string_t,                      # type: Ark message type (class/struct)
-                    "translator_callback": callable,           # (ros_msg, ros_channel, ros_type, ark_channel, ark_type) -> ark_msg
+                    "translator_callback": callable,           # (ros2_msg, ros2_channel, ros2_type, ark_channel, ark_type) -> ark_msg
                 },
                 ...
             ],
-            "ark_to_ros": [
+            "ark_to_ros2": [
                 {
                     "ark_channel": "ark/cmd",                  # str: Ark channel name
                     "ark_type": string_t,                      # type: Ark message type (class/struct)
-                    "ros_channel": "/cmd",                     # str: ROS 2 topic name
-                    "ros_type": std_msgs.msg.String,           # type: ROS 2 msg class
-                    "translator_callback": callable,           # (t, ark_channel, ark_msg) -> ros_msg
+                    "ros2_channel": "/cmd",                    # str: ROS2 topic name
+                    "ros2_type": std_msgs.msg.String,          # type: ROS2 msg class
+                    "translator_callback": callable,           # (t, ark_channel, ark_msg) -> ros2_msg
                 },
                 ...
             ],
@@ -57,15 +57,15 @@ class ArkRos2Bridge(BaseNode):
         mapping_table See class docs for full schema. Missing keys default to empty lists.
         node_name Name for both the Ark BaseNode and the underlying rclpy node.
         global_config Optional Ark node configuration passed to BaseNode.
-        qos_profile Optional ROS 2 QoS profile. If omitted, uses RELIABLE/KEEP_LAST(10)/VOLATILE.
+        qos_profile Optional ROS2 QoS profile. If omitted, uses RELIABLE/KEEP_LAST(10)/VOLATILE.
         """
         super().__init__(node_name, global_config=global_config)
 
-        # ---- ROS 2 node setup ----
+        # ---- ROS2 node setup ----
         if not rclpy.ok():
             rclpy.init(args=None)
 
-        self._ros: RclpyNode = rclpy.create_node(node_name)
+        self._ros2_node: RclpyNode = rclpy.create_node(node_name)
 
         # Default QoS (tuned for typical topic traffic; you can override via ctor)
         self._qos = qos_profile or QoSProfile(
@@ -76,17 +76,17 @@ class ArkRos2Bridge(BaseNode):
         )
 
         # Keep references so publishers/subscriptions don’t get GC’d
-        self._ros_publishers = []
-        self._ros_subscriptions = []
+        self._ros2_publishers = []
+        self._ros2_subscriptions = []
 
         # ---- Build mappings ----
-        ros_to_ark_table = mapping_table.get("ros_to_ark", [])
-        ark_to_ros_table = mapping_table.get("ark_to_ros", [])
+        ros2_to_ark_table = mapping_table.get("ros2_to_ark", [])
+        ark_to_ros2_table = mapping_table.get("ark_to_ros2", [])
 
-        self.ros_to_ark_mapping = []
-        for mapping in ros_to_ark_table:
-            ros_channel = mapping["ros_channel"]
-            ros_type = mapping["ros_type"]
+        self.ros2_to_ark_mapping = []
+        for mapping in ros2_to_ark_table:
+            ros2_channel = mapping["ros2_channel"]
+            ros2_type = mapping["ros2_type"]
             ark_channel = mapping["ark_channel"]
             ark_type = mapping["ark_type"]
             translator_callback = mapping["translator_callback"]
@@ -94,25 +94,25 @@ class ArkRos2Bridge(BaseNode):
             # ARK publisher
             ark_pub = self.create_publisher(ark_channel, ark_type)
 
-            # Subscriber callback (ROS->ARK)
+            # Subscriber callback (ROS2->ARK)
             sub_cb = partial(
-                self._generic_ros_to_ark_translator_callback,
+                self._generic_ros2_to_ark_translator_callback,
                 translator_callback=translator_callback,
-                ros_channel=ros_channel,
-                ros_type=ros_type,
+                ros2_channel=ros2_channel,
+                ros2_type=ros2_type,
                 ark_channel=ark_channel,
                 ark_type=ark_type,
                 ark_publisher=ark_pub,
             )
 
-            # ROS 2 subscription
-            sub = self._ros.create_subscription(ros_type, ros_channel, sub_cb, self._qos)
-            self._ros_subscriptions.append(sub)
+            # ROS2 subscription
+            sub = self._ros2_node.create_subscription(ros2_type, ros2_channel, sub_cb, self._qos)
+            self._ros2_subscriptions.append(sub)
 
-            self.ros_to_ark_mapping.append(
+            self.ros2_to_ark_mapping.append(
                 {
-                    "ros_channel": ros_channel,
-                    "ros_type": ros_type,
+                    "ros2_channel": ros2_channel,
+                    "ros2_type": ros2_type,
                     "ark_channel": ark_channel,
                     "ark_type": ark_type,
                     "translator_callback": translator_callback,
@@ -120,67 +120,67 @@ class ArkRos2Bridge(BaseNode):
                 }
             )
 
-        self.ark_to_ros_mapping = []
-        for mapping in ark_to_ros_table:
+        self.ark_to_ros2_mapping = []
+        for mapping in ark_to_ros2_table:
             ark_channel = mapping["ark_channel"]
             ark_type = mapping["ark_type"]
-            ros_channel = mapping["ros_channel"]
-            ros_type = mapping["ros_type"]
+            ros2_channel = mapping["ros2_channel"]
+            ros2_type = mapping["ros2_type"]
             translator_callback = mapping["translator_callback"]
 
-            # ROS 2 publisher
-            ros_pub = self._ros.create_publisher(ros_type, ros_channel, self._qos)
-            self._ros_publishers.append(ros_pub)
+            # ROS2 publisher
+            ros2_pub = self._ros2_node.create_publisher(ros2_type, ros2_channel, self._qos)
+            self._ros2_publishers.append(ros2_pub)
 
-            # ARK subscriber (ARK->ROS)
+            # ARK subscriber (ARK->ROS2)
             ark_cb = partial(
-                self._generic_ark_to_ros_translator_callback,
+                self._generic_ark_to_ros2_translator_callback,
                 translator_callback=translator_callback,
                 ark_channel=ark_channel,
                 ark_type=ark_type,
-                ros_channel=ros_channel,
-                ros_type=ros_type,
-                ros_publisher=ros_pub,
+                ros2_channel=ros2_channel,
+                ros2_type=ros2_type,
+                ros2_publisher=ros2_pub,
             )
             self.create_subscriber(ark_channel, ark_type, ark_cb)
 
-            self.ark_to_ros_mapping.append(
+            self.ark_to_ros2_mapping.append(
                 {
-                    "ros_channel": ros_channel,
-                    "ros_type": ros_type,
+                    "ros2_channel": ros2_channel,
+                    "ros2_type": ros2_type,
                     "ark_channel": ark_channel,
                     "ark_type": ark_type,
                     "translator_callback": translator_callback,
-                    "publisher": ros_pub,
+                    "publisher": ros2_pub,
                 }
             )
 
     # ---------- Callbacks ----------
 
-    def _generic_ros_to_ark_translator_callback(
+    def _generic_ros2_to_ark_translator_callback(
         self,
-        ros_msg: Any,
+        ros2_msg: Any,
         *,
         translator_callback,
-        ros_channel: str,
-        ros_type: Any,
+        ros2_channel: str,
+        ros2_type: Any,
         ark_channel: str,
         ark_type: Any,
         ark_publisher,
     ) -> None:
         """
-        Translate ROS 2 -> ARK.
-        translator_callback: (ros_msg, ros_channel, ros_type, ark_channel, ark_type) -> ark_msg
+        Translate ROS2 -> ARK.
+        translator_callback: (ros2_msg, ros2_channel, ros2_type, ark_channel, ark_type) -> ark_msg
         """
         try:
-            ark_msg = translator_callback(ros_msg, ros_channel, ros_type, ark_channel, ark_type)
+            ark_msg = translator_callback(ros2_msg, ros2_channel, ros2_type, ark_channel, ark_type)
             ark_publisher.publish(ark_msg)
         except Exception as e:
-            self._ros.get_logger().warn(
-                f"[ROS2→ARK] Failed translating {ros_channel} -> {ark_channel}: {e}"
+            self._ros2_node.get_logger().warn(
+                f"[ROS2→ARK] Failed translating {ros2_channel} -> {ark_channel}: {e}"
             )
 
-    def _generic_ark_to_ros_translator_callback(
+    def _generic_ark_to_ros2_translator_callback(
         self,
         t: int,
         _channel: str,
@@ -189,27 +189,27 @@ class ArkRos2Bridge(BaseNode):
         translator_callback,
         ark_channel: str,
         ark_type: Any,
-        ros_channel: str,
-        ros_type: Any,
-        ros_publisher,
+        ros2_channel: str,
+        ros2_type: Any,
+        ros2_publisher,
     ) -> None:
         """
-        Translate ARK -> ROS 2.
-        translator_callback: (t, ark_channel, ark_msg) -> ros_msg
+        Translate ARK -> ROS2.
+        translator_callback: (t, ark_channel, ark_msg) -> ros2_msg
         """
         try:
-            ros_msg = translator_callback(t, ark_channel, ark_msg)
-            ros_publisher.publish(ros_msg)
+            ros2_msg = translator_callback(t, ark_channel, ark_msg)
+            ros2_publisher.publish(ros2_msg)
         except Exception as e:
-            self._ros.get_logger().warn(
-                f"[ARK→ROS2] Failed translating {ark_channel} -> {ros_channel}: {e}"
+            self._ros2_node.get_logger().warn(
+                f"[ARK→ROS2] Failed translating {ark_channel} -> {ros2_channel}: {e}"
             )
 
     # ---------- Lifecycle ----------
 
     def spin(self) -> None:
         """
-        Drive both Ark (LCM) and ROS 2 event loops without blocking either.
+        Drive both Ark (LCM) and ROS2 event loops without blocking either.
         """
         try:
             while not self._done and rclpy.ok():
@@ -220,8 +220,8 @@ class ArkRos2Bridge(BaseNode):
                     log.warning(f"Ark threw OSError {e}")
                     break
 
-                # Pump ROS 2 once (non-blocking)
-                rclpy.spin_once(self._ros, timeout_sec=0.0)
+                # Pump ROS2 once (non-blocking)
+                rclpy.spin_once(self._ros2_node, timeout_sec=0.0)
         finally:
             self.shutdown()
 
@@ -231,7 +231,7 @@ class ArkRos2Bridge(BaseNode):
 
     def shutdown(self) -> None:
         """
-        Cleanly stop Ark and ROS 2 resources.
+        Cleanly stop Ark and ROS2 resources.
         """
         # Ark side
         for ch in self._comm_handlers:
@@ -245,21 +245,21 @@ class ArkRos2Bridge(BaseNode):
             except Exception:
                 pass
 
-        # ROS 2 side
+        # ROS2 side
         try:
             # Destroy pubs/subs explicitly (optional but tidy)
-            for sub in self._ros_subscriptions:
+            for sub in self._ros2_subscriptions:
                 try:
-                    self._ros.destroy_subscription(sub)
+                    self._ros2_node.destroy_subscription(sub)
                 except Exception:
                     pass
-            for pub in self._ros_publishers:
+            for pub in self._ros2_publishers:
                 try:
-                    self._ros.destroy_publisher(pub)
+                    self._ros2_node.destroy_publisher(pub)
                 except Exception:
                     pass
             try:
-                self._ros.destroy_node()
+                self._ros2_node.destroy_node()
             except Exception:
                 pass
         finally:
