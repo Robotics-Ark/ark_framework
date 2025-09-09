@@ -8,16 +8,14 @@ import math
 import cv2
 from pathlib import Path
 from typing import Any, Optional, Dict
-
-import pybullet as p
-import pybullet_data
-from pybullet_utils.bullet_client import BulletClient
+import genesis as gs
 
 from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
-from ark.system.pybullet.pybullet_robot_driver import BulletRobotDriver
-from ark.system.pybullet.pybullet_camera_driver import BulletCameraDriver
-from ark.system.pybullet.pybullet_multibody import PyBulletMultiBody
+
+# from ark.system.genesis.genesis_multibody import GenesisMultiBody
+# from ark.system.genesis.genesis_robot_driver import GenesisRobotDriver
+# from ark.system.genesis.genesis_camera_driver import GenesisCameraDriver
 from arktypes import *
 
 
@@ -102,8 +100,15 @@ class GenesisBackend(SimulatorBackend):
         well.
         """
         self.ready = False
-        
+        self._is_initialised = False
         # TODO: Connect to client
+        connection_mode = self.global_config["simulator"]["config"]["connection_mode"].upper()
+        if connection_mode == "GUI":
+            connection_mode = True
+        elif connection_mode == "DIRECT":
+            connection_mode = False
+        gs.init(backend=gs.cpu)
+        
 
         # Render images from Pybullet and save
         # TODO: Headless save rendering
@@ -112,13 +117,13 @@ class GenesisBackend(SimulatorBackend):
         gravity = self.global_config["simulator"]["config"].get(
             "gravity", [0, 0, -9.81]
         )
-        self.set_gravity(gravity)
+        # self.set_gravity(gravity)
 
         # TODO: Get Time Step
         timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
-        self.set_time_step(timestep)
+        # self.set_time_step(timestep)
 
         # Setup robots
         if self.global_config.get("robots", None):
@@ -135,7 +140,9 @@ class GenesisBackend(SimulatorBackend):
         if self.global_config.get("sensors", None):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
-        self.ready = True
+
+        # self.scene.build()
+        # self.ready = True
 
     def is_ready(self) -> bool:
         """!Check whether the backend has finished initialization.
@@ -287,7 +294,21 @@ class GenesisBackend(SimulatorBackend):
         The method updates all registered components, advances the physics
         engine and optionally saves renders when enabled.
         """
-        raise NotImplementedError("Step function not implemented yet.")
+        print("YEYEYE:", self._is_initialised)
+        if self._is_initialised == False:
+            self.scene = gs.Scene(show_viewer=True)
+            self.scene.build()
+            print("Building Scene")
+            self._is_initialised = True
+
+        if self._is_initialised == True:
+            if self._all_available():
+                self._step_sim_components()
+                self.scene.step()
+                # self._simulation_time += self._time_step
+            else:
+                log.panda("Did not step")
+                pass
 
     def save_render(self):
         """!Render the scene and write the image to disk.
@@ -322,7 +343,6 @@ class GenesisBackend(SimulatorBackend):
         simulator and free all resources.
         """
         # TODO: Change depending on Genesis driver
-        self.client.disconnect()
         for robot in self.robot_ref:
             self.robot_ref[robot].kill_node()
         for obj in self.object_ref:
