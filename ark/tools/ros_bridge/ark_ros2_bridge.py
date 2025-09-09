@@ -67,7 +67,7 @@ class ArkRos2Bridge(BaseNode):
 
         self._ros2_node: RclpyNode = rclpy.create_node(node_name)
 
-        # Default QoS (tuned for typical topic traffic; you can override via ctor)
+        # Default QoS
         self._qos = qos_profile or QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
