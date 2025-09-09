@@ -9,8 +9,6 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Dict, List
 
-import pybullet as p
-
 from ark.tools.log import log
 from ark.system.driver.component_driver import ComponentDriver
 
