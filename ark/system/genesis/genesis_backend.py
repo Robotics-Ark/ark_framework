@@ -135,11 +135,11 @@ class GenesisBackend(SimulatorBackend):
             "save_render", None
         )
         cam = self.scene.add_camera(
-            res    = (1280, 960),
-            pos    = (3.5, 0.0, 2.5),
-            lookat = (0, 0, 0.5),
-            fov    = 30,
-            GUI    = True
+            # res    = (1280, 960),
+            # pos    = (3.5, 0.0, 2.5),
+            # lookat = (0, 0, 0.5),
+            # fov    = 30,
+            # GUI    = False
         )
 
         # Setup robotss
