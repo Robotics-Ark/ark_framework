@@ -108,24 +108,41 @@ class GenesisBackend(SimulatorBackend):
         elif connection_mode == "DIRECT":
             connection_mode = False
         gs.init(backend=gs.cpu)
-        
 
         # Render images from Pybullet and save
-        # TODO: Headless save rendering
 
-        # TODO: Get Gravity
+
         gravity = self.global_config["simulator"]["config"].get(
             "gravity", [0, 0, -9.81]
         )
         # self.set_gravity(gravity)
 
-        # TODO: Get Time Step
         timestep = 1 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
         # self.set_time_step(timestep)
 
-        # Setup robots
+        self.scene = gs.Scene(sim_options=gs.options.SimOptions(
+            dt=timestep, gravity=gravity),
+            show_viewer=connection_mode)
+        # TODO: Maybe add default camera positions
+
+        # TODO: Temporary addition for now
+        plane = self.scene.add_entity(gs.morphs.Plane())
+
+        # TODO: Headless save rendering
+        self.save_render_config = self.global_config["simulator"].get(
+            "save_render", None
+        )
+        cam = self.scene.add_camera(
+            res    = (1280, 960),
+            pos    = (3.5, 0.0, 2.5),
+            lookat = (0, 0, 0.5),
+            fov    = 30,
+            GUI    = True
+        )
+
+        # Setup robotss
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
                 self.add_robot(robot_name, robot_config)
@@ -141,8 +158,8 @@ class GenesisBackend(SimulatorBackend):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
 
-        # self.scene.build()
-        # self.ready = True
+        self.scene.build()
+        self.ready = True
 
     def is_ready(self) -> bool:
         """!Check whether the backend has finished initialization.
@@ -171,14 +188,14 @@ class GenesisBackend(SimulatorBackend):
 
         @param gravity Tuple ``(gx, gy, gz)`` specifying gravity in m/s^2.
         """
-        raise NotImplementedError("Setting gravity not implemented yet.")
+        raise NotImplementedError("Not required for Genesis")
 
     def set_time_step(self, time_step: float) -> None:
         """!Set the simulation timestep.
 
         @param time_step Length of a single simulation step in seconds.
         """
-        raise NotImplementedError("Setting time step not implemented yet.")
+        raise NotImplementedError("Not required for Genesis")
 
     ##########################################################
     ####            ROBOTS, SENSORS AND OBJECTS           ####
@@ -294,21 +311,13 @@ class GenesisBackend(SimulatorBackend):
         The method updates all registered components, advances the physics
         engine and optionally saves renders when enabled.
         """
-        print("YEYEYE:", self._is_initialised)
-        if self._is_initialised == False:
-            self.scene = gs.Scene(show_viewer=True)
-            self.scene.build()
-            print("Building Scene")
-            self._is_initialised = True
-
-        if self._is_initialised == True:
-            if self._all_available():
-                self._step_sim_components()
-                self.scene.step()
-                # self._simulation_time += self._time_step
-            else:
-                log.panda("Did not step")
-                pass
+        if self._all_available():
+            self._step_sim_components()
+            self.scene.step()
+            # self._simulation_time += self._time_step
+        else:
+            log.panda("Did not step")
+            pass
 
     def save_render(self):
         """!Render the scene and write the image to disk.
