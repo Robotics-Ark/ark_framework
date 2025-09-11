@@ -45,7 +45,7 @@ class LoggerNode(BaseNode):
             return out
 
         try:
-            log.info("Starting logging")
+            log.info("Started logging")
             self.proc = subprocess.Popen(
                 ["lcm-logger", msg.data],
                 stdout=subprocess.PIPE,
@@ -78,10 +78,9 @@ class LoggerNode(BaseNode):
             return out
 
         try:
-            
             self.proc.kill()
             self.proc.wait(timeout=5)
-            log.info("Stopping logging")
+            log.info("Stopped logging")
             del self.proc
             self.proc = None
             out.success = True
