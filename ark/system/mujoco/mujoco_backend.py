@@ -129,6 +129,10 @@ class MujocoBackend(SimulatorBackend):
             self.viewer = mujoco.viewer.launch_passive(
                 self.model, self.data, show_left_ui=False, show_right_ui=False
             )
+            # self.viewer.cam.lookat[:] = [0.0, 0.0, 1.0]
+            # self.viewer.cam.distance = 3
+            # self.viewer.cam.azimuth = 0
+            # self.viewer.cam.elevation = 0
         else:
             self.headless = True
 
