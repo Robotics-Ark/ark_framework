@@ -9,7 +9,6 @@ class LoggerNode(BaseNode):
 
     def __init__(self, name: str, config: Optional[Dict[str, Any]] = None):
         super().__init__(name)
-        self.pub = self.create_publisher("chatter", string_t)
         self.create_service("logger/start", string_t, flag_t, self.start_logging)
         self.create_service("logger/stop", flag_t, flag_t, self.stop_logging)
 
