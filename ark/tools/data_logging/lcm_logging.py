@@ -7,14 +7,14 @@ import subprocess
 
 class LoggerNode(BaseNode):
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__("Logger")
+    def __init__(self, name: str, config: Optional[Dict[str, Any]] = None):
+        super().__init__(name)
         self.pub = self.create_publisher("chatter", string_t)
         self.create_service("logger/start", string_t, flag_t, self.start_logging)
         self.create_service("logger/stop", flag_t, flag_t, self.stop_logging)
 
     def start_logging(self, channel: str, msg: string_t) -> flag_t:
-        log.info("Starting logging to file: ", msg.data)
+        log.info("Starting logging to file: " + msg.data)
         self.proc = subprocess.Popen(
             ['lcm-logger', msg.data],
             stdout=subprocess.PIPE,
@@ -25,6 +25,13 @@ class LoggerNode(BaseNode):
         msg.flag = True
         return msg
 
+    def stop_logging(self, channel: str, msg: flag_t) -> flag_t:
+        log.info("Stopping logging")
+        self.proc.kill()
+
+        msg = flag_t()
+        msg.flag = True
+        return msg
 
 if __name__ == "__main__":
     main(LoggerNode)
