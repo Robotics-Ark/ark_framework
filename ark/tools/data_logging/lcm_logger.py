@@ -9,7 +9,7 @@ import subprocess
 class LoggerNode(BaseNode):
 
     def __init__(self, name: str, config: Optional[dict[str, Any]] = None):
-        r"""
+        """
         @brief Construct the logger node and register services.
 
         @param name   Node name.
@@ -26,7 +26,7 @@ class LoggerNode(BaseNode):
         )
 
     def start_logging(self, channel: str, msg: string_t) -> status_t:
-        r"""
+        """
         @brief Start an LCM logging session if none is running.
 
         @param channel Service channel name (unused).
@@ -63,7 +63,7 @@ class LoggerNode(BaseNode):
         return out
 
     def stop_logging(self, channel: str, msg: flag_t) -> status_t:
-        r"""
+        """
         @brief Stop the current LCM logging session, if running.
 
         @param channel Service channel name.
@@ -78,9 +78,11 @@ class LoggerNode(BaseNode):
             return out
 
         try:
-            log.info("Stopping logging")
+            
             self.proc.kill()
             self.proc.wait(timeout=5)
+            log.info("Stopping logging")
+            del self.proc
             self.proc = None
             out.success = True
             out.message = "lcm-logger stopped successfully"
