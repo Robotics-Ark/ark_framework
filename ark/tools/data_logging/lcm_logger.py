@@ -2,7 +2,6 @@ from ark.client.comm_infrastructure.base_node import BaseNode,  main
 from arktypes import string_t, flag_t
 from ark.tools.log import log
 from typing import Any, Optional
-import time
 import subprocess
 
 class LoggerNode(BaseNode):
