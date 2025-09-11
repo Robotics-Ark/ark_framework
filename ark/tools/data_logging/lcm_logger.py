@@ -24,6 +24,14 @@ class LoggerNode(BaseNode):
         msg = flag_t()
         msg.flag = True
         return msg
+    
+    def stop_logging(self, channel: str, msg: flag_t) -> flag_t:
+        log.info("Stopping logging")
+        self.proc.kill()
+
+        msg = flag_t()
+        msg.flag = True
+        return msg
 
 if __name__ == "__main__":
     main(LoggerNode)
