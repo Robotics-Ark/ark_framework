@@ -42,19 +42,25 @@
   </a>
 </p>
 
-## What is this About? 
+<p align="center">
+  Join us on Discord!
+</p>
+<p align="center">
+ <a target="_blank" href="https://discord.gg/Mj9HPrUYcf"><img src="https://dcbadge.limes.pink/api/server/zkspfFwqDg" alt="" /></a>
+</p>
+
+## What is this about? 
 
 Ark is a Python-first playground for robot learning. Instead of wrestling with C++ and fragmented tools, you can collect data, train policies, and switch between simulation and real robots with just a few lines of code. Think of it as the PyTorch + Gym for robotics — simple, modular, and built for rapid prototyping of intelligent robots. 
 
 📚 **Learn more:**  
 - [📖 Tutorials](https://arkrobotics.notion.site/ARK-Home-22be053d9c6f8096bcdbefd6276aba61)  
 - [⚙️ Documentation](https://robotics-ark.github.io/ark_robotics.github.io/docs/html/index.html)  
-- [📄 Research Paper](https://robotics-ark.github.io/ark_robotics.github.io/static/images/2506.21628v2.pdf)  
-
+- [📄 Research Paper](https://robotics-ark.github.io/ark_robotics.github.io/static/images/2506.21628v2.pdf)
 
 ## Installation
 
-The framework depends on [ARK Types](https://github.com/Robotics-Ark/ark_types) and
+The framework depends on [Ark Types](https://github.com/Robotics-Ark/ark_types) and
 requires a Python environment managed with Conda. The steps below describe how
 to set up the repositories on **Ubuntu** and **macOS**.
 
