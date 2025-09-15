@@ -10,17 +10,17 @@ class MoveIt2Bridge(ArkRos2Bridge):
     def __init__(
         self,
         ros_controller: str,
-        ark_robot: str,
+        ark_robot_name: str,
         mapping_table: Optional[Dict[str, Any]] = None,
         sim: bool = False,
     ):
         # Build topic/channel names
         if sim:
             ros_topic = f"/{ros_controller}_controller/state"
-            ark_channel = f"{ark_robot}/joint_group_command/sim"
+            ark_channel = f"{ark_robot_name}/joint_group_command/sim"
         else:
             ros_topic = f"/{ros_controller}_controller/state"
-            ark_channel = f"{ark_robot}/joint_group_command"
+            ark_channel = f"{ark_robot_name}/joint_group_command"
 
         # Base mapping (MoveIt state -> Ark command)
         moveit_mapping_table = {
