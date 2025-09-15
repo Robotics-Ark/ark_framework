@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from control_msgs.msg import JointTrajectoryControllerState
 from arktypes import joint_group_command_t
 from ark.tools.ros_bridge.ark_ros2_bridge import ArkRos2Bridge
@@ -11,7 +11,7 @@ class MoveIt2Bridge(ArkRos2Bridge):
         self,
         ros_controller: str,
         ark_robot_name: str,
-        mapping_table: Optional[Dict[str, Any]] = None,
+        mapping_table: Optional[dict[str, Any]] = None,
         sim: bool = False,
     ):
         # Build topic/channel names
@@ -46,7 +46,7 @@ class MoveIt2Bridge(ArkRos2Bridge):
 
     def moveit_translator(self, ros_msg, ros_channel, ros_type, ark_channel, ark_type):
         """Convert joint state positions into Ark command."""
-        msg = ark_type()
+        msg = joint_group_command_t()
         msg.name = "arm"
         msg.n = len(ros_msg.actual.positions)
         msg.cmd = list(ros_msg.actual.positions)
