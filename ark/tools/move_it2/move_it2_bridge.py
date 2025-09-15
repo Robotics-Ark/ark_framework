@@ -4,7 +4,7 @@ from arktypes import joint_group_command_t
 from ark.tools.ros_bridge.ark_ros2_bridge import ArkRos2Bridge
 
 
-class JointStateArkBridge(ArkRos2Bridge):
+class MoveIt2Bridge(ArkRos2Bridge):
     """Bridge ROS2 JointTrajectoryControllerState -> Ark joint_group_command_t."""
 
     def __init__(
