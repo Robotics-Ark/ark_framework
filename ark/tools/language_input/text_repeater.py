@@ -12,6 +12,7 @@ class TextRepeaterNode(BaseNode):
         channel = self.config.get("channel", "user_input")
         freq = self.config.get("freq", 1)
 
+        # Exactly one of 'text' or 'text_path' should be provided; both default to "".
         if text and text_path:
             raise ValueError("Pass only one of 'text' or 'text_path' (not both).")
 
