@@ -48,7 +48,7 @@ class MoveIt2Bridge(ArkRos2Bridge):
         # Init parent with the final mapping
         super().__init__(mapping_table=moveit2_mapping_table, global_config=global_config)
 
-    def moveit2_translator(self, ros_msg, ros_channel, ros_type, ark_channel, ark_type):
+    def moveit2_translator(self, ros_msg, ros_channel: str, ros_type: JointTrajectoryControllerState, ark_channel: str, ark_type: joint_group_command_t):
         """Convert joint state positions into Ark command."""
         msg = joint_group_command_t()
         msg.name = "arm"
