@@ -109,8 +109,6 @@ class GenesisBackend(SimulatorBackend):
             connection_mode = False
         gs.init(backend=gs.cpu)
 
-        # Render images from Pybullet and save
-
 
         gravity = self.global_config["simulator"]["config"].get(
             "gravity", [0, 0, -9.81]
@@ -124,8 +122,7 @@ class GenesisBackend(SimulatorBackend):
 
         self.scene = gs.Scene(sim_options=gs.options.SimOptions(
             dt=timestep, gravity=gravity),
-            show_viewer=connection_mode)
-        # TODO: Maybe add default camera positions
+            show_viewer=False)
 
         # TODO: Temporary addition for now
         plane = self.scene.add_entity(gs.morphs.Plane())
@@ -134,15 +131,17 @@ class GenesisBackend(SimulatorBackend):
         self.save_render_config = self.global_config["simulator"].get(
             "save_render", None
         )
-        cam = self.scene.add_camera(
-            # res    = (1280, 960),
-            # pos    = (3.5, 0.0, 2.5),
-            # lookat = (0, 0, 0.5),
-            # fov    = 30,
-            # GUI    = False
+
+        print("CONNECTION MODE: ", connection_mode)
+        self.render_cam = self.scene.add_camera(
+            res    = (640, 480),
+            pos    = (3.5, 0.0, 2.5),
+            lookat = (0, 0, 0.5),
+            fov    = 30,
+            GUI    = False,
         )
 
-        # Setup robotss
+        # Setup robots
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
                 self.add_robot(robot_name, robot_config)
@@ -158,7 +157,7 @@ class GenesisBackend(SimulatorBackend):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
 
-        self.scene.build()
+        self.scene_ready = False
         self.ready = True
 
     def is_ready(self) -> bool:
@@ -311,10 +310,14 @@ class GenesisBackend(SimulatorBackend):
         The method updates all registered components, advances the physics
         engine and optionally saves renders when enabled.
         """
+        if self.scene_ready == False:
+            self.scene.build()
+            self.scene_ready = True
+
         if self._all_available():
             self._step_sim_components()
             self.scene.step()
-            # self._simulation_time += self._time_step
+            rgb = self.render_cam.render()
         else:
             log.panda("Did not step")
             pass
