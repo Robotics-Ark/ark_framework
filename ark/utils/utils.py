@@ -4,7 +4,7 @@ import yaml
 from ark.tools.log import log
 
 
-def load_yaml(config_path: str, raise_fnf_error=True) -> dict:
+def load_yaml(config_path: str, raise_fnf_error:bool=True) -> dict:
     """
     Load a YAML configuration schema from a file.
     Args:
