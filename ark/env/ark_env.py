@@ -1,18 +1,15 @@
-import time
-from typing import Optional, Callable, Any, Tuple, Dict, List, Union
-from pathlib import Path
-import yaml
+from typing import Any, Tuple, Dict, List, Union
 import os
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Tuple, Dict, List, Union
 
-from gymnasium import Env
-
-from arktypes import float_t, robot_init_t, flag_t, rigid_body_state_t
-from ark.tools.log import log
 from ark.client.comm_infrastructure.instance_node import InstanceNode
 from ark.env.spaces import ActionSpace, ObservationSpace
-from ark.client.comm_handler.service import send_service_request
-
-from abc import ABC, abstractmethod
+from ark.tools.log import log
+from ark.utils.utils import load_yaml
+from arktypes import robot_init_t, flag_t, rigid_body_state_t
+from gymnasium import Env
 
 
 class ArkEnv(Env, InstanceNode, ABC):
@@ -306,8 +303,7 @@ class ArkEnv(Env, InstanceNode, ABC):
 
         if global_config is not None:
             config_path = str(global_config)
-            with open(config_path, "r") as file:
-                cfg = yaml.safe_load(file)
+            cfg = load_yaml(config_path=config_path)
 
         # merge with subconfigs
         config = {}
@@ -369,8 +365,7 @@ class ArkEnv(Env, InstanceNode, ABC):
                 else:  # Relative path, use the directory of the main config file
                     external_path = os.path.join(os.path.dirname(config_path), item)
                 # Load the YAML file and return its content
-                with open(external_path, "r") as file:
-                    subconfig = yaml.safe_load(file)
+                subconfig = load_yaml(config_path=external_path)
             else:
                 log.error(
                     f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."
