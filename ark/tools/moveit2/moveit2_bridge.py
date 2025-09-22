@@ -1,9 +1,10 @@
-from typing import Optional, Any
-from control_msgs.msg import JointTrajectoryControllerState
-from arktypes import joint_group_command_t
-from ark.tools.ros_bridge.ark_ros2_bridge import ArkRos2Bridge
 import os
-import yaml
+from typing import Optional, Any
+
+from ark.tools.ros_bridge.ark_ros2_bridge import ArkRos2Bridge
+from ark.utils.utils import load_yaml
+from arktypes import joint_group_command_t
+from control_msgs.msg import JointTrajectoryControllerState
 
 
 class MoveIt2Bridge(ArkRos2Bridge):
@@ -71,8 +72,7 @@ class MoveIt2Bridge(ArkRos2Bridge):
         if isinstance(global_config, dict):
             data = global_config
         elif isinstance(global_config, str) and os.path.isfile(global_config):
-            with open(global_config, "r") as f:
-                data = yaml.safe_load(f)
+            data = load_yaml(config_path=global_config)
         else:
             raise ValueError("Source must be a dict or a valid YAML file path.")
 

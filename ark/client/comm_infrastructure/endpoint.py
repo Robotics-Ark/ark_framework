@@ -1,15 +1,12 @@
-import lcm
-from lcm import LCM
-
 # from typing import Any, Optional, Dict, Tuple, List, Union
 from pathlib import Path
 
+import lcm
 # import os
-import yaml
 from ark.tools.log import log
-
 # import socket
-import os
+from ark.utils.utils import load_yaml
+from lcm import LCM
 
 
 class EndPoint:
@@ -66,17 +63,12 @@ class EndPoint:
         if isinstance(global_config, Path):
             config_path = str(global_config)  # Convert Path to string
 
-            try:
-                # Attempt to open and read the YAML configuration file
-                with open(config_path, "r") as file:
-                    cfg = (
-                        yaml.safe_load(file) or {}
-                    )  # Load YAML content, default to an empty dictionary if None
-            except Exception as e:
+            cfg = load_yaml(config_path=config_path, raise_fnf_error=False)
+            if not cfg:
                 log.error(
-                    f"Error reading config file {config_path}: {e}. Using default system configuration."
+                    f"Error reading config file {config_path}. Using default system configuration."
                 )
-                return {}  # Exit on failure to read file
+                return cfg  # Exit on failure to read file
 
             try:
                 # Extract and update the 'system' configuration if it exists in the loaded YAML

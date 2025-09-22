@@ -7,19 +7,17 @@ managing the simulation lifecycle.  Concrete simulations should derive from
 this class and implement :func:`initialize_scene` and :func:`step`.
 """
 
-from pathlib import Path
-from abc import ABC, abstractmethod
-from typing import Dict, Any
 import os
-import yaml
-import sys
-from ark.client.comm_infrastructure.base_node import BaseNode
-from ark.system.pybullet.pybullet_backend import PyBulletBackend
-from ark.system.mujoco.mujoco_backend import MujocoBackend
-from ark.tools.log import log
-from arktypes import flag_t
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
 
-import pdb
+from ark.client.comm_infrastructure.base_node import BaseNode
+from ark.system.mujoco.mujoco_backend import MujocoBackend
+from ark.system.pybullet.pybullet_backend import PyBulletBackend
+from ark.tools.log import log
+from ark.utils.utils import load_yaml
+from arktypes import flag_t
 
 
 class SimulatorNode(BaseNode, ABC):
@@ -101,8 +99,7 @@ class SimulatorNode(BaseNode, ABC):
             global_config = global_config.resolve()
 
         config_path = str(global_config)
-        with open(config_path, "r") as file:
-            cfg = yaml.safe_load(file)
+        cfg = load_yaml(config_path=config_path)
 
         # assert that the config is a dict
         if not isinstance(cfg, dict):
@@ -166,8 +163,7 @@ class SimulatorNode(BaseNode, ABC):
                 else:  # Relative path, use the directory of the main config file
                     external_path = os.path.join(os.path.dirname(config_path), item)
                 # Load the YAML file and return its content
-                with open(external_path, "r") as file:
-                    subconfig = yaml.safe_load(file)
+                subconfig = load_yaml(config_path=external_path)
             else:
                 log.error(
                     f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."

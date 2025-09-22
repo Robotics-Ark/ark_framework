@@ -5,13 +5,13 @@ all ARK drivers. It includes helper functionality for loading configuration
 files and common attributes shared by concrete drivers.
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict
-from pathlib import Path
 import os
-import yaml
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
 
 from ark.tools.log import log
+from ark.utils.utils import load_yaml
 
 
 class ComponentDriver(ABC):
@@ -70,8 +70,7 @@ class ComponentDriver(ABC):
             component_config = component_config.resolve()
 
         config_path = str(component_config)
-        with open(config_path, "r") as file:
-            cfg = yaml.safe_load(file)
+        cfg = load_yaml(config_path=config_path)
         section_config = {}
         for section_name in ["robots", "sensors", "objects"]:
             for item in cfg.get(section_name, []):
@@ -85,8 +84,7 @@ class ComponentDriver(ABC):
                     else:  # Relative path, use the directory of the main config file
                         external_path = os.path.join(os.path.dirname(config_path), item)
                     # Load the YAML file and return its content
-                    with open(external_path, "r") as file:
-                        subconfig = yaml.safe_load(file)
+                    subconfig = load_yaml(config_path=external_path)
                 else:
                     log.error(
                         f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."
