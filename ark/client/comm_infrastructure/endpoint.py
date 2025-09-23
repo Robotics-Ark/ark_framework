@@ -2,10 +2,12 @@
 from pathlib import Path
 
 import lcm
+
 # import os
 from ark.tools.log import log
+
 # import socket
-from ark.utils.utils import load_yaml
+from ark.utils.utils import ConfigPath
 from lcm import LCM
 
 
@@ -46,7 +48,7 @@ class EndPoint:
         self.network_config = {}
         # extract network part of the global config
         if isinstance(global_config, str):
-            global_config = Path(global_config)  # Convert string to a Path object
+            global_config = ConfigPath(global_config)  # Convert string to a Path object
 
             # Check if the given path exists
             if not global_config.exists():
@@ -61,12 +63,12 @@ class EndPoint:
 
         # If global_config is now a Path object, treat it as a configuration file
         if isinstance(global_config, Path):
-            config_path = str(global_config)  # Convert Path to string
-
-            cfg = load_yaml(config_path=config_path, raise_fnf_error=False)
+            global_config = ConfigPath(str(global_config))
+        if isinstance(global_config, ConfigPath):
+            cfg = global_config.read_yaml(raise_fnf_error=False)
             if not cfg:
                 log.error(
-                    f"Error reading config file {config_path}. Using default system configuration."
+                    f"Error reading config file {global_config.str}. Using default system configuration."
                 )
                 return cfg  # Exit on failure to read file
 

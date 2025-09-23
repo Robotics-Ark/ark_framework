@@ -16,7 +16,7 @@ from ark.client.comm_infrastructure.base_node import BaseNode
 from ark.system.mujoco.mujoco_backend import MujocoBackend
 from ark.system.pybullet.pybullet_backend import PyBulletBackend
 from ark.tools.log import log
-from ark.utils.utils import load_yaml
+from ark.utils.utils import ConfigPath
 from arktypes import flag_t
 
 
@@ -87,19 +87,19 @@ class SimulatorNode(BaseNode, ABC):
             raise ValueError("Please provide a global configuration file.")
 
         if isinstance(global_config, str):
-            global_config = Path(global_config)
-
+            global_config = ConfigPath(global_config)
+        elif isinstance(global_config, Path):
+            global_config = ConfigPath(str(global_config))
         if not global_config.exists():
             raise ValueError(
                 "Given configuration file path does not exist, currently: "
-                + str(global_config)
+                + global_config.str
             )
 
         if not global_config.is_absolute():
             global_config = global_config.resolve()
 
-        config_path = str(global_config)
-        cfg = load_yaml(config_path=config_path)
+        cfg = global_config.read_yaml()
 
         # assert that the config is a dict
         if not isinstance(cfg, dict):
@@ -119,23 +119,23 @@ class SimulatorNode(BaseNode, ABC):
             )
 
         try:
-            config["robots"] = self._load_section(cfg, config_path, "robots")
+            config["robots"] = self._load_section(cfg, global_config, "robots")
         except KeyError as e:
             config["robots"] = {}
         try:
-            config["sensors"] = self._load_section(cfg, config_path, "sensors")
+            config["sensors"] = self._load_section(cfg, global_config, "sensors")
         except KeyError as e:
             config["sensors"] = {}
         try:
-            config["objects"] = self._load_section(cfg, config_path, "objects")
+            config["objects"] = self._load_section(cfg, global_config, "objects")
         except KeyError as e:
             config["objects"] = {}
 
-        log.ok("Config file under " + config_path + " loaded successfully.")
+        log.ok("Config file under " + global_config.str + " loaded successfully.")
         self.global_config = config
 
     def _load_section(
-        self, cfg: dict[str, Any], config_path: str, section_name: str
+        self, cfg: dict[str, Any], config_path: str | ConfigPath, section_name: str
     ) -> dict[str, Any]:
         """!Load a sub‑configuration section.
 
@@ -159,11 +159,11 @@ class SimulatorNode(BaseNode, ABC):
                 ".yaml"
             ):  # If it's a path to an external file
                 if os.path.isabs(item):  # Check if the path is absolute
-                    external_path = item
+                    external_path = ConfigPath(item)
                 else:  # Relative path, use the directory of the main config file
-                    external_path = os.path.join(os.path.dirname(config_path), item)
+                    external_path = config_path.parent / item
                 # Load the YAML file and return its content
-                subconfig = load_yaml(config_path=external_path)
+                subconfig = external_path.read_yaml()
             else:
                 log.error(
                     f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."

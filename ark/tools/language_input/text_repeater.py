@@ -3,7 +3,7 @@ from arktypes import string_t
 from pathlib import Path
 import argparse
 
-from ark.utils.utils import load_yaml
+from ark.utils.utils import ConfigPath
 
 from ark.tools.log import log
 
@@ -12,7 +12,8 @@ class TextRepeaterNode(BaseNode):
     def __init__(self, node_name: str, global_config: str):
         super().__init__(node_name, global_config)
         # Required keys in the global config
-        self.config = load_yaml(config_path=global_config)
+        global_config_path = ConfigPath(global_config)
+        self.config = global_config_path.read_yaml()
         text_path = self.config.get("text_path", "")
         text = self.config.get("text", "")
         channel = self.config.get("channel", "user_input")
@@ -33,7 +34,7 @@ class TextRepeaterNode(BaseNode):
             self.text = text
 
         if len(self.text) == 0:
-            log.error("Text prompt is empty.")
+            raise ValueError("Text is empty.")
 
         self.text_msg = string_t()
         self.text_msg.data = self.text
