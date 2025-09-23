@@ -1,29 +1,61 @@
+import json
 from pathlib import Path
 
 import yaml
 from ark.tools.log import log
 
 
-def load_yaml(config_path: str, raise_fnf_error:bool=True) -> dict:
+class ConfigPath(type(Path())):
     """
-    Load a YAML configuration schema from a file.
-    Args:
-        config_path: Path to the YAML configuration file.
-        raise_fnf_error: Raise FileNotFoundError if the YAML configuration file does not exist.
-
-    Returns:
-        The parsed configuration schema as a dictionary. If the file
-        contains no data, an empty dictionary is returned.
-
+    A Path subclass with convenience methods for reading configuration files.
+    Works cross-platform (inherits PosixPath on Linux/macOS or WindowsPath on Windows).
     """
-    cfg_path = Path(config_path)
-    cfg_dict = {}
-    if cfg_path.exists():
-        with open(cfg_path, "r") as f:
-            cfg_dict = yaml.safe_load(f) or {}
-    else:
-        if raise_fnf_error:
-            raise FileNotFoundError(f"Config file could not found {cfg_path}")
-        log.error(f"Config file {cfg_path} does not exist.")
 
-    return cfg_dict
+    @property
+    def str(self) -> str:
+        """
+        Return the string representation of this path.
+        Equivalent to calling str(self).
+        """
+        return str(self)
+
+    def read_yaml(self, raise_fnf_error: bool = True) -> dict:
+        """
+        Load a YAML configuration schema from this path.
+
+        Args:
+            raise_fnf_error: If True, raise FileNotFoundError when the file is missing.
+
+        Returns:
+            Parsed YAML as a dictionary. Returns {} if empty.
+        """
+        if self.exists():
+            with self.open("r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        else:
+            if raise_fnf_error:
+                raise FileNotFoundError(f"Config file not found: {self}")
+            log.error(f"Config file {self} does not exist.")
+            return {}
+
+    def read_json(self, raise_fnf_error: bool = True) -> dict:
+        """
+        Load a JSON configuration schema from this path.
+
+        Args:
+            raise_fnf_error: If True, raise FileNotFoundError when the file is missing.
+
+        Returns:
+            Parsed JSON as a dictionary.
+        """
+        if self.exists():
+            with self.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        else:
+            if raise_fnf_error:
+                raise FileNotFoundError(f"Config file not found: {self}")
+            log.error(f"Config file {self} does not exist.")
+            return {}
+
+    def __repr__(self) -> str:
+        return f"<ConfigPath path={super().__str__()}>"

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ark.tools.log import log
-from ark.utils.utils import load_yaml
+from ark.utils.utils import ConfigPath
 
 
 class ComponentDriver(ABC):
@@ -62,15 +62,17 @@ class ComponentDriver(ABC):
 
         # handle path object vs string
         if isinstance(component_config, str):
-            component_config = Path(component_config)
-        elif not component_config.exists():
-            log.error("Given configuration file path does not exist.")
+            component_config = ConfigPath(component_config)
+        elif isinstance(component_config, Path):
+            component_config = ConfigPath(str(component_config))
+
+        if not component_config.exists():
+            raise FileNotFoundError("Given configuration file path does not exist.")
 
         if not component_config.is_absolute():
             component_config = component_config.resolve()
 
-        config_path = str(component_config)
-        cfg = load_yaml(config_path=config_path)
+        cfg = component_config.read_yaml()
         section_config = {}
         for section_name in ["robots", "sensors", "objects"]:
             for item in cfg.get(section_name, []):
@@ -80,11 +82,11 @@ class ComponentDriver(ABC):
                     ".yaml"
                 ):  # If it's a path to an external file
                     if os.path.isabs(item):  # Check if the path is absolute
-                        external_path = item
+                        external_path = ConfigPath(item)
                     else:  # Relative path, use the directory of the main config file
-                        external_path = os.path.join(os.path.dirname(config_path), item)
+                        external_path = component_config.parent / item
                     # Load the YAML file and return its content
-                    subconfig = load_yaml(config_path=external_path)
+                    subconfig = external_path.read_yaml()
                 else:
                     log.error(
                         f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."
@@ -95,7 +97,7 @@ class ComponentDriver(ABC):
                     section_config = subconfig["config"]
         if not section_config:
             log.error(
-                f"Could not find configuration for {component_name} in {config_path}"
+                f"Could not find configuration for {component_name} in {component_config.str}"
             )
         return section_config
 
