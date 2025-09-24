@@ -3,10 +3,17 @@ from arktypes import string_t
 from pathlib import Path
 import argparse
 
+from ark.utils.utils import ConfigPath
+
+from ark.tools.log import log
+
+
 class TextRepeaterNode(BaseNode):
-    def __init__(self, node_name: str, global_config):
+    def __init__(self, node_name: str, global_config: str):
         super().__init__(node_name, global_config)
         # Required keys in the global config
+        global_config_path = ConfigPath(global_config)
+        self.config = global_config_path.read_yaml()
         text_path = self.config.get("text_path", "")
         text = self.config.get("text", "")
         channel = self.config.get("channel", "user_input")
@@ -19,10 +26,15 @@ class TextRepeaterNode(BaseNode):
         if text_path:
             p = Path(text_path)
             if not p.is_file():
-                raise FileNotFoundError(f"'text_path' does not exist or is not a file: {p}")
+                raise FileNotFoundError(
+                    f"'text_path' does not exist or is not a file: {p}"
+                )
             self.text = p.read_text()
         else:
             self.text = text
+
+        if len(self.text) == 0:
+            raise ValueError("Text is empty.")
 
         self.text_msg = string_t()
         self.text_msg.data = self.text
