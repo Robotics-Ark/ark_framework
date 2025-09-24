@@ -1,11 +1,22 @@
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PosixPath, WindowsPath
+from typing import Type
 
 import yaml
 from ark.tools.log import log
 
+# Explicit mapping for known platforms
+_OS_NAME_TO_PATH_CLS: dict[str, Type[Path]] = {
+    "posix": PosixPath,  # Linux, macOS
+    "nt": WindowsPath,  # Windows
+}
 
-class ConfigPath(type(Path())):
+# Pick base class
+BasePathClass: Type[Path] = _OS_NAME_TO_PATH_CLS.get(os.name, type(Path()))
+
+
+class ConfigPath(BasePathClass):
     """
     A Path subclass with convenience methods for reading configuration files.
     Works cross-platform (inherits PosixPath on Linux/macOS or WindowsPath on Windows).
