@@ -17,7 +17,7 @@ from ark.client.comm_infrastructure.base_node import BaseNode
 from ark.tools.log import log
 from arktypes import flag_t
 import traceback
-
+import threading
 import pdb
 
 
@@ -227,7 +227,7 @@ class SimulatorNode(BaseNode, ABC):
         self.backend.shutdown_backend()
         super().kill_node()
 
-def main(node_cls: type[BaseNode], *args) -> None:
+def main(node_cls: type[SimulatorNode], *args) -> None:
     """!
     Initializes and runs a node.
 
@@ -251,7 +251,8 @@ def main(node_cls: type[BaseNode], *args) -> None:
         #     log.ok(f"Register first")
         # else:
         log.ok(f"Initialized {node.name}")
-        node._step_simulation()
+        while not node._done:
+            node._step_simulation()
     except KeyboardInterrupt:
         log.warning(f"User killed node {node_cls.__name__}")
     except Exception:

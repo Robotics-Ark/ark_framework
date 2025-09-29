@@ -2,86 +2,78 @@
 @brief Backend implementation for running simulations in PyBullet.
 """
 
+from __future__ import annotations
+
 import importlib.util
-import sys, ast, os
-import math
-import cv2
+import sys
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any
+
+import cv2
 import genesis as gs
+import numpy as np
 
 from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
 
-# from ark.system.genesis.genesis_multibody import GenesisMultiBody
-# from ark.system.genesis.genesis_robot_driver import GenesisRobotDriver
+from ark.system.genesis.genesis_multibody import GenesisMultiBody
 # from ark.system.genesis.genesis_camera_driver import GenesisCameraDriver
 from arktypes import *
 
 
-def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
-    """!Load a class from ``path``.
+def import_class_from_directory(path: Path) -> tuple[type[Any], Any | None]:
+    """Load and return a class (and optional driver) from ``path``.
 
     The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
-    class with the same name.  If a ``Drivers`` class is present in the module
-    its ``PYBULLET_DRIVER`` attribute is returned alongside the main class.
-
-    @param path Path to the directory containing the module.
-    @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
-            driver is defined.
-    @rtype Tuple[type, Optional[type]]
+    class with the same name.  When the module exposes a ``Drivers`` class a
+    ``GENESIS_DRIVER`` attribute is returned alongside the main class.
     """
-    # Extract the class name from the last part of the directory path (last directory name)
+
     class_name = path.name
-    file_path = path / f"{class_name}.py"
-    # get the full absolute path
-    file_path = file_path.resolve()
+    file_path = (path / f"{class_name}.py").resolve()
     if not file_path.exists():
         raise FileNotFoundError(f"The file {file_path} does not exist.")
 
-    with open(file_path, "r", encoding="utf-8") as file:
-        tree = ast.parse(file.read(), filename=file_path)
-    # for imports
-    module_dir = os.path.dirname(file_path)
+    module_dir = str(file_path.parent)
     sys.path.insert(0, module_dir)
-    # Extract class names from the AST
-    class_names = [
-        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-    ]
-    # check if Sensor_Drivers is in the class_names
-    if "Drivers" in class_names:
-        # Load the module dynamically
-        spec = importlib.util.spec_from_file_location(class_names[0], file_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[class_names[0]] = module
-        spec.loader.exec_module(module)
 
-        class_ = getattr(module, class_names[0])
+    try:
+        spec = importlib.util.spec_from_file_location(class_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module from {file_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[class_name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(class_name, None)
         sys.path.pop(0)
 
-        drivers = class_.PYBULLET_DRIVER
-        class_names.remove("Drivers")
+    drivers_attr: Any | None = None
+    drivers_cls = getattr(module, "Drivers", None)
+    if isinstance(drivers_cls, type):
+        drivers_attr = getattr(drivers_cls, "GENESIS_DRIVER", None)
 
-    # Retrieve the class from the module (has to be list of one)
-    class_ = getattr(module, class_names[0])
+    class_candidates = [
+        obj
+        for obj in vars(module).values()
+        if isinstance(obj, type) and obj.__module__ == module.__name__
+    ]
 
-    if len(class_names) != 1:
-        raise ValueError(
-            f"Expected exactly two class definition in {file_path}, but found {len(class_names)}."
-        )
+    target_class = next(
+        (cls for cls in class_candidates if cls.__name__ == class_name), None
+    )
+    if target_class is None:
+        non_driver_classes = [
+            cls for cls in class_candidates if cls.__name__ != "Drivers"
+        ]
+        if len(non_driver_classes) != 1:
+            raise ValueError(
+                f"Expected a single class definition in {file_path}, found {len(non_driver_classes)}."
+            )
+        target_class = non_driver_classes[0]
 
-    # Load the module dynamically
-    spec = importlib.util.spec_from_file_location(class_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[class_name] = module
-    spec.loader.exec_module(module)
-
-    # Retrieve the class from the module (has to be list of one)
-    class_ = getattr(module, class_names[0])
-    sys.path.pop(0)
-
-    # Return the class
-    return class_, drivers
+    return target_class, drivers_attr
 
 
 class GenesisBackend(SimulatorBackend):
@@ -101,47 +93,65 @@ class GenesisBackend(SimulatorBackend):
         """
         self.ready = False
         self._is_initialised = False
-        # TODO: Connect to client
-        connection_mode = self.global_config["simulator"]["config"]["connection_mode"].upper()
-        if connection_mode == "GUI":
-            connection_mode = True
-        elif connection_mode == "DIRECT":
-            connection_mode = False
+        self.scene: gs.Scene | None = None
+        self.scene_ready: bool = False
+
+        connection_mode = (
+            self.global_config["simulator"]["config"]["connection_mode"]
+        )
+        show_viewer = connection_mode.upper() == "GUI"
+
         gs.init(backend=gs.cpu)
 
-
         gravity = self.global_config["simulator"]["config"].get(
-            "gravity", [0, 0, -9.81]
+            "gravity", [0.0, 0.0, -9.81]
         )
-        # self.set_gravity(gravity)
-
-        timestep = 1 / self.global_config["simulator"]["config"].get(
+        timestep = 1.0 / self.global_config["simulator"]["config"].get(
             "sim_frequency", 240.0
         )
-        # self.set_time_step(timestep)
 
-        self.scene = gs.Scene(sim_options=gs.options.SimOptions(
-            dt=timestep, gravity=gravity),
-            show_viewer=False)
-
-        # TODO: Temporary addition for now
-        plane = self.scene.add_entity(gs.morphs.Plane())
-
-        # TODO: Headless save rendering
-        self.save_render_config = self.global_config["simulator"].get(
-            "save_render", None
+        self.scene = gs.Scene(
+            sim_options=gs.options.SimOptions(dt=timestep, gravity=gravity),
+            show_viewer=show_viewer,
         )
 
-        print("CONNECTION MODE: ", connection_mode)
-        self.render_cam = self.scene.add_camera(
-            res    = (640, 480),
-            pos    = (3.5, 0.0, 2.5),
-            lookat = (0, 0, 0.5),
-            fov    = 30,
-            GUI    = False,
-        )
+        self.scene.add_entity(gs.morphs.Plane())
 
-        # Setup robots
+        # Optional off-screen rendering
+        self.save_render_config: dict[str, Any] | None = self.global_config[
+            "simulator"
+        ].get("save_render")
+        if self.save_render_config is not None:
+            self.render_cam = self.scene.add_camera(
+                res=(640, 480),
+                pos=(3.5, 0.0, 2.5),
+                lookat=(0, 0, 0.5),
+                fov=30,
+                GUI=False,
+            )
+            self.save_path = Path(
+                self.save_render_config.get("save_path", "output/save_render")
+            )
+            self.save_path.mkdir(parents=True, exist_ok=True)
+
+            remove_existing = self.save_render_config.get("remove_existing", True)
+            if remove_existing:
+                for child in self.save_path.iterdir():
+                    if child.is_file():
+                        child.unlink()
+            self.save_interval = float(
+                self.save_render_config.get("save_interval", 1 / 30)
+            )
+            self.overwrite_file = bool(
+                self.save_render_config.get("overwrite_file", False)
+            )
+        else:
+            self.render_cam = None
+            self.save_path = None
+            self.save_interval = 0.0
+            self.overwrite_file = False
+
+        # # Setup robots
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
                 self.add_robot(robot_name, robot_config)
@@ -157,7 +167,6 @@ class GenesisBackend(SimulatorBackend):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
 
-        self.scene_ready = False
         self.ready = True
 
     def is_ready(self) -> bool:
@@ -169,20 +178,7 @@ class GenesisBackend(SimulatorBackend):
         """
         return self.ready
 
-    def _connect_genesis(self, config: dict[str, Any]):
-        """!Create and return the Bullet client.
-
-        ``config`` must contain the ``connection_mode`` under the ``simulator``
-        section.  Optionally ``mp4`` can be provided to enable video
-        recording.
-
-        @param config Global configuration dictionary.
-        @return Initialized :class:`BulletClient` instance.
-        @rtype BulletClient
-        """
-        raise NotImplementedError("Genesis connection not implemented yet.")
-
-    def set_gravity(self, gravity: tuple[float]) -> None:
+    def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         """!Set the world gravity.
 
         @param gravity Tuple ``(gx, gy, gz)`` specifying gravity in m/s^2.
@@ -200,7 +196,7 @@ class GenesisBackend(SimulatorBackend):
     ####            ROBOTS, SENSORS AND OBJECTS           ####
     ##########################################################
 
-    def add_robot(self, name: str, robot_config: Dict[str, Any]):
+    def add_robot(self, name: str, robot_config: dict[str, Any]) -> None:
         """!Instantiate and register a robot in the simulation.
 
         @param name Identifier for the robot.
@@ -210,74 +206,48 @@ class GenesisBackend(SimulatorBackend):
         if class_path.is_file():
             class_path = class_path.parent
 
-        RobotClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass.value
-        # TODO: Change depending on Genesis driver
-        driver = DriverClass(name, robot_config, self.client)
-        robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
+        robot_class, driver_entry = import_class_from_directory(class_path)
+
+        if driver_entry is None:
+            raise ValueError(
+                f"Genesis driver not defined for robot '{name}' at {class_path}."
+            )
+
+        driver_cls = getattr(driver_entry, "value", driver_entry)
+        if self.scene is None:
+            raise RuntimeError("Genesis scene is not initialized.")
+
+        driver = driver_cls(name, robot_config, self.scene)
+        robot = robot_class(name=name, global_config=self.global_config, driver=driver)
 
         self.robot_ref[name] = robot
 
     def add_sim_component(
         self,
         name: str,
-        obj_config: Dict[str, Any],
+        obj_config: dict[str, Any],
     ) -> None:
         """!Add a generic simulated object.
 
         @param name Name of the object.
         @param obj_config Object specific configuration dictionary.
         """
-        # TODO: Change depending on Genesis driver
+        if self.scene is None:
+            raise RuntimeError("Genesis scene is not initialized.")
+
         sim_component = GenesisMultiBody(
-            name=name, client=self.client, global_config=self.global_config
+            name=name, client=self.scene, global_config=self.global_config
         )
         self.object_ref[name] = sim_component
 
-    def add_sensor(self, name: str, sensor_config: Dict[str, Any]) -> None:
+    def add_sensor(self, name: str, sensor_config: dict[str, Any]) -> None:
         """!Instantiate and register a sensor.
 
         @param name Name of the sensor component.
         @param sensor_config Sensor configuration dictionary.
         """
-        sensor_type = sensor_config["type"]
-        class_path = Path(sensor_config["class_dir"])
-        if class_path.is_file():
-            class_path = class_path.parent
-
-        SensorClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass.value
-
-        # TODO: Change depending on Genesis driver
-        attached_body_id = None
-        if sensor_config["sim_config"].get("attach", None):
-
-            print(self.global_config["objects"].keys())
-            # search through robots and objects to find attach link if needed
-            if (
-                sensor_config["sim_config"]["attach"]["parent_name"]
-                in self.global_config["robots"].keys()
-            ):
-                attached_body_id = self.robot_ref[
-                    sensor_config["sim_config"]["attach"]["parent_name"]
-                ]._driver.ref_body_id
-            elif (
-                sensor_config["sim_config"]["attach"]["parent_name"]
-                in self.global_config["objects"].keys()
-            ):
-                attached_body_id = self.object_ref[
-                    sensor_config["sim_config"]["attach"]["parent_name"]
-                ].ref_body_id
-            else:
-                log.error(f"Parent to attach sensor " + name + " to does not exist !")
-        driver = DriverClass(name, sensor_config, attached_body_id, self.client)
-        sensor = SensorClass(
-            name=name,
-            driver=driver,
-            global_config=self.global_config,
-        )
-
-        self.sensor_ref[name] = sensor
+        raise NotImplementedError("Sensors are not compatible with Genesis yet.")
+        # Cameras are not supported on MacOS, Ubuntu Cameras are not working
 
     def remove(self, name: str) -> None:
         """!Remove a component from the simulator.
@@ -290,19 +260,41 @@ class GenesisBackend(SimulatorBackend):
     ####          SIMULATION           ####
     #######################################
 
-    def _all_available(self):
-        """!Check whether all registered components are active.
+    def _all_available(self) -> bool:
+        """Return ``True`` when all registered components are active."""
 
-        @return ``True`` if no component is suspended.
-        @rtype bool
-        """
-        for robot in self.robot_ref:
-            if self.robot_ref[robot]._is_suspended:
-                return False
-        for obj in self.object_ref:
-            if self.object_ref[obj]._is_suspended:
-                return False
-        return True
+        robots_ready = all(not robot._is_suspended for robot in self.robot_ref.values())
+        objects_ready = all(not obj._is_suspended for obj in self.object_ref.values())
+        sensors_ready = all(
+            not sensor._is_suspended for sensor in self.sensor_ref.values()
+        )
+        return robots_ready and objects_ready and sensors_ready
+    
+    def save_render(self) -> None:
+        """Persist the latest render to disk when rendering is configured."""
+
+        if self.render_cam is None or self.save_path is None:
+            return
+
+        rgba = self.render_cam.render()
+        time_us = int(1e6 * self._simulation_time)
+        if self.overwrite_file:
+            save_path = self.save_path / "render.png"
+        else:
+            save_path = self.save_path / f"{time_us}.png"
+        # Convert renderer output to uint8 BGR image for OpenCV
+        img = np.asarray(rgba)
+        # Drop alpha channel if present
+        if img.ndim == 3 and img.shape[-1] == 4:
+            img = img[..., :3]
+        # Normalize to uint8 if needed (assume float in [0,1])
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0.0, 1.0)
+            img = (img * 255.0).astype(np.uint8)
+        # Convert RGB -> BGR for OpenCV
+        img_bgr = img[..., ::-1]
+        cv2.imwrite(str(save_path), img_bgr)
+
 
     def step(self) -> None:
         """!Advance the simulation by one timestep.
@@ -310,26 +302,21 @@ class GenesisBackend(SimulatorBackend):
         The method updates all registered components, advances the physics
         engine and optionally saves renders when enabled.
         """
-        if self.scene_ready == False:
+        if self.scene is None:
+            raise RuntimeError("Genesis scene is not initialized.")
+
+        if not self.scene_ready:
             self.scene.build()
             self.scene_ready = True
 
-        if self._all_available():
-            self._step_sim_components()
-            self.scene.step()
-            rgb = self.render_cam.render()
-        else:
-            log.panda("Did not step")
-            pass
+        if not self._all_available():
+            log.panda("Skipping simulation step because a component is suspended.")
+            return
 
-    def save_render(self):
-        """!Render the scene and write the image to disk.
-
-        The image is saved either as ``render.png`` when overwriting or with the
-        current simulation time as filename when not.
-        """
-        # Calculate camera extrinsic matrix
-        raise NotImplementedError("Save render function not implemented yet.")
+        self._step_sim_components()
+        self.scene.step()
+        if self.save_render_config:
+            self.save_render()
 
     def reset_simulator(self) -> None:
         """!Reset the entire simulator state.
@@ -348,16 +335,15 @@ class GenesisBackend(SimulatorBackend):
         # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12438
         return self._simulation_time
 
-    def shutdown_backend(self):
+    def shutdown_backend(self) -> None:
         """!Disconnect all components and shut down the backend.
 
         This should be called at program termination to cleanly close the
         simulator and free all resources.
         """
-        # TODO: Change depending on Genesis driver
-        for robot in self.robot_ref:
-            self.robot_ref[robot].kill_node()
-        for obj in self.object_ref:
-            self.object_ref[obj].kill_node()
-        for sensor in self.sensor_ref:
-            self.sensor_ref[sensor].kill_node()
+        for robot in self.robot_ref.values():
+            robot.kill_node()
+        for obj in self.object_ref.values():
+            obj.kill_node()
+        for sensor in self.sensor_ref.values():
+            sensor.kill_node()
