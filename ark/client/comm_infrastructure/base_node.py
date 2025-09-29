@@ -1,12 +1,6 @@
 import sys
-from abc import ABC, abstractmethod
-from typing import Any, Generator, Dict, Type
 import traceback
-
-import lcm
-from lcm import LCM
-import yaml
-import os
+from typing import Type
 
 from ark.client.comm_infrastructure.comm_endpoint import CommEndpoint
 from ark.tools.log import log
@@ -54,7 +48,7 @@ class BaseNode(CommEndpoint):
                 self._done = True
 
 
-def main(node_cls: type[BaseNode], *args) -> None:
+def main(node_cls: type[BaseNode], *args, **kwargs) -> None:
     """!
     Initializes and runs a node.
 
@@ -72,11 +66,7 @@ def main(node_cls: type[BaseNode], *args) -> None:
     node = None
     log.ok(f"Initializing {node_cls.__name__} type node")
     try:
-        node = node_cls(*args)
-        # if node.registered == False:
-        #     node.kill_node()
-        #     log.ok(f"Register first")
-        # else:
+        node = node_cls(*args, **kwargs)
         log.ok(f"Initialized {node.name}")
         node.spin()
     except KeyboardInterrupt:

@@ -23,6 +23,7 @@ from ark.client.comm_handler.multi_channel_publisher import MultiChannelPublishe
 from ark.client.comm_handler.multi_channel_listener import MultiChannelListener
 from ark.client.frequencies.stepper import Stepper
 from ark.tools.log import log
+from ark.utils.utils import ConfigPath
 
 from arktypes import (
     flag_t,
@@ -153,15 +154,15 @@ class CommEndpoint(EndPoint):
         """
 
         if isinstance(global_config, str):
-            global_config = Path(global_config)
+            global_config = ConfigPath(global_config)
             if not global_config.exists():
                 log.error("Given configuration file path does not exist.")
             if not global_config.is_absolute():
                 global_config = global_config.resolve()
         if isinstance(global_config, Path):
-            config_path = str(global_config)
-            with open(config_path, "r") as file:
-                cfg = yaml.safe_load(file)
+            global_config = ConfigPath(str(global_config))
+        if isinstance(global_config, ConfigPath):
+            cfg = global_config.read_yaml()
             for item in cfg.get(type, []):
                 if isinstance(item, dict):  # If it's an inline configuration
                     config = item["config"]
@@ -172,15 +173,12 @@ class CommEndpoint(EndPoint):
                 ):  # If it's a path to an external file
                     if item.split(".")[0] == type + "/" + name:
                         if os.path.isabs(item):  # Check if the path is absolute
-                            external_path = item
+                            external_path = ConfigPath(item)
                         else:  # Relative path, use the directory of the main config file
-                            external_path = os.path.join(
-                                os.path.dirname(config_path), item
-                            )
+                            external_path = global_config.parent / item
                         # Load the YAML file and return its content
-                        with open(external_path, "r") as file:
-                            item_config = yaml.safe_load(file)
-                            config = item_config["config"]
+                        item_config = external_path.read_yaml()
+                        config = item_config["config"]
                         return config
                 else:
                     log.error(
