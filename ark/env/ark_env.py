@@ -1,18 +1,14 @@
-import time
-from typing import Optional, Callable, Any, Tuple, Dict, List, Union
-from pathlib import Path
-import yaml
 import os
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
 
-from gymnasium import Env
-
-from arktypes import float_t, robot_init_t, flag_t, rigid_body_state_t
-from ark.tools.log import log
 from ark.client.comm_infrastructure.instance_node import InstanceNode
 from ark.env.spaces import ActionSpace, ObservationSpace
-from ark.client.comm_handler.service import send_service_request
-
-from abc import ABC, abstractmethod
+from ark.tools.log import log
+from ark.utils.utils import ConfigPath
+from arktypes import robot_init_t, flag_t, rigid_body_state_t
+from gymnasium import Env
 
 
 class ArkEnv(Env, InstanceNode, ABC):
@@ -27,13 +23,13 @@ class ArkEnv(Env, InstanceNode, ABC):
     @param environment_name Name of the environment (also the node name).
     @type environment_name str
     @param action_channels Channels on which actions will be published.
-    @type action_channels List[Tuple[str, type]]
+    @type action_channels list[tuple[str, type]]
     @param observation_channels Channels on which observations will be received.
-    @type observation_channels List[Tuple[str, type]]
+    @type observation_channels list[tuple[str, type]]
     @param global_config Path or dictionary describing the complete Noah system
         configuration.  If ``None`` a warning is emitted and only minimal
         functionality is available.
-    @type global_config Union[str, Dict[str, Any], Path]
+    @type global_config Union[str, dict[str, Any], Path]
     @param sim Set ``True`` when running in simulation mode.
     @type sim bool
     """
@@ -41,9 +37,9 @@ class ArkEnv(Env, InstanceNode, ABC):
     def __init__(
         self,
         environment_name: str,
-        action_channels: Dict[str, type],
-        observation_channels: Dict[str, type],
-        global_config: Union[str, Dict[str, Any], Path] = None,
+        action_channels: dict[str, type],
+        observation_channels: dict[str, type],
+        global_config: str | dict[str, Any] | Path | None = None,
         sim=True,
     ) -> None:
         """!Construct the environment.
@@ -56,10 +52,10 @@ class ArkEnv(Env, InstanceNode, ABC):
         @param environment_name Name of the environment node.
         @param action_channels Dictionary mapping channel names to LCM
                types for actions.
-        @type action_channels Dict[str, type]
+        @type action_channels dict[str, type]
         @param observation_channels Dictionary mapping channel names to LCM
                types for observations.
-        @type observation_channels Dict[str, type]
+        @type observation_channels dict[str, type]
         @param global_config Optional path or dictionary describing the system.
         @param sim If ``True`` the environment interacts with the simulator.
         """
@@ -81,7 +77,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         self.prev_state = None
 
     @abstractmethod
-    def action_packing(self, action: Any) -> Dict[str, Any]:
+    def action_packing(self, action: Any) -> dict[str, Any]:
         """!Serialize an action.
 
         This method converts the high level action passed to :func:`step` into
@@ -90,12 +86,12 @@ class ArkEnv(Env, InstanceNode, ABC):
 
         @param action The high level action provided by the agent.
         @return A mapping from channel names to packed LCM messages.
-        @rtype Dict[str, Any]
+        @rtype dict[str, Any]
         """
         raise NotImplementedError
 
     @abstractmethod
-    def observation_unpacking(self, observation_dict: Dict[str, Any]) -> Any:
+    def observation_unpacking(self, observation_dict: dict[str, Any]) -> Any:
         """!Deserialize observations.
 
         ``observation_dict`` contains the raw LCM messages keyed by channel
@@ -111,7 +107,7 @@ class ArkEnv(Env, InstanceNode, ABC):
     @abstractmethod
     def terminated_truncated_info(
         self, state: Any, action: Any, next_state: Any
-    ) -> Tuple[bool, bool, Any]:
+    ) -> tuple[bool, bool, Any]:
         """!Evaluate episode status.
 
         Determines whether the episode has terminated or been truncated after
@@ -121,8 +117,8 @@ class ArkEnv(Env, InstanceNode, ABC):
         @param state Previous environment state.
         @param action Action taken to reach ``next_state``.
         @param next_state New state after the action.
-        @return Tuple of termination flag, truncation flag and optional info.
-        @rtype Tuple[bool, bool, Any]
+        @return tuple of termination flag, truncation flag and optional info.
+        @rtype tuple[bool, bool, Any]
         """
         return False, False, None
 
@@ -146,7 +142,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         """!Reset all objects in the environment."""
         raise NotImplementedError
 
-    def reset(self, **kwargs) -> Tuple[Any, Any]:
+    def reset(self, **kwargs) -> tuple[Any, Any]:
         """!Reset the environment.
 
         This method resets all user defined objects by calling
@@ -155,7 +151,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         flags as produced by :func:`terminated_truncated_info`.
 
         @return Observation after reset and information tuple.
-        @rtype Tuple[Any, Any]
+        @rtype tuple[Any, Any]
         """
         # self.suspend_node()
         self.reset_objects(**kwargs)
@@ -249,7 +245,7 @@ class ArkEnv(Env, InstanceNode, ABC):
             service_name=service_name, request=request, response_type=flag_t
         )
 
-    def step(self, action: Any) -> Tuple[Any, float, bool, bool, Any]:
+    def step(self, action: Any) -> tuple[Any, float, bool, bool, Any]:
         """!Advance the environment by one step.
 
         The provided ``action`` is packed and published.  The function then
@@ -257,9 +253,9 @@ class ArkEnv(Env, InstanceNode, ABC):
         and returns all gathered information.
 
         @param action Action provided by the agent.
-        @return Tuple of observation, reward, termination flag, truncation flag
+        @return tuple of observation, reward, termination flag, truncation flag
                 and an optional info object.
-        @rtype Tuple[Any, float, bool, bool, Any]
+        @rtype tuple[Any, float, bool, bool, Any]
         """
         if self.prev_state == None:
             raise ValueError("Please call reset() before calling step().")
@@ -280,7 +276,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         # Return the observation (excluding termination and truncation flags), reward, and flags
         return obs, reward, terminated, truncated, info
 
-    def _load_config(self, global_config) -> None:
+    def _load_config(self, global_config: str | ConfigPath) -> None:
         """!Load and merge the environment configuration.
 
         The configuration can be provided as a path to a YAML file or as an
@@ -290,59 +286,59 @@ class ArkEnv(Env, InstanceNode, ABC):
 
         @param global_config Path or dictionary to parse.
         """
-        if isinstance(global_config, str):
-            global_config = Path(global_config)
-        elif global_config is None:
+        if global_config is None:
             log.warning("No configuration file provided. Using default configuration.")
-            # Assign a default empty configuration
             self.global_config = None
             return
-        elif not global_config.exists():
-            log.error("Given configuration file path does not exist.")
-            return  # Early return if file doesn't exist
+        if isinstance(global_config, str):
+            global_config = ConfigPath(global_config)
+        if isinstance(global_config, Path):
+            global_config = ConfigPath(str(global_config))
 
-        if global_config is not None and not global_config.is_absolute():
+        if isinstance(global_config, ConfigPath) and not global_config.exists():
+            log.error(
+                f"Given configuration file path does not exist: {global_config.str}"
+            )
+            return
+
+        if isinstance(global_config, ConfigPath) and not global_config.is_absolute():
             global_config = global_config.resolve()
 
-        if global_config is not None:
-            config_path = str(global_config)
-            with open(config_path, "r") as file:
-                cfg = yaml.safe_load(file)
+        cfg = global_config.read_yaml()
 
-        # merge with subconfigs
-        config = {}
-        try:
-            config["network"] = cfg.get("network", None)
-        except:
-            config["network"] = None
-        try:
-            config["simulator"] = cfg.get("simulator", None)
-        except:
+        config = {
+            "network": cfg.get("network", None) if isinstance(cfg, dict) else None,
+            "simulator": cfg.get("simulator", None) if isinstance(cfg, dict) else None,
+            "robots": (
+                self._load_section(cfg, global_config, "robots")
+                if cfg.get("robots")
+                else {}
+            ),
+            "sensors": (
+                self._load_section(cfg, global_config, "sensors")
+                if cfg.get("sensors")
+                else {}
+            ),
+            "objects": (
+                self._load_section(cfg, global_config, "objects")
+                if cfg.get("objects")
+                else {}
+            ),
+        }
+
+        if not config["simulator"]:
             log.error(
-                "Please provide at least name and backend_type under simulation in your config file."
+                "Please provide at least name and backend_type under 'simulator' in your config file."
             )
 
-        # Load robots, sensors, and objects
-        config["robots"] = (
-            self._load_section(cfg, config_path, "robots") if cfg.get("robots") else {}
-        )
-        config["sensors"] = (
-            self._load_section(cfg, config_path, "sensors")
-            if cfg.get("sensors")
-            else {}
-        )
-        config["objects"] = (
-            self._load_section(cfg, config_path, "objects")
-            if cfg.get("objects")
-            else {}
-        )
-
         log.info(
-            f"Config file under {config_path if global_config else 'default configuration'} loaded successfully."
+            f"Config file under {global_config.str if global_config else 'default configuration'} loaded successfully."
         )
         self.global_config = config
 
-    def _load_section(self, cfg, config_path, section_name):
+    def _load_section(
+        self, cfg: [str, Any], config_path: ConfigPath, section_name: str
+    ) -> dict[str, Any]:
         """!Load a sub-section from the configuration.
 
         Sections can either be provided inline in ``cfg`` or as a path to an
@@ -356,7 +352,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         @return Dictionary with component names as keys and their configurations
                 as values.
         """
-        section_config: Dict[str, Any] = {}
+        section_config: dict[str, Any] = {}
 
         for item in cfg.get(section_name, []):
             if isinstance(item, dict):  # If it's an inline configuration
@@ -365,12 +361,11 @@ class ArkEnv(Env, InstanceNode, ABC):
                 ".yaml"
             ):  # If it's a path to an external file
                 if os.path.isabs(item):  # Check if the path is absolute
-                    external_path = item
+                    external_path = ConfigPath(item)
                 else:  # Relative path, use the directory of the main config file
-                    external_path = os.path.join(os.path.dirname(config_path), item)
+                    external_path = config_path.parent / item
                 # Load the YAML file and return its content
-                with open(external_path, "r") as file:
-                    subconfig = yaml.safe_load(file)
+                subconfig = external_path.read_yaml()
             else:
                 log.error(
                     f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."
