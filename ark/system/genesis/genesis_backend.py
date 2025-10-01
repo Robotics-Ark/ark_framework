@@ -1,7 +1,3 @@
-"""@file pybullet_backend.py
-@brief Backend implementation for running simulations in PyBullet.
-"""
-
 from __future__ import annotations
 
 import importlib.util
@@ -17,8 +13,6 @@ from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
 
 from ark.system.genesis.genesis_multibody import GenesisMultiBody
-# from ark.system.genesis.genesis_camera_driver import GenesisCameraDriver
-from arktypes import *
 
 
 def import_class_from_directory(path: Path) -> tuple[type[Any], Any | None]:
@@ -77,16 +71,16 @@ def import_class_from_directory(path: Path) -> tuple[type[Any], Any | None]:
 
 
 class GenesisBackend(SimulatorBackend):
-    """Backend wrapper around the PyBullet client.
+    """Backend wrapper around the Genesis client.
 
     This class handles scene creation, stepping the simulation and managing
     simulated components such as robots, objects and sensors.
     """
 
     def initialize(self) -> None:
-        """!Initialize the PyBullet world.
+        """!Initialize the Genesis world.
 
-        The method creates the Bullet client, configures gravity and time step
+        The method creates the Genesis client, configures gravity and time step
         and loads all robots, objects and sensors defined in
         ``self.global_config``.  Optional frame capture settings are applied as
         well.
@@ -107,7 +101,7 @@ class GenesisBackend(SimulatorBackend):
             "gravity", [0.0, 0.0, -9.81]
         )
         timestep = 1.0 / self.global_config["simulator"]["config"].get(
-            "sim_frequency", 240.0
+            "sim_frequency", 100
         )
 
         self.scene = gs.Scene(
@@ -121,7 +115,7 @@ class GenesisBackend(SimulatorBackend):
         self.save_render_config: dict[str, Any] | None = self.global_config[
             "simulator"
         ].get("save_render")
-        if self.save_render_config is not None:
+        if self.save_render_config:
             self.render_cam = self.scene.add_camera(
                 res=(640, 480),
                 pos=(3.5, 0.0, 2.5),
@@ -151,7 +145,7 @@ class GenesisBackend(SimulatorBackend):
             self.save_interval = 0.0
             self.overwrite_file = False
 
-        # # Setup robots
+        # Setup robots
         if self.global_config.get("robots", None):
             for robot_name, robot_config in self.global_config["robots"].items():
                 self.add_robot(robot_name, robot_config)
@@ -248,13 +242,14 @@ class GenesisBackend(SimulatorBackend):
         """
         raise NotImplementedError("Sensors are not compatible with Genesis yet.")
         # Cameras are not supported on MacOS, Ubuntu Cameras are not working
+        # Genesis-Embodied-AI/Genesis#1739
 
     def remove(self, name: str) -> None:
         """!Remove a component from the simulator.
 
         @param name Name of the robot, object or sensor to remove.
         """
-        raise NotImplementedError("Remove function not implemented yet.")
+        raise NotImplementedError("Genesis does not support removing components.")
 
     #######################################
     ####          SIMULATION           ####
@@ -271,7 +266,7 @@ class GenesisBackend(SimulatorBackend):
         return robots_ready and objects_ready and sensors_ready
     
     def save_render(self) -> None:
-        """Persist the latest render to disk when rendering is configured."""
+        """Add the latest render to save folder if rendering is configured."""
 
         if self.render_cam is None or self.save_path is None:
             return
@@ -310,7 +305,7 @@ class GenesisBackend(SimulatorBackend):
             self.scene_ready = True
 
         if not self._all_available():
-            log.panda("Skipping simulation step because a component is suspended.")
+            log.warn("Skipping simulation step because a component is suspended.")
             return
 
         self._step_sim_components()
@@ -332,8 +327,7 @@ class GenesisBackend(SimulatorBackend):
         @return Elapsed simulation time in seconds.
         @rtype float
         """
-        # https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12438
-        return self._simulation_time
+        return self.scene.t
 
     def shutdown_backend(self) -> None:
         """!Disconnect all components and shut down the backend.
