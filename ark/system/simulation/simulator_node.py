@@ -244,10 +244,6 @@ def main(node_cls: type[SimulatorNode], *args) -> None:
     log.ok(f"Initializing {node_cls.__name__} type node")
     try:
         node = node_cls(*args)
-        # if node.registered == False:
-        #     node.kill_node()
-        #     log.ok(f"Register first")
-        # else:
         log.ok(f"Initialized {node.name}")
         while not node._done:
             node._step_simulation()

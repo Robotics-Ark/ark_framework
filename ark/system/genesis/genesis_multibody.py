@@ -1,9 +1,3 @@
-"""@file pybullet_multibody.py
-@brief Abstractions for multi-body objects in PyBullet.
-"""
-
-from __future__ import annotations
-
 from enum import Enum
 from typing import Any
 
@@ -85,7 +79,7 @@ class GenesisMultiBody(SimComponent):
                 )
 
             # Set mass for dynamic objects (mass > 0)
-            if mass != 0 and self.body is not None:
+            if mass != 0 and self.body:
                 self.body.set_mass(mass)
     
         elif source_type == SourceType.SDF:
