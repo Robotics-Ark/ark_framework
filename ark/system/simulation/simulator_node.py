@@ -11,10 +11,11 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+import sys
+import traceback
+import threading
 
 from ark.client.comm_infrastructure.base_node import BaseNode
-from ark.system.mujoco.mujoco_backend import MujocoBackend
-from ark.system.pybullet.pybullet_backend import PyBulletBackend
 from ark.tools.log import log
 from ark.utils.utils import ConfigPath
 from arktypes import flag_t
@@ -56,9 +57,14 @@ class SimulatorNode(BaseNode, ABC):
         # Setup backend
         self.backend_type = self.global_config["simulator"]["backend_type"]
         if self.backend_type == "pybullet":
+            from ark.system.pybullet.pybullet_backend import PyBulletBackend
             self.backend = PyBulletBackend(self.global_config)
         elif self.backend_type == "mujoco":
+            from ark.system.mujoco.mujoco_backend import MujocoBackend
             self.backend = MujocoBackend(self.global_config)
+        elif self.backend_type == "genesis":
+            from ark.system.genesis.genesis_backend import GenesisBackend
+            self.backend = GenesisBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
 
@@ -70,7 +76,10 @@ class SimulatorNode(BaseNode, ABC):
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
         freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
-        self.create_stepper(freq, self._step_simulation)
+        # self.create_stepper(freq, self._step_simulation)
+
+        self.spin_thread = threading.Thread(target=self.spin, daemon=True)
+        self.spin_thread.start()
 
     def _load_config(self, global_config) -> None:
         """!Load and merge the global configuration.
@@ -215,3 +224,38 @@ class SimulatorNode(BaseNode, ABC):
         """!Shut down the node and the underlying backend."""
         self.backend.shutdown_backend()
         super().kill_node()
+
+def main(node_cls: type[SimulatorNode], *args) -> None:
+    """!
+    Initializes and runs a node.
+
+    This function creates an instance of the specified `node_cls`, spins the node to handle messages,
+    and handles exceptions that occur during the node's execution.
+
+    @param node_cls: The class of the node to run.
+    @type node_cls: Type[BaseNode]
+    """
+
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(node_cls.get_cli_doc())
+        sys.exit(0)
+
+    node = None
+    log.ok(f"Initializing {node_cls.__name__} type node")
+    try:
+        node = node_cls(*args)
+        log.ok(f"Initialized {node.name}")
+        while not node._done:
+            node._step_simulation()
+    except KeyboardInterrupt:
+        log.warning(f"User killed node {node_cls.__name__}")
+    except Exception:
+        tb = traceback.format_exc()
+        div = "=" * 30
+        log.error(f"Exception thrown during node execution:\n{div}\n{tb}\n{div}")
+    finally:
+        if node is not None:
+            node.kill_node()
+            log.ok(f"Finished running node {node_cls.__name__}")
+        else:
+            log.warning(f"Node {node_cls.__name__} failed during initialization")
