@@ -7,9 +7,7 @@ underlying backend (simulation or real hardware).
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Optional, Dict, List
-
-import pybullet as p
+from typing import Any
 
 from ark.tools.log import log
 from ark.system.driver.component_driver import ComponentDriver
@@ -35,7 +33,7 @@ class RobotDriver(ComponentDriver):
     def __init__(
         self,
         component_name: str,
-        component_config: Dict[str, Any] = None,
+        component_config: dict[str, Any] = None,
         sim: bool = True,
     ) -> None:
         """! Construct the driver.
@@ -63,7 +61,7 @@ class RobotDriver(ComponentDriver):
         pass
 
     @abstractmethod
-    def pass_joint_positions(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_positions(self, joints: list[str]) -> dict[str, float]:
         """! Retrieve the current joint positions.
 
         @param joints Names of the queried joints.
@@ -73,7 +71,7 @@ class RobotDriver(ComponentDriver):
         pass
 
     @abstractmethod
-    def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_velocities(self, joints: list[str]) -> dict[str, float]:
         """! Retrieve the current joint velocities.
 
         @param joints Names of the queried joints.
@@ -83,7 +81,7 @@ class RobotDriver(ComponentDriver):
         pass
 
     @abstractmethod
-    def pass_joint_efforts(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_efforts(self, joints: list[str]) -> dict[str, float]:
         """! Retrieve the current joint efforts (torques or forces).
 
         @param joints Names of the queried joints.
@@ -98,7 +96,7 @@ class RobotDriver(ComponentDriver):
 
     @abstractmethod
     def pass_joint_group_control_cmd(
-        self, control_mode: str, cmd: Dict[str, float], **kwargs
+        self, control_mode: str, cmd: dict[str, float], **kwargs
     ) -> None:
         """! Send a control command to a group of joints.
 
@@ -116,7 +114,7 @@ class SimRobotDriver(RobotDriver, ABC):
     def __init__(
         self,
         component_name: str,
-        component_config: Dict[str, Any] = None,
+        component_config: dict[str, Any] = None,
         sim: bool = True,
     ) -> None:
         """! Initialize the simulation driver.
@@ -130,7 +128,7 @@ class SimRobotDriver(RobotDriver, ABC):
 
     @abstractmethod
     def sim_reset(
-        self, base_pos: List[float], base_orn: List[float], init_pos: List[float]
+        self, base_pos: list[float], base_orn: list[float], init_pos: list[float]
     ) -> None:
         """! Reset the robot's state in the simulator."""
 
