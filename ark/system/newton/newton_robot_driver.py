@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Sequence
 
 import newton
+import numpy as np
 import warp as wp
 
 from ark.tools.log import log
@@ -131,17 +132,33 @@ class NewtonRobotDriver(SimRobotDriver):
         self._apply_initial_configuration()
 
     def _apply_initial_configuration(self) -> None:
+        """Apply initial joint configuration to model and control."""
         if not self.initial_configuration or not self._joint_names:
             return
+        if not isinstance(self.initial_configuration, (list, tuple)):
+            return
+
+        # Set both joint positions and targets
         for idx, joint_name in enumerate(self._joint_names):
             if idx >= len(self.initial_configuration):
                 break
             target = self.initial_configuration[idx]
             self._write_joint_position(joint_name, target)
             self._write_joint_target(joint_name, target)
+
+        # Synchronize body poses with updated joint positions
         state = self._state_accessor()
-        if state and self._model is not None:
-            newton.eval_fk(self._model, self._model.joint_q, self._model.joint_qd, state)
+        if state is not None and self._model is not None:
+            # Get the current state arrays
+            joint_q_np = self._model.joint_q.numpy()
+            joint_qd_np = self._model.joint_qd.numpy()
+            # Evaluate forward kinematics to update body poses
+            newton.eval_fk(
+                self._model,
+                wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device),
+                wp.array(joint_qd_np, dtype=wp.float32, device=self._model.joint_qd.device),
+                state
+            )
 
     def _write_joint_position(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._model is None or self._model.joint_q is None:
@@ -155,9 +172,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
+        # Get numpy view, modify, and copy back to device
+        joint_q_np = self._model.joint_q.numpy()
         for offset in range(width):
             if offset < len(values):
-                self._model.joint_q[start + offset] = float(values[offset])
+                joint_q_np[start + offset] = float(values[offset])
+        wp.copy(wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device), self._model.joint_q)
 
     def _write_joint_target(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_target is None:
@@ -171,9 +191,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
+        # Get numpy view, modify, and copy back to device
+        joint_target_np = self._control.joint_target.numpy()
         for offset in range(width):
             if offset < len(values):
-                self._control.joint_target[start + offset] = float(values[offset])
+                joint_target_np[start + offset] = float(values[offset])
+        wp.copy(wp.array(joint_target_np, dtype=wp.float32, device=self._control.joint_target.device), self._control.joint_target)
 
     def _write_joint_force(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_f is None:
@@ -187,9 +210,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
+        # Get numpy view, modify, and copy back to device
+        joint_f_np = self._control.joint_f.numpy()
         for offset in range(width):
             if offset < len(values):
-                self._control.joint_f[start + offset] = float(values[offset])
+                joint_f_np[start + offset] = float(values[offset])
+        wp.copy(wp.array(joint_f_np, dtype=wp.float32, device=self._control.joint_f.device), self._control.joint_f)
         self._last_commanded_torque[joint_name] = float(values[0])
 
     def check_torque_status(self) -> bool:

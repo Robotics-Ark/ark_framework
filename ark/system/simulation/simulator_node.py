@@ -65,6 +65,9 @@ class SimulatorNode(BaseNode, ABC):
         elif self.backend_type == "genesis":
             from ark.system.genesis.genesis_backend import GenesisBackend
             self.backend = GenesisBackend(self.global_config)
+        elif self.backend_type == "newton":
+            from ark.system.newton.newton_backend import NewtonBackend
+            self.backend = NewtonBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
 

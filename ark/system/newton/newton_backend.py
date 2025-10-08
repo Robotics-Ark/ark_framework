@@ -81,7 +81,8 @@ class NewtonBackend(SimulatorBackend):
 
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
-                self.add_sim_component(obj_name, obj_cfg)
+                obj_type = obj_cfg.get("type", "primitive")
+                self.add_sim_component(obj_name, obj_type, obj_cfg)
 
         if self.global_config.get("robots"):
             for robot_name, robot_cfg in self.global_config["robots"].items():
@@ -89,7 +90,9 @@ class NewtonBackend(SimulatorBackend):
 
         if self.global_config.get("sensors"):
             for sensor_name, sensor_cfg in self.global_config["sensors"].items():
-                self.add_sensor(sensor_name, sensor_cfg)
+                from ark.system.driver.sensor_driver import SensorType
+                sensor_type = SensorType(sensor_cfg.get("type", "camera").upper())
+                self.add_sensor(sensor_name, sensor_type, sensor_cfg)
 
         self.model = self.builder.finalize()
         self.solver = self._create_solver(sim_cfg.get("solver", "xpbd"))
@@ -163,6 +166,15 @@ class NewtonBackend(SimulatorBackend):
         log.ok("Newton simulator reset complete.")
 
     def add_robot(self, name: str, robot_config: dict[str, Any]) -> None:
+        """Add a robot to the simulation.
+
+        Args:
+            name: Name of the robot.
+            robot_config: Configuration dictionary for the robot.
+        """
+        # Create articulation container for the robot
+        self.builder.add_articulation()
+
         class_path = Path(robot_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
@@ -173,11 +185,25 @@ class NewtonBackend(SimulatorBackend):
         robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
         self.robot_ref[name] = robot
 
-    def add_sim_component(self, name: str, obj_config: dict[str, Any]) -> None:
+    def add_sim_component(self, name: str, type: str, obj_config: dict[str, Any]) -> None:
+        """Add a generic simulation object.
+
+        Args:
+            name: Name of the object.
+            type: Type identifier (e.g. "cube", "sphere").
+            obj_config: Configuration dictionary for the object.
+        """
         component = NewtonMultiBody(name=name, builder=self.builder, global_config=self.global_config)
         self.object_ref[name] = component
 
-    def add_sensor(self, name: str, sensor_config: dict[str, Any]) -> None:
+    def add_sensor(self, name: str, sensor_type: Any, sensor_config: dict[str, Any]) -> None:
+        """Add a sensor to the simulation.
+
+        Args:
+            name: Name of the sensor.
+            sensor_type: Type of the sensor (SensorType enum).
+            sensor_config: Configuration dictionary for the sensor.
+        """
         class_path = Path(sensor_config["class_dir"])
         if class_path.is_file():
             class_path = class_path.parent
