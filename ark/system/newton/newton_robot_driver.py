@@ -172,12 +172,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
-        # Get numpy view, modify, and copy back to device
-        joint_q_np = self._model.joint_q.numpy()
+        # Get numpy copy, modify, and assign back to device
+        joint_q_np = self._model.joint_q.numpy().copy()
         for offset in range(width):
             if offset < len(values):
                 joint_q_np[start + offset] = float(values[offset])
-        wp.copy(wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device), self._model.joint_q)
+        self._model.joint_q.assign(joint_q_np)
 
     def _write_joint_target(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_target is None:
@@ -191,12 +191,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
-        # Get numpy view, modify, and copy back to device
-        joint_target_np = self._control.joint_target.numpy()
+        # Get numpy copy, modify, and assign back to device
+        joint_target_np = self._control.joint_target.numpy().copy()
         for offset in range(width):
             if offset < len(values):
                 joint_target_np[start + offset] = float(values[offset])
-        wp.copy(wp.array(joint_target_np, dtype=wp.float32, device=self._control.joint_target.device), self._control.joint_target)
+        self._control.joint_target.assign(joint_target_np)
 
     def _write_joint_force(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_f is None:
@@ -210,12 +210,12 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
-        # Get numpy view, modify, and copy back to device
-        joint_f_np = self._control.joint_f.numpy()
+        # Get numpy copy, modify, and assign back to device
+        joint_f_np = self._control.joint_f.numpy().copy()
         for offset in range(width):
             if offset < len(values):
                 joint_f_np[start + offset] = float(values[offset])
-        wp.copy(wp.array(joint_f_np, dtype=wp.float32, device=self._control.joint_f.device), self._control.joint_f)
+        self._control.joint_f.assign(joint_f_np)
         self._last_commanded_torque[joint_name] = float(values[0])
 
     def check_torque_status(self) -> bool:

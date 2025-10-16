@@ -59,6 +59,46 @@ def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[An
 class NewtonBackend(SimulatorBackend):
     """Simulation backend using the Newton physics engine."""
 
+    def _apply_joint_defaults(self, sim_cfg: dict[str, Any]) -> None:
+        """Apply Newton-specific joint defaults from configuration.
+
+        This must be called BEFORE loading any robots so defaults apply to all URDFs.
+        """
+        newton_cfg = sim_cfg.get("newton_physics", {})
+        joint_cfg = newton_cfg.get("joint_defaults", {})
+
+        if not joint_cfg:
+            log.info("Newton backend: No joint_defaults in config, using Newton defaults")
+            return
+
+        # Map string mode to Newton enum
+        mode_str = joint_cfg.get("mode", "TARGET_POSITION").upper()
+        if mode_str == "TARGET_POSITION":
+            self.builder.default_joint_cfg.mode = newton.JointMode.TARGET_POSITION
+        elif mode_str == "TARGET_VELOCITY":
+            self.builder.default_joint_cfg.mode = newton.JointMode.TARGET_VELOCITY
+        elif mode_str == "FORCE":
+            self.builder.default_joint_cfg.mode = newton.JointMode.FORCE
+
+        # Apply PD gains and stability parameters
+        if "target_ke" in joint_cfg:
+            self.builder.default_joint_cfg.target_ke = float(joint_cfg["target_ke"])
+        if "target_kd" in joint_cfg:
+            self.builder.default_joint_cfg.target_kd = float(joint_cfg["target_kd"])
+        if "limit_ke" in joint_cfg:
+            self.builder.default_joint_cfg.limit_ke = float(joint_cfg["limit_ke"])
+        if "limit_kd" in joint_cfg:
+            self.builder.default_joint_cfg.limit_kd = float(joint_cfg["limit_kd"])
+        if "armature" in joint_cfg:
+            self.builder.default_joint_cfg.armature = float(joint_cfg["armature"])
+
+        log.info(
+            f"Newton backend: Applied joint defaults - "
+            f"ke={self.builder.default_joint_cfg.target_ke}, "
+            f"kd={self.builder.default_joint_cfg.target_kd}, "
+            f"armature={self.builder.default_joint_cfg.armature}"
+        )
+
     def initialize(self) -> None:
         self.ready = False
         sim_cfg = self.global_config.get("simulator", {}).get("config", {})
@@ -79,6 +119,8 @@ class NewtonBackend(SimulatorBackend):
             except Exception as exc:  # noqa: BLE001
                 log.warning(f"Newton backend: unable to select device '{device_name}': {exc}")
 
+        self._apply_joint_defaults(sim_cfg)
+
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
                 obj_type = obj_cfg.get("type", "primitive")
@@ -95,7 +137,7 @@ class NewtonBackend(SimulatorBackend):
                 self.add_sensor(sensor_name, sensor_type, sensor_cfg)
 
         self.model = self.builder.finalize()
-        self.solver = self._create_solver(sim_cfg.get("solver", "xpbd"))
+        self.solver = self._create_solver(sim_cfg)
 
         self.state_current = self.model.state()
         self.state_next = self.model.state()
@@ -123,10 +165,15 @@ class NewtonBackend(SimulatorBackend):
             if isinstance(driver, NewtonCameraDriver):
                 driver.bind_runtime(self.model, state_accessor)
 
-    def _create_solver(self, solver_name: str) -> newton.solvers.SolverBase:
+    def _create_solver(self, sim_cfg: dict[str, Any]) -> newton.solvers.SolverBase:
+        solver_name = sim_cfg.get("solver", "xpbd")
+        iterations = int(sim_cfg.get("solver_iterations", 1))
+
         name = (solver_name or "xpbd").lower()
         if name in {"xpbd", "solverxpbd"}:
-            return newton.solvers.SolverXPBD(self.model)
+            solver = newton.solvers.SolverXPBD(self.model, iterations=iterations)
+            log.info(f"Newton backend: Using XPBD solver with {iterations} iterations")
+            return solver
         if name in {"semiimplicit", "semi_implicit", "solversemiimplicit"}:
             return newton.solvers.SolverSemiImplicit(self.model)
         if name in {"featherstone", "solverfeatherstone"}:
@@ -134,7 +181,7 @@ class NewtonBackend(SimulatorBackend):
         if name in {"mujoco", "solvermujoco"}:
             return newton.solvers.SolverMuJoCo(self.model)
         log.warning(f"Unknown Newton solver '{solver_name}', falling back to XPBD.")
-        return newton.solvers.SolverXPBD(self.model)
+        return newton.solvers.SolverXPBD(self.model, iterations=iterations)
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         gx, gy, gz = gravity

@@ -29,6 +29,7 @@ def _as_transform(position: Sequence[float], orientation: Sequence[float]) -> wp
 class SourceType(Enum):
     URDF = "urdf"
     PRIMITIVE = "primitive"
+    GROUND_PLANE = "ground_plane"
 
 
 class NewtonMultiBody(SimComponent):
@@ -55,6 +56,8 @@ class NewtonMultiBody(SimComponent):
             self._load_urdf()
         elif source is SourceType.PRIMITIVE:
             self._load_primitive()
+        elif source is SourceType.GROUND_PLANE:
+            self._load_ground_plane()
         else:
             log.warning(f"Newton multi-body '{self.name}': unsupported source '{source_str}'.")
 
@@ -94,6 +97,12 @@ class NewtonMultiBody(SimComponent):
             hx = hy = hz = 0.5
         self.builder.add_shape_box(body_idx, hx=hx, hy=hy, hz=hz)
         self._body_names = [self.name]
+
+    def _load_ground_plane(self) -> None:
+        """Add a ground plane collision surface to the scene."""
+        self.builder.add_ground_plane()
+        # Ground plane doesn't create a named body, so no body_names to track
+        self._body_names = []
 
     def bind_runtime(self, model: newton.Model, state_accessor) -> None:
         self._model = model
