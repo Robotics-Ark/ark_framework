@@ -14,15 +14,31 @@ import warp as wp
 
 from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
+from ark.system.newton.newton_builder import NewtonBuilder
 from ark.system.newton.newton_camera_driver import NewtonCameraDriver
 from ark.system.newton.newton_multibody import NewtonMultiBody
 from ark.system.newton.newton_robot_driver import NewtonRobotDriver
+from arktypes import *
 
+import textwrap
 
 def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[Any]]]:
-    """Import a class (and optional driver enum) from ``path``."""
+    """Import a class (and optional driver enum) from ``path``.
+        The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
+    class with the same name.  If a ``Drivers`` class is present in the module
+    its ``NEWTON_DRIVER`` attribute is returned alongside the main class.
+
+    @param path Path to the directory containing the module.
+    @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
+            driver is defined.
+    @rtype Tuple[type, Optional[type]]
+
+    """
+
+    ## Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
-    file_path = (path / f"{class_name}.py").resolve()
+    file_path = (path / f"{class_name}.py").resolve() ##just add the resolve here instead of newline
+    ## Defensive check for the filepath, raise error if not found
     if not file_path.exists():
         raise FileNotFoundError(f"The file {file_path} does not exist.")
 
@@ -31,6 +47,7 @@ def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[An
 
     module_dir = str(file_path.parent)
     sys.path.insert(0, module_dir)
+        ## Import the module dynamically and extract class names defensively
     try:
         class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
         drivers_attr: Optional[type[Any]] = None
@@ -59,6 +76,25 @@ def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[An
 class NewtonBackend(SimulatorBackend):
     """Simulation backend using the Newton physics engine."""
 
+    def _determine_up_axis(self, gravity: tuple[float, float, float]) -> newton.Axis:
+        """Determine up axis from gravity vector."""
+        gx, gy, gz = gravity
+        components = np.array([gx, gy, gz], dtype=float)
+        if not np.any(components):
+            return newton.Axis.Z  # Default to Z-up if no gravity
+        idx = int(np.argmax(np.abs(components)))
+        axis_map = {0: newton.Axis.X, 1: newton.Axis.Y, 2: newton.Axis.Z}
+        return axis_map[idx]
+
+    def _extract_gravity_magnitude(self, gravity: tuple[float, float, float]) -> float:
+        """Extract gravity magnitude from gravity vector."""
+        gx, gy, gz = gravity
+        components = np.array([gx, gy, gz], dtype=float)
+        if not np.any(components):
+            return -9.81  # Default gravity
+        idx = int(np.argmax(np.abs(components)))
+        return float(components[idx])
+
     def _apply_joint_defaults(self, sim_cfg: dict[str, Any]) -> None:
         """Apply Newton-specific joint defaults from configuration.
 
@@ -73,30 +109,37 @@ class NewtonBackend(SimulatorBackend):
 
         # Map string mode to Newton enum
         mode_str = joint_cfg.get("mode", "TARGET_POSITION").upper()
+        mode_value = None
         if mode_str == "TARGET_POSITION":
-            self.builder.default_joint_cfg.mode = newton.JointMode.TARGET_POSITION
+            mode_value = newton.JointMode.TARGET_POSITION
         elif mode_str == "TARGET_VELOCITY":
-            self.builder.default_joint_cfg.mode = newton.JointMode.TARGET_VELOCITY
+            mode_value = newton.JointMode.TARGET_VELOCITY
         elif mode_str == "FORCE":
-            self.builder.default_joint_cfg.mode = newton.JointMode.FORCE
+            mode_value = newton.JointMode.FORCE
 
-        # Apply PD gains and stability parameters
+        # Build kwargs dict for set_default_joint_config
+        joint_defaults = {}
+        if mode_value is not None:
+            joint_defaults["mode"] = mode_value
         if "target_ke" in joint_cfg:
-            self.builder.default_joint_cfg.target_ke = float(joint_cfg["target_ke"])
+            joint_defaults["target_ke"] = float(joint_cfg["target_ke"])
         if "target_kd" in joint_cfg:
-            self.builder.default_joint_cfg.target_kd = float(joint_cfg["target_kd"])
+            joint_defaults["target_kd"] = float(joint_cfg["target_kd"])
         if "limit_ke" in joint_cfg:
-            self.builder.default_joint_cfg.limit_ke = float(joint_cfg["limit_ke"])
+            joint_defaults["limit_ke"] = float(joint_cfg["limit_ke"])
         if "limit_kd" in joint_cfg:
-            self.builder.default_joint_cfg.limit_kd = float(joint_cfg["limit_kd"])
+            joint_defaults["limit_kd"] = float(joint_cfg["limit_kd"])
         if "armature" in joint_cfg:
-            self.builder.default_joint_cfg.armature = float(joint_cfg["armature"])
+            joint_defaults["armature"] = float(joint_cfg["armature"])
+
+        # Apply via NewtonBuilder
+        self.scene_builder.set_default_joint_config(**joint_defaults)
 
         log.info(
             f"Newton backend: Applied joint defaults - "
-            f"ke={self.builder.default_joint_cfg.target_ke}, "
-            f"kd={self.builder.default_joint_cfg.target_kd}, "
-            f"armature={self.builder.default_joint_cfg.armature}"
+            f"ke={self.scene_builder.builder.default_joint_cfg.target_ke}, "
+            f"kd={self.scene_builder.builder.default_joint_cfg.target_kd}, "
+            f"armature={self.scene_builder.builder.default_joint_cfg.armature}"
         )
 
     def initialize(self) -> None:
@@ -108,9 +151,16 @@ class NewtonBackend(SimulatorBackend):
         base_dt = 1.0 / self.sim_frequency if self.sim_frequency > 0 else 0.005
         self.set_time_step(base_dt)
 
-        self.builder = newton.ModelBuilder()
+        # Create NewtonBuilder instead of raw ModelBuilder
         gravity = tuple(sim_cfg.get("gravity", [0.0, 0.0, -9.81]))
-        self.set_gravity(gravity)
+        up_axis = self._determine_up_axis(gravity)
+        gravity_magnitude = self._extract_gravity_magnitude(gravity)
+
+        self.scene_builder = NewtonBuilder(
+            model_name="ark_world",
+            up_axis=up_axis,
+            gravity=gravity_magnitude
+        )
 
         device_name = sim_cfg.get("device")
         if device_name:
@@ -136,7 +186,20 @@ class NewtonBackend(SimulatorBackend):
                 sensor_type = SensorType(sensor_cfg.get("type", "camera").upper())
                 self.add_sensor(sensor_name, sensor_type, sensor_cfg)
 
-        self.model = self.builder.finalize()
+        # Finalize model via NewtonBuilder and get metadata
+        self.model, self.scene_metadata = self.scene_builder.finalize(
+            device=device_name or "cuda:0"
+        )
+
+        if self.model is None:
+            log.error("Newton backend: Model finalization failed, returned None")
+            raise RuntimeError("Failed to finalize Newton model")
+
+        log.ok(
+            f"Newton backend: Model finalized successfully - "
+            f"{self.model.joint_count} joints, {self.model.body_count} bodies"
+        )
+
         self.solver = self._create_solver(sim_cfg)
 
         self.state_current = self.model.state()
@@ -149,21 +212,43 @@ class NewtonBackend(SimulatorBackend):
         self._state_accessor: Callable[[], newton.State] = lambda: self.state_current
         self._bind_runtime_handles()
 
+        # Log successful initialization
+        log.ok(
+            f"Newton backend: Initialized with "
+            f"{len(self.robot_ref)} robot(s), "
+            f"{len(self.sensor_ref)} sensor(s), "
+            f"{len(self.object_ref)} object(s)"
+        )
+
         self.ready = True
 
     def _bind_runtime_handles(self) -> None:
         state_accessor = lambda: self.state_current
+        bound_robots = 0
+        bound_objects = 0
+        bound_sensors = 0
+
         for robot in self.robot_ref.values():
             driver = getattr(robot, "_driver", None)
             if isinstance(driver, NewtonRobotDriver):
                 driver.bind_runtime(self.model, self.control, state_accessor, self._substep_dt)
+                bound_robots += 1
+
         for obj in self.object_ref.values():
             if isinstance(obj, NewtonMultiBody):
                 obj.bind_runtime(self.model, state_accessor)
+                bound_objects += 1
+
         for sensor in self.sensor_ref.values():
             driver = getattr(sensor, "_driver", None)
             if isinstance(driver, NewtonCameraDriver):
                 driver.bind_runtime(self.model, state_accessor)
+                bound_sensors += 1
+
+        log.info(
+            f"Newton backend: Bound runtime handles - "
+            f"{bound_robots} robots, {bound_objects} objects, {bound_sensors} sensors"
+        )
 
     def _create_solver(self, sim_cfg: dict[str, Any]) -> newton.solvers.SolverBase:
         solver_name = sim_cfg.get("solver", "xpbd")
@@ -184,13 +269,19 @@ class NewtonBackend(SimulatorBackend):
         return newton.solvers.SolverXPBD(self.model, iterations=iterations)
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
+        """Set gravity (only works before builder is created)."""
         gx, gy, gz = gravity
-        axis_map = {0: newton.Axis.X, 1: newton.Axis.Y, 2: newton.Axis.Z}
+        axis_names = {0: "X", 1: "Y", 2: "Z"}
         components = np.array([gx, gy, gz], dtype=float)
         idx = int(np.argmax(np.abs(components)))
         magnitude = float(components[idx]) if np.any(components) else -9.81
-        self.builder.up_axis = axis_map[idx]
-        self.builder.gravity = magnitude
+
+        # This method is called before builder is created, so we just log
+        # The actual gravity is set during NewtonBuilder initialization
+        log.info(
+            f"Newton backend: Gravity set to {magnitude:.2f} m/s² along {axis_names[idx]}-axis "
+            f"(input: [{gx}, {gy}, {gz}])"
+        )
 
     def set_time_step(self, time_step: float) -> None:
         self._time_step = time_step
@@ -219,8 +310,8 @@ class NewtonBackend(SimulatorBackend):
             name: Name of the robot.
             robot_config: Configuration dictionary for the robot.
         """
-        # Create articulation container for the robot
-        self.builder.add_articulation()
+        # NOTE: Don't call add_articulation() here - Newton's add_urdf() creates
+        # articulations automatically. Calling it here would create duplicates.
 
         class_path = Path(robot_config["class_dir"])
         if class_path.is_file():
@@ -228,7 +319,8 @@ class NewtonBackend(SimulatorBackend):
         RobotClass, driver_enum = import_class_from_directory(class_path)
         driver_cls = getattr(driver_enum, "value", driver_enum) or NewtonRobotDriver
 
-        driver = driver_cls(name, robot_config, builder=self.builder)
+        # Pass scene_builder.builder (raw Newton ModelBuilder) to driver
+        driver = driver_cls(name, robot_config, builder=self.scene_builder.builder)
         robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
         self.robot_ref[name] = robot
 
@@ -240,7 +332,12 @@ class NewtonBackend(SimulatorBackend):
             type: Type identifier (e.g. "cube", "sphere").
             obj_config: Configuration dictionary for the object.
         """
-        component = NewtonMultiBody(name=name, builder=self.builder, global_config=self.global_config)
+        # Pass the wrapped builder to NewtonMultiBody
+        component = NewtonMultiBody(
+            name=name,
+            builder=self.scene_builder.builder,
+            global_config=self.global_config
+        )
         self.object_ref[name] = component
 
     def add_sensor(self, name: str, sensor_type: Any, sensor_config: dict[str, Any]) -> None:

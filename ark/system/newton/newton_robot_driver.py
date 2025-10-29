@@ -82,6 +82,13 @@ class NewtonRobotDriver(SimRobotDriver):
         pre_body_count = self.builder.body_count
 
         urdf_path = self._resolve_path("urdf_path")
+
+        # Validate URDF file exists
+        if not urdf_path.exists():
+            log.error(f"Newton robot driver: URDF file not found at '{urdf_path}'")
+            log.error(f"  Full path: {urdf_path.resolve()}")
+            raise FileNotFoundError(f"URDF file not found: {urdf_path}")
+
         xform = _as_transform(self.base_position, self.base_orientation)
         floating = bool(self.config.get("floating", False))
         enable_self_collisions = bool(self.config.get("enable_self_collisions", False))
@@ -95,8 +102,9 @@ class NewtonRobotDriver(SimRobotDriver):
                 enable_self_collisions=enable_self_collisions,
                 collapse_fixed_joints=collapse_fixed,
             )
+            log.ok(f"Newton robot driver: Loaded URDF '{urdf_path.name}' successfully")
         except Exception as exc:  # noqa: BLE001
-            log.error(f"Failed to load URDF '{urdf_path}' into Newton builder: {exc}")
+            log.error(f"Newton robot driver: Failed to load URDF '{urdf_path}': {exc}")
             raise
 
         self._joint_names = list(
@@ -119,11 +127,24 @@ class NewtonRobotDriver(SimRobotDriver):
         self._dt = dt
 
         key_to_index = {name: idx for idx, name in enumerate(model.joint_key)}
+        missing_joints = []
         for name in self._joint_names:
             if name in key_to_index:
                 self._joint_index_map[name] = key_to_index[name]
             else:
-                log.warning(f"Newton robot driver: joint '{name}' not present in model.")
+                missing_joints.append(name)
+
+        # Warn about joint mapping issues
+        if missing_joints:
+            log.warning(
+                f"Newton robot driver '{self.component_name}': "
+                f"{len(missing_joints)} joint(s) from URDF not found in model: {missing_joints}"
+            )
+
+        log.info(
+            f"Newton robot driver '{self.component_name}': "
+            f"Mapped {len(self._joint_index_map)}/{len(self._joint_names)} joints to model"
+        )
 
         self._joint_q_start = model.joint_q_start.numpy()
         self._joint_qd_start = model.joint_qd_start.numpy()
@@ -134,9 +155,22 @@ class NewtonRobotDriver(SimRobotDriver):
     def _apply_initial_configuration(self) -> None:
         """Apply initial joint configuration to model and control."""
         if not self.initial_configuration or not self._joint_names:
+            log.info(f"Newton robot driver '{self.component_name}': No initial configuration to apply")
             return
         if not isinstance(self.initial_configuration, (list, tuple)):
+            log.warning(
+                f"Newton robot driver '{self.component_name}': "
+                f"initial_configuration is not a list/tuple, skipping"
+            )
             return
+
+        # Validate initial configuration length
+        if len(self.initial_configuration) != len(self._joint_names):
+            log.warning(
+                f"Newton robot driver '{self.component_name}': "
+                f"initial_configuration length ({len(self.initial_configuration)}) != "
+                f"joint count ({len(self._joint_names)}). Using available values."
+            )
 
         # Set both joint positions and targets
         for idx, joint_name in enumerate(self._joint_names):
@@ -149,23 +183,43 @@ class NewtonRobotDriver(SimRobotDriver):
         # Synchronize body poses with updated joint positions
         state = self._state_accessor()
         if state is not None and self._model is not None:
-            # Get the current state arrays
-            joint_q_np = self._model.joint_q.numpy()
-            joint_qd_np = self._model.joint_qd.numpy()
-            # Evaluate forward kinematics to update body poses
-            newton.eval_fk(
-                self._model,
-                wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device),
-                wp.array(joint_qd_np, dtype=wp.float32, device=self._model.joint_qd.device),
-                state
-            )
+            try:
+                # Get the current state arrays
+                joint_q_np = self._model.joint_q.numpy()
+                joint_qd_np = self._model.joint_qd.numpy()
+                # Evaluate forward kinematics to update body poses
+                newton.eval_fk(
+                    self._model,
+                    wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device),
+                    wp.array(joint_qd_np, dtype=wp.float32, device=self._model.joint_qd.device),
+                    state
+                )
+                log.ok(f"Newton robot driver '{self.component_name}': Applied initial configuration and updated FK")
+            except Exception as exc:  # noqa: BLE001
+                log.error(
+                    f"Newton robot driver '{self.component_name}': "
+                    f"Failed to evaluate FK after initial configuration: {exc}"
+                )
 
     def _write_joint_position(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._model is None or self._model.joint_q is None:
+            log.warning(f"Newton robot driver: Cannot write joint position, model not initialized")
             return
         idx = self._joint_index_map.get(joint_name)
-        if idx is None or self._joint_q_start is None:
+        if idx is None:
+            return  # Joint not mapped, already warned in bind_runtime
+        if self._joint_q_start is None:
+            log.warning(f"Newton robot driver: joint_q_start array not initialized")
             return
+
+        # Validate array bounds
+        if idx >= len(self._joint_q_start) - 1:
+            log.error(
+                f"Newton robot driver: Joint index {idx} out of bounds for joint_q_start "
+                f"(size {len(self._joint_q_start)})"
+            )
+            return
+
         start = int(self._joint_q_start[idx])
         end = int(self._joint_q_start[idx + 1])
         width = end - start
@@ -181,10 +235,23 @@ class NewtonRobotDriver(SimRobotDriver):
 
     def _write_joint_target(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_target is None:
+            log.warning(f"Newton robot driver: Cannot write joint target, control not initialized")
             return
         idx = self._joint_index_map.get(joint_name)
-        if idx is None or self._joint_qd_start is None:
+        if idx is None:
+            return  # Joint not mapped, already warned in bind_runtime
+        if self._joint_qd_start is None:
+            log.warning(f"Newton robot driver: joint_qd_start array not initialized")
             return
+
+        # Validate array bounds
+        if idx >= len(self._joint_qd_start) - 1:
+            log.error(
+                f"Newton robot driver: Joint index {idx} out of bounds for joint_qd_start "
+                f"(size {len(self._joint_qd_start)})"
+            )
+            return
+
         start = int(self._joint_qd_start[idx])
         end = int(self._joint_qd_start[idx + 1])
         width = end - start
@@ -200,10 +267,23 @@ class NewtonRobotDriver(SimRobotDriver):
 
     def _write_joint_force(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_f is None:
+            log.warning(f"Newton robot driver: Cannot write joint force, control not initialized")
             return
         idx = self._joint_index_map.get(joint_name)
-        if idx is None or self._joint_qd_start is None:
+        if idx is None:
+            return  # Joint not mapped, already warned in bind_runtime
+        if self._joint_qd_start is None:
+            log.warning(f"Newton robot driver: joint_qd_start array not initialized")
             return
+
+        # Validate array bounds
+        if idx >= len(self._joint_qd_start) - 1:
+            log.error(
+                f"Newton robot driver: Joint index {idx} out of bounds for joint_qd_start "
+                f"(size {len(self._joint_qd_start)})"
+            )
+            return
+
         start = int(self._joint_qd_start[idx])
         end = int(self._joint_qd_start[idx + 1])
         width = end - start
