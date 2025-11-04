@@ -338,6 +338,49 @@ class NewtonBackend(SimulatorBackend):
             f"{bound_robots} robots, {bound_objects} objects, {bound_sensors} sensors"
         )
 
+    def _create_scene_adapter(self, solver_name: str):
+        """Factory method to create solver-specific scene adapter.
+
+        Creates the appropriate adapter based on solver name. Adapters handle
+        solver-specific scene building requirements (e.g., MuJoCo ground plane
+        workaround) in a transparent, maintainable way.
+
+        Args:
+            solver_name: Name of the solver ("xpbd", "mujoco", "featherstone", etc.)
+
+        Returns:
+            Solver-specific adapter instance
+
+        Example:
+            >>> adapter = self._create_scene_adapter("mujoco")
+            >>> adapter.adapt_ground_plane(descriptor)  # Uses box workaround
+        """
+        from ark.system.newton.scene_adapters import (
+            XPBDAdapter,
+            MuJoCoAdapter,
+        )
+
+        # Map solver names to adapter classes
+        adapter_map = {
+            "xpbd": XPBDAdapter,
+            "solverxpbd": XPBDAdapter,
+            "mujoco": MuJoCoAdapter,
+            "solvermujoco": MuJoCoAdapter,
+            # TODO: Add Featherstone and SemiImplicit adapters in future
+        }
+
+        # Get adapter class (default to XPBD if unknown)
+        solver_key = solver_name.lower()
+        adapter_cls = adapter_map.get(solver_key)
+
+        if not adapter_cls:
+            log.warning(
+                f"Unknown solver '{solver_name}', falling back to XPBD adapter"
+            )
+            adapter_cls = XPBDAdapter
+
+        return adapter_cls(self.scene_builder)
+
     def _create_solver(self, sim_cfg: dict[str, Any]) -> newton.solvers.SolverBase:
         solver_name = sim_cfg.get("solver", "xpbd")
         iterations = int(sim_cfg.get("solver_iterations", 1))
