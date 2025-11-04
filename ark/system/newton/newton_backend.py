@@ -201,6 +201,11 @@ class NewtonBackend(SimulatorBackend):
             gravity=gravity_magnitude
         )
 
+        # Create solver-specific adapter early (before scene building)
+        solver_name = sim_cfg.get("solver", "xpbd") or "xpbd"
+        self.adapter = self._create_scene_adapter(solver_name)
+        log.info(f"Newton backend: Using {self.adapter.solver_name} solver adapter")
+
         device_name = sim_cfg.get("device")
         if device_name:
             try:
@@ -210,10 +215,12 @@ class NewtonBackend(SimulatorBackend):
 
         self._apply_joint_defaults(sim_cfg)
 
-        # Add ground plane if requested (solver-specific implementation)
+        # Add ground plane if requested (adapter handles solver-specific implementation)
         ground_cfg = self.global_config.get("ground_plane", {})
         if ground_cfg.get("enabled", False):
-            self._add_ground_support(sim_cfg, ground_cfg)
+            from ark.system.newton.geometry_descriptors import GeometryDescriptor
+            descriptor = GeometryDescriptor.from_ground_plane_config(ground_cfg)
+            self.adapter.adapt_ground_plane(descriptor)
 
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
@@ -265,7 +272,8 @@ class NewtonBackend(SimulatorBackend):
         else:
             log.error("[DIAGNOSTIC] Model does NOT have joint_dof_mode attribute!")
 
-        self.solver = self._create_solver(sim_cfg)
+        # Create solver through adapter (handles solver-specific configuration)
+        self.solver = self.adapter.create_solver(self.model, sim_cfg)
 
         self.state_current = self.model.state()
         self.state_next = self.model.state()
