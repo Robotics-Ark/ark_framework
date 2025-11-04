@@ -18,8 +18,10 @@ Usage:
 
 from ark.system.newton.scene_adapters.base_adapter import SolverSceneAdapter
 from ark.system.newton.scene_adapters.xpbd_adapter import XPBDAdapter
+from ark.system.newton.scene_adapters.mujoco_adapter import MuJoCoAdapter
 
 __all__ = [
     "SolverSceneAdapter",
     "XPBDAdapter",
+    "MuJoCoAdapter",
 ]
