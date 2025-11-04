@@ -395,8 +395,15 @@ class NewtonBackend(SimulatorBackend):
 
         name = (solver_name or "xpbd").lower()
         if name in {"xpbd", "solverxpbd"}:
-            solver = newton.solvers.SolverXPBD(self.model, iterations=iterations)
-            log.info(f"Newton backend: Using XPBD solver with {iterations} iterations")
+            # XPBD requires more iterations than MuJoCo for position control convergence
+            # Newton examples use 20 effective iterations (2 base × 10 substeps)
+            # Increase to minimum of 8 iterations for reliable TARGET_POSITION mode
+            xpbd_iterations = max(iterations, 8)
+            solver = newton.solvers.SolverXPBD(self.model, iterations=xpbd_iterations)
+            if xpbd_iterations > iterations:
+                log.info(f"Newton backend: Using XPBD solver with {xpbd_iterations} iterations (increased from config value {iterations} for position control)")
+            else:
+                log.info(f"Newton backend: Using XPBD solver with {xpbd_iterations} iterations")
             return solver
         if name in {"semiimplicit", "semi_implicit", "solversemiimplicit"}:
             return newton.solvers.SolverSemiImplicit(self.model)
