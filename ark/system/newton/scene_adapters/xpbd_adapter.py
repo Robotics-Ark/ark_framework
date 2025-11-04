@@ -55,15 +55,13 @@ class XPBDAdapter(SolverSceneAdapter):
         or geometry substitution needed.
 
         Args:
-            descriptor: Ground plane description (size parameter used for plane extent)
+            descriptor: Ground plane description (physics properties applied to plane)
         """
         # XPBD supports native ground plane
-        size = descriptor.parameters.get("size", 100.0)
+        # Note: Newton's add_ground_plane() doesn't accept size parameter - it's always infinite
+        self.builder.builder.add_ground_plane()
 
-        # Newton's add_ground_plane() creates infinite plane along up-axis
-        self.builder.builder.add_ground_plane(size=size)
-
-        log.ok(f"XPBD adapter: Added native ground plane (size={size})")
+        log.ok("XPBD adapter: Added native ground plane")
 
     def create_solver(
         self,
