@@ -142,6 +142,10 @@ class SimulatorNode(BaseNode, ABC):
             config["objects"] = self._load_section(cfg, global_config, "objects")
         except KeyError as e:
             config["objects"] = {}
+        try:
+            config["ground_plane"] = cfg.get("ground_plane", {})
+        except KeyError:
+            config["ground_plane"] = {}
 
         log.ok("Config file under " + global_config.str + " loaded successfully.")
         self.global_config = config
