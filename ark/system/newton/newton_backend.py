@@ -18,6 +18,7 @@ from ark.system.newton.newton_builder import NewtonBuilder
 from ark.system.newton.newton_camera_driver import NewtonCameraDriver
 from ark.system.newton.newton_multibody import NewtonMultiBody
 from ark.system.newton.newton_robot_driver import NewtonRobotDriver
+from ark.system.newton.newton_viewer import NewtonViewerManager
 from arktypes import *
 
 import textwrap
@@ -142,6 +143,44 @@ class NewtonBackend(SimulatorBackend):
             f"armature={self.scene_builder.builder.default_joint_cfg.armature}"
         )
 
+    def _add_ground_support(self, sim_cfg: dict[str, Any], ground_cfg: dict[str, Any]) -> None:
+        """Add ground plane support compatible with all solvers.
+
+        MuJoCo solver cannot handle builder.add_ground_plane(), so we use explicit
+        box geometry for MuJoCo while keeping native ground plane for other solvers.
+        """
+        solver_name = (sim_cfg.get("solver", "xpbd") or "xpbd").lower()
+
+        if solver_name in {"mujoco", "solvermujoco"}:
+            # MuJoCo: Use explicit box geometry as ground
+            friction = ground_cfg.get("friction", 0.8)
+            restitution = ground_cfg.get("restitution", 0.0)
+            thickness = ground_cfg.get("thickness", 0.02)
+
+            ground_cfg_newton = newton.ModelBuilder.ShapeConfig()
+            ground_cfg_newton.density = 0.0  # Static body
+            ground_cfg_newton.ke = 1.0e5     # Contact stiffness
+            ground_cfg_newton.kd = 1.0e3     # Contact damping
+            ground_cfg_newton.mu = friction
+            ground_cfg_newton.restitution = restitution
+
+            self.scene_builder.builder.add_shape_box(
+                body=-1,  # World body
+                hx=100.0,
+                hy=thickness,
+                hz=100.0,
+                xform=wp.transform(
+                    wp.vec3(0.0, -thickness, 0.0),
+                    wp.quat_identity()
+                ),
+                cfg=ground_cfg_newton
+            )
+            log.ok("Newton backend: Added MuJoCo-compatible ground (explicit box geometry)")
+        else:
+            # XPBD/Featherstone/etc: Use native ground plane
+            self.scene_builder.builder.add_ground_plane()
+            log.ok("Newton backend: Added native ground plane")
+
     def initialize(self) -> None:
         self.ready = False
         sim_cfg = self.global_config.get("simulator", {}).get("config", {})
@@ -170,6 +209,11 @@ class NewtonBackend(SimulatorBackend):
                 log.warning(f"Newton backend: unable to select device '{device_name}': {exc}")
 
         self._apply_joint_defaults(sim_cfg)
+
+        # Add ground plane if requested (solver-specific implementation)
+        ground_cfg = self.global_config.get("ground_plane", {})
+        if ground_cfg.get("enabled", False):
+            self._add_ground_support(sim_cfg, ground_cfg)
 
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
@@ -200,6 +244,27 @@ class NewtonBackend(SimulatorBackend):
             f"{self.model.joint_count} joints, {self.model.body_count} bodies"
         )
 
+        # DIAGNOSTIC: Check model joint configuration
+        if hasattr(self.model, 'joint_target') and self.model.joint_target is not None:
+            model_targets = self.model.joint_target.numpy()
+            log.warning(f"[DIAGNOSTIC] Model HAS joint_target attribute!")
+            log.warning(f"[DIAGNOSTIC] Model.joint_target initial: {model_targets[:min(7, len(model_targets))]}")
+        else:
+            log.info("[DIAGNOSTIC] Model does NOT have joint_target attribute")
+
+        # DIAGNOSTIC: Check if ke/kd/mode values made it through finalization
+        if hasattr(self.model, 'joint_target_ke'):
+            ke_vals = self.model.joint_target_ke.numpy()[:min(7, len(self.model.joint_target_ke))]
+            log.warning(f"[DIAGNOSTIC] Model.joint_target_ke: {ke_vals}")
+        if hasattr(self.model, 'joint_target_kd'):
+            kd_vals = self.model.joint_target_kd.numpy()[:min(7, len(self.model.joint_target_kd))]
+            log.warning(f"[DIAGNOSTIC] Model.joint_target_kd: {kd_vals}")
+        if hasattr(self.model, 'joint_dof_mode'):
+            mode_vals = self.model.joint_dof_mode.numpy()[:min(7, len(self.model.joint_dof_mode))]
+            log.warning(f"[DIAGNOSTIC] Model.joint_dof_mode: {mode_vals} (1=TARGET_POSITION)")
+        else:
+            log.error("[DIAGNOSTIC] Model does NOT have joint_dof_mode attribute!")
+
         self.solver = self._create_solver(sim_cfg)
 
         self.state_current = self.model.state()
@@ -208,9 +273,32 @@ class NewtonBackend(SimulatorBackend):
         self.contacts = self.model.collide(self.state_current)
 
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_current)
+        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_next)
 
         self._state_accessor: Callable[[], newton.State] = lambda: self.state_current
         self._bind_runtime_handles()
+
+        # Sync state_next from state_current after drivers apply initial configurations
+        # This is critical because drivers only modify state_current via state_accessor,
+        # and Newton swaps buffers during stepping. Both states must be synchronized.
+        self.state_next.joint_q.assign(self.state_current.joint_q)
+        self.state_next.joint_qd.assign(self.state_current.joint_qd)
+        newton.eval_fk(self.model, self.state_next.joint_q, self.state_next.joint_qd, self.state_next)
+        log.info("Newton backend: Synchronized state_next from state_current after initial config")
+
+        # CRITICAL FIX: Initialize control.joint_target from current state
+        # Without this, control.joint_target starts at zeros and PD controller
+        # drives all joints toward zero instead of maintaining current positions!
+        # This follows Newton's own examples (see example_basic_urdf.py:72)
+        if self.control.joint_target is not None and self.state_current.joint_q is not None:
+            self.control.joint_target.assign(self.state_current.joint_q)
+            target_sample = self.control.joint_target.numpy()[:min(7, len(self.control.joint_target))]
+            log.ok(f"Newton backend: Initialized control.joint_target from state: {target_sample}")
+        else:
+            log.error("Newton backend: FAILED to initialize control.joint_target - array is None!")
+
+        # Initialize viewer manager
+        self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
 
         # Log successful initialization
         log.ok(
@@ -386,7 +474,22 @@ class NewtonBackend(SimulatorBackend):
         if not self._all_available():
             return
 
+        # DEBUG: Sample control targets periodically
+        if not hasattr(self, '_step_count'):
+            self._step_count = 0
+        self._step_count += 1
+
         self._step_sim_components()
+
+        # DIAGNOSTIC: Log physics state vs control targets every 500 steps
+        if self._step_count % 500 == 0 and self.control.joint_target is not None:
+            targets = self.control.joint_target.numpy()[:7]  # First 7 joints
+            states_before = self.state_current.joint_q.numpy()[:7]  # Before physics step
+            log.info(f"[PHYSICS DIAGNOSTIC #{self._step_count}] BEFORE physics step:")
+            log.info(f"  Control targets: {targets}")
+            log.info(f"  State positions: {states_before}")
+            log.info(f"  Error (target-state): {targets - states_before}")
+
         for _ in range(self.sim_substeps):
             self.state_current.clear_forces()
             self.contacts = self.model.collide(self.state_current)
@@ -399,9 +502,21 @@ class NewtonBackend(SimulatorBackend):
             )
             self.state_current, self.state_next = self.state_next, self.state_current
 
+        # DIAGNOSTIC: Log state AFTER physics to see if it changed
+        if self._step_count % 500 == 0 and self.control.joint_target is not None:
+            states_after = self.state_current.joint_q.numpy()[:7]
+            targets = self.control.joint_target.numpy()[:7]
+            log.info(f"[PHYSICS DIAGNOSTIC #{self._step_count}] AFTER physics step:")
+            log.info(f"  State positions: {states_after}")
+            log.info(f"  Did state change from before? {not np.allclose(states_before, states_after)}")
+            log.info(f"  Error (target-state): {targets - states_after}")
+
         self._simulation_time += self._time_step
+        self.viewer_manager.render(self.state_current, self.contacts, self._simulation_time)
 
     def shutdown_backend(self) -> None:
+        if hasattr(self, 'viewer_manager'):
+            self.viewer_manager.shutdown()
         for robot in list(self.robot_ref.values()):
             robot.kill_node()
         for obj in list(self.object_ref.values()):

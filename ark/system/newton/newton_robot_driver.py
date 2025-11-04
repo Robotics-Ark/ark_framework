@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Iterable, Sequence
 import newton
 import numpy as np
 import warp as wp
+from newton.selection import ArticulationView
 
 from ark.tools.log import log
 from ark.system.driver.robot_driver import ControlType, SimRobotDriver
@@ -52,6 +53,10 @@ class NewtonRobotDriver(SimRobotDriver):
         self._joint_qd_start: np.ndarray | None = None
         self._joint_dof_dim: np.ndarray | None = None
 
+        # ArticulationView for proper Newton control API (UR10 pattern)
+        self._articulation_view: ArticulationView | None = None
+        self._control_handle: wp.array | None = None
+
         self._last_commanded_torque: dict[str, float] = {}
         self._torque_groups = {
             name
@@ -94,6 +99,10 @@ class NewtonRobotDriver(SimRobotDriver):
         enable_self_collisions = bool(self.config.get("enable_self_collisions", False))
         collapse_fixed = bool(self.config.get("collapse_fixed_joints", False))
 
+        # Store pre-load joint/body counts to identify which joints were added
+        pre_joint_count = self.builder.joint_count
+        pre_joint_dof_count = len(self.builder.joint_target_ke)
+
         try:
             self.builder.add_urdf(
                 str(urdf_path),
@@ -106,6 +115,40 @@ class NewtonRobotDriver(SimRobotDriver):
         except Exception as exc:  # noqa: BLE001
             log.error(f"Newton robot driver: Failed to load URDF '{urdf_path}': {exc}")
             raise
+
+        # CRITICAL FIX: Apply joint defaults to URDF joints via post-processing
+        # Newton's add_urdf() ignores default_joint_cfg, so we must manually apply it
+        # to all joints that were just loaded (from pre_joint_dof_count to current)
+        post_joint_dof_count = len(self.builder.joint_target_ke)
+        num_new_dofs = post_joint_dof_count - pre_joint_dof_count
+
+        if num_new_dofs > 0:
+            # Get defaults from builder
+            default_cfg = self.builder.default_joint_cfg
+
+            # Apply to all newly loaded joint DOFs
+            for i in range(pre_joint_dof_count, post_joint_dof_count):
+                self.builder.joint_dof_mode[i] = default_cfg.mode
+                self.builder.joint_target_ke[i] = default_cfg.target_ke
+                self.builder.joint_target_kd[i] = default_cfg.target_kd
+                self.builder.joint_limit_ke[i] = default_cfg.limit_ke
+                self.builder.joint_limit_kd[i] = default_cfg.limit_kd
+                self.builder.joint_armature[i] = default_cfg.armature
+
+                # CRITICAL: Initialize joint_target to match joint_q
+                # Without this, PD controller has no target to track!
+                # This follows Newton's own examples (see example_basic_urdf.py:72)
+                self.builder.joint_target[i] = self.builder.joint_q[i]
+
+            # DIAGNOSTIC: Verify builder arrays before finalization
+            log.warning(f"[DIAGNOSTIC BUILDER] joint_target after init: {self.builder.joint_target[pre_joint_dof_count:post_joint_dof_count]}")
+            log.warning(f"[DIAGNOSTIC BUILDER] joint_q: {self.builder.joint_q[pre_joint_dof_count:post_joint_dof_count]}")
+            log.warning(f"[DIAGNOSTIC BUILDER] joint_target_ke sample: {self.builder.joint_target_ke[pre_joint_dof_count:pre_joint_dof_count+3]}")
+
+            log.ok(
+                f"Newton robot driver: Applied joint defaults to {num_new_dofs} DOFs "
+                f"(ke={default_cfg.target_ke}, kd={default_cfg.target_kd}, mode={default_cfg.mode})"
+            )
 
         self._joint_names = list(
             self.builder.joint_key[pre_joint_count : self.builder.joint_count]
@@ -150,21 +193,55 @@ class NewtonRobotDriver(SimRobotDriver):
         self._joint_qd_start = model.joint_qd_start.numpy()
         self._joint_dof_dim = model.joint_dof_dim.numpy()
 
+        # Create ArticulationView for proper Newton control API (UR10 example pattern)
+        # This is CRITICAL for TARGET_POSITION mode to work correctly
+        try:
+            # Use component name as pattern (e.g., "panda" matches bodies with "panda" in name)
+            pattern = f"*{self.component_name}*"
+            self._articulation_view = ArticulationView(
+                model,
+                pattern,
+                exclude_joint_types=[newton.JointType.FREE, newton.JointType.DISTANCE]
+            )
+
+            # Get control handle for joint targets
+            self._control_handle = self._articulation_view.get_attribute("joint_target", control)
+
+            log.ok(
+                f"Newton robot driver '{self.component_name}': "
+                f"Created ArticulationView (pattern='{pattern}', count={self._articulation_view.count}, "
+                f"dofs={self._control_handle.shape if self._control_handle is not None else 'N/A'})"
+            )
+        except Exception as exc:
+            log.error(
+                f"Newton robot driver '{self.component_name}': "
+                f"Failed to create ArticulationView: {exc}. Falling back to direct control."
+            )
+            self._articulation_view = None
+            self._control_handle = None
+
         self._apply_initial_configuration()
 
     def _apply_initial_configuration(self) -> None:
-        """Apply initial joint configuration to model and control."""
+        """Apply initial joint configuration to runtime state and control.
+
+        CRITICAL: This writes to state.joint_q (runtime simulation state),
+        NOT model.joint_q (static template). The physics solver reads/writes
+        state.joint_q, so that's where initial config must be applied.
+        """
         if not self.initial_configuration or not self._joint_names:
             log.info(f"Newton robot driver '{self.component_name}': No initial configuration to apply")
             return
-        if not isinstance(self.initial_configuration, (list, tuple)):
+
+        state = self._state_accessor()
+        if state is None or state.joint_q is None:
             log.warning(
                 f"Newton robot driver '{self.component_name}': "
-                f"initial_configuration is not a list/tuple, skipping"
+                f"Cannot apply initial config - state not available yet"
             )
             return
 
-        # Validate initial configuration length
+        # Validate configuration length
         if len(self.initial_configuration) != len(self._joint_names):
             log.warning(
                 f"Newton robot driver '{self.component_name}': "
@@ -172,68 +249,73 @@ class NewtonRobotDriver(SimRobotDriver):
                 f"joint count ({len(self._joint_names)}). Using available values."
             )
 
-        # Set both joint positions and targets
+        # Get state arrays as numpy (mutable copies)
+        joint_q_np = state.joint_q.numpy().copy()
+        joint_qd_np = state.joint_qd.numpy().copy()
+
+        # Apply initial positions to STATE (not model!)
         for idx, joint_name in enumerate(self._joint_names):
             if idx >= len(self.initial_configuration):
                 break
+
+            model_idx = self._joint_index_map.get(joint_name)
+            if model_idx is None:
+                continue
+
+            if model_idx >= len(self._joint_q_start) - 1:
+                continue
+
+            start = int(self._joint_q_start[model_idx])
+            end = int(self._joint_q_start[model_idx + 1])
+            width = end - start
+            if width <= 0:
+                continue
+
             target = self.initial_configuration[idx]
-            self._write_joint_position(joint_name, target)
+            values = target if isinstance(target, Sequence) else [target] * width
+
+            # Write to state.joint_q
+            for offset in range(width):
+                if offset < len(values):
+                    joint_q_np[start + offset] = float(values[offset])
+
+            # Zero out velocities in state.joint_qd
+            vel_start = int(self._joint_qd_start[model_idx])
+            vel_end = int(self._joint_qd_start[model_idx + 1])
+            for offset in range(vel_end - vel_start):
+                joint_qd_np[vel_start + offset] = 0.0
+
+            # Set control target
             self._write_joint_target(joint_name, target)
 
-        # Synchronize body poses with updated joint positions
-        state = self._state_accessor()
-        if state is not None and self._model is not None:
-            try:
-                # Get the current state arrays
-                joint_q_np = self._model.joint_q.numpy()
-                joint_qd_np = self._model.joint_qd.numpy()
-                # Evaluate forward kinematics to update body poses
-                newton.eval_fk(
-                    self._model,
-                    wp.array(joint_q_np, dtype=wp.float32, device=self._model.joint_q.device),
-                    wp.array(joint_qd_np, dtype=wp.float32, device=self._model.joint_qd.device),
-                    state
-                )
-                log.ok(f"Newton robot driver '{self.component_name}': Applied initial configuration and updated FK")
-            except Exception as exc:  # noqa: BLE001
-                log.error(
-                    f"Newton robot driver '{self.component_name}': "
-                    f"Failed to evaluate FK after initial configuration: {exc}"
-                )
+        # Write modified arrays back to state
+        state.joint_q.assign(joint_q_np)
+        state.joint_qd.assign(joint_qd_np)
 
-    def _write_joint_position(self, joint_name: str, value: float | Sequence[float]) -> None:
-        if self._model is None or self._model.joint_q is None:
-            log.warning(f"Newton robot driver: Cannot write joint position, model not initialized")
-            return
-        idx = self._joint_index_map.get(joint_name)
-        if idx is None:
-            return  # Joint not mapped, already warned in bind_runtime
-        if self._joint_q_start is None:
-            log.warning(f"Newton robot driver: joint_q_start array not initialized")
-            return
-
-        # Validate array bounds
-        if idx >= len(self._joint_q_start) - 1:
-            log.error(
-                f"Newton robot driver: Joint index {idx} out of bounds for joint_q_start "
-                f"(size {len(self._joint_q_start)})"
+        # Update forward kinematics with STATE arrays
+        try:
+            newton.eval_fk(
+                self._model,
+                state.joint_q,  # KEY FIX: Use state.joint_q, not model.joint_q
+                state.joint_qd,
+                state
             )
-            return
-
-        start = int(self._joint_q_start[idx])
-        end = int(self._joint_q_start[idx + 1])
-        width = end - start
-        if width <= 0:
-            return
-        values = value if isinstance(value, Sequence) else [value] * width
-        # Get numpy copy, modify, and assign back to device
-        joint_q_np = self._model.joint_q.numpy().copy()
-        for offset in range(width):
-            if offset < len(values):
-                joint_q_np[start + offset] = float(values[offset])
-        self._model.joint_q.assign(joint_q_np)
+            log.ok(
+                f"Newton robot driver '{self.component_name}': "
+                f"Applied initial configuration to runtime state and updated FK"
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                f"Newton robot driver '{self.component_name}': "
+                f"Failed to evaluate FK after initial configuration: {exc}"
+            )
 
     def _write_joint_target(self, joint_name: str, value: float | Sequence[float]) -> None:
+        """Write joint target using ArticulationView API (UR10 example pattern).
+
+        This follows Newton's official pattern from example_robot_ur10.py which uses
+        ArticulationView.set_attribute() instead of direct array assignment.
+        """
         if self._control is None or self._control.joint_target is None:
             log.warning(f"Newton robot driver: Cannot write joint target, control not initialized")
             return
@@ -258,12 +340,41 @@ class NewtonRobotDriver(SimRobotDriver):
         if width <= 0:
             return
         values = value if isinstance(value, Sequence) else [value] * width
-        # Get numpy copy, modify, and assign back to device
-        joint_target_np = self._control.joint_target.numpy().copy()
-        for offset in range(width):
-            if offset < len(values):
-                joint_target_np[start + offset] = float(values[offset])
-        self._control.joint_target.assign(joint_target_np)
+
+        # APPROACH 1: ArticulationView API (if available)
+        if self._articulation_view is not None and self._control_handle is not None:
+            # Get current control handle values (shape: [num_envs, num_dofs])
+            handle_np = self._control_handle.numpy().copy()
+
+            # Single environment, so index [0, dof]
+            env_idx = 0
+            for offset in range(width):
+                if offset < len(values):
+                    handle_np[env_idx, start + offset] = float(values[offset])
+
+            # Write back via ArticulationView
+            self._control_handle.assign(handle_np)
+            self._articulation_view.set_attribute("joint_target", self._control, self._control_handle)
+
+            # DEBUG logging
+            if not hasattr(self, '_articulation_write_count'):
+                self._articulation_write_count = 0
+            self._articulation_write_count += 1
+
+            if self._articulation_write_count <= 5:
+                log.ok(f"[ARTICULATION VIEW] Wrote {joint_name}={value} via set_attribute()")
+
+        # APPROACH 2: Direct assignment fallback (if ArticulationView failed)
+        else:
+            joint_target_np = self._control.joint_target.numpy().copy()
+            for offset in range(width):
+                if offset < len(values):
+                    joint_target_np[start + offset] = float(values[offset])
+            self._control.joint_target.assign(joint_target_np)
+
+            if not hasattr(self, '_direct_write_warned'):
+                self._direct_write_warned = True
+                log.warning(f"Newton robot driver: Using direct .assign() (ArticulationView not available)")
 
     def _write_joint_force(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_f is None:
@@ -315,9 +426,34 @@ class NewtonRobotDriver(SimRobotDriver):
         return result
 
     def pass_joint_positions(self, joints: list[str]) -> dict[str, float | Sequence[float]]:
+        # DIAGNOSTIC: Track state reads
+        if not hasattr(self, '_state_read_count'):
+            self._state_read_count = 0
+        self._state_read_count += 1
+
         state = self._state_accessor()
+
+        # DIAGNOSTIC: Log state validity
+        if self._state_read_count % 500 == 0:
+            log.info(f"[STATE READ #{self._state_read_count}] state is None: {state is None}")
+            if state and state.joint_q is not None:
+                sample = state.joint_q.numpy()[:7]
+                log.info(f"[STATE READ #{self._state_read_count}] state.joint_q[:7]: {sample}")
+            else:
+                log.error(f"[STATE READ #{self._state_read_count}] state.joint_q is None!")
+
+        # CRITICAL CHECK: Are we hitting the early return?
         if state is None or state.joint_q is None or self._joint_q_start is None:
+            if self._state_read_count <= 5:
+                log.error(
+                    f"[STATE READ #{self._state_read_count}] RETURNING ZEROS! "
+                    f"state={state is not None}, joint_q={state.joint_q is not None if state else False}, "
+                    f"joint_q_start={self._joint_q_start is not None}"
+                )
             return {joint: 0.0 for joint in joints}
+
+        # Convert Warp array to numpy once for efficient indexing
+        joint_q_np = state.joint_q.numpy()
 
         def getter(idx: int) -> float | Sequence[float]:
             start = int(self._joint_q_start[idx])
@@ -326,15 +462,25 @@ class NewtonRobotDriver(SimRobotDriver):
             if width <= 0:
                 return 0.0
             if width == 1:
-                return float(state.joint_q[start])
-            return [float(state.joint_q[start + k]) for k in range(width)]
+                return float(joint_q_np[start])
+            return [float(joint_q_np[start + k]) for k in range(width)]
 
-        return self._gather_joint_values(joints, getter)
+        result = self._gather_joint_values(joints, getter)
+
+        # DIAGNOSTIC: Log returned values
+        if self._state_read_count % 500 == 0:
+            sample_result = {k: v for k, v in list(result.items())[:3]}
+            log.info(f"[STATE READ #{self._state_read_count}] Returning: {sample_result}")
+
+        return result
 
     def pass_joint_velocities(self, joints: list[str]) -> dict[str, float | Sequence[float]]:
         state = self._state_accessor()
         if state is None or state.joint_qd is None or self._joint_qd_start is None:
             return {joint: 0.0 for joint in joints}
+
+        # Convert Warp array to numpy once for efficient indexing
+        joint_qd_np = state.joint_qd.numpy()
 
         def getter(idx: int) -> float | Sequence[float]:
             start = int(self._joint_qd_start[idx])
@@ -343,8 +489,8 @@ class NewtonRobotDriver(SimRobotDriver):
             if width <= 0:
                 return 0.0
             if width == 1:
-                return float(state.joint_qd[start])
-            return [float(state.joint_qd[start + k]) for k in range(width)]
+                return float(joint_qd_np[start])
+            return [float(joint_qd_np[start + k]) for k in range(width)]
 
         return self._gather_joint_values(joints, getter)
 
@@ -357,10 +503,19 @@ class NewtonRobotDriver(SimRobotDriver):
         cmd: dict[str, float | Sequence[float]],
         **_: Any,
     ) -> None:
+        # DEBUG: Log command reception
+        log.info(
+            f"[DEBUG DRIVER] pass_joint_group_control_cmd() called: "
+            f"mode={control_mode}, {len(cmd)} joints"
+        )
+        log.info(f"    Joints: {list(cmd.keys())[:5]}...")
+        log.info(f"    Values: {list(cmd.values())[:5]}...")
+
         mode = ControlType(control_mode.lower())
         if mode in {ControlType.POSITION, ControlType.VELOCITY}:
             for joint, value in cmd.items():
                 self._write_joint_target(joint, value)
+            log.ok(f"[DEBUG DRIVER] Wrote {len(cmd)} joint targets")
         elif mode == ControlType.TORQUE:
             for joint, value in cmd.items():
                 self._write_joint_force(joint, value)
