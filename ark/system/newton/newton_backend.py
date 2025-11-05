@@ -201,6 +201,11 @@ class NewtonBackend(SimulatorBackend):
             gravity=gravity_magnitude
         )
 
+        # Create solver-specific adapter early (before scene building)
+        solver_name = sim_cfg.get("solver", "xpbd") or "xpbd"
+        self.adapter = self._create_scene_adapter(solver_name)
+        log.info(f"Newton backend: Using {self.adapter.solver_name} solver adapter")
+
         device_name = sim_cfg.get("device")
         if device_name:
             try:
@@ -210,10 +215,12 @@ class NewtonBackend(SimulatorBackend):
 
         self._apply_joint_defaults(sim_cfg)
 
-        # Add ground plane if requested (solver-specific implementation)
+        # Add ground plane if requested (adapter handles solver-specific implementation)
         ground_cfg = self.global_config.get("ground_plane", {})
         if ground_cfg.get("enabled", False):
-            self._add_ground_support(sim_cfg, ground_cfg)
+            from ark.system.newton.geometry_descriptors import GeometryDescriptor
+            descriptor = GeometryDescriptor.from_ground_plane_config(ground_cfg)
+            self.adapter.adapt_ground_plane(descriptor)
 
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
@@ -265,7 +272,8 @@ class NewtonBackend(SimulatorBackend):
         else:
             log.error("[DIAGNOSTIC] Model does NOT have joint_dof_mode attribute!")
 
-        self.solver = self._create_solver(sim_cfg)
+        # Create solver through adapter (handles solver-specific configuration)
+        self.solver = self.adapter.create_solver(self.model, sim_cfg)
 
         self.state_current = self.model.state()
         self.state_next = self.model.state()
@@ -338,14 +346,64 @@ class NewtonBackend(SimulatorBackend):
             f"{bound_robots} robots, {bound_objects} objects, {bound_sensors} sensors"
         )
 
+    def _create_scene_adapter(self, solver_name: str):
+        """Factory method to create solver-specific scene adapter.
+
+        Creates the appropriate adapter based on solver name. Adapters handle
+        solver-specific scene building requirements (e.g., MuJoCo ground plane
+        workaround) in a transparent, maintainable way.
+
+        Args:
+            solver_name: Name of the solver ("xpbd", "mujoco", "featherstone", etc.)
+
+        Returns:
+            Solver-specific adapter instance
+
+        Example:
+            >>> adapter = self._create_scene_adapter("mujoco")
+            >>> adapter.adapt_ground_plane(descriptor)  # Uses box workaround
+        """
+        from ark.system.newton.scene_adapters import (
+            XPBDAdapter,
+            MuJoCoAdapter,
+        )
+
+        # Map solver names to adapter classes
+        adapter_map = {
+            "xpbd": XPBDAdapter,
+            "solverxpbd": XPBDAdapter,
+            "mujoco": MuJoCoAdapter,
+            "solvermujoco": MuJoCoAdapter,
+            # TODO: Add Featherstone and SemiImplicit adapters in future
+        }
+
+        # Get adapter class (default to XPBD if unknown)
+        solver_key = solver_name.lower()
+        adapter_cls = adapter_map.get(solver_key)
+
+        if not adapter_cls:
+            log.warning(
+                f"Unknown solver '{solver_name}', falling back to XPBD adapter"
+            )
+            adapter_cls = XPBDAdapter
+
+        return adapter_cls(self.scene_builder)
+
     def _create_solver(self, sim_cfg: dict[str, Any]) -> newton.solvers.SolverBase:
         solver_name = sim_cfg.get("solver", "xpbd")
         iterations = int(sim_cfg.get("solver_iterations", 1))
 
         name = (solver_name or "xpbd").lower()
         if name in {"xpbd", "solverxpbd"}:
-            solver = newton.solvers.SolverXPBD(self.model, iterations=iterations)
-            log.info(f"Newton backend: Using XPBD solver with {iterations} iterations")
+            # XPBD requires more iterations than MuJoCo for position control convergence
+            # Newton examples use 20 effective iterations (2 base × 10 substeps)
+            # Increase to minimum of 8 iterations for reliable TARGET_POSITION mode
+            xpbd_iterations = max(iterations, 8)
+            solver = newton.solvers.SolverXPBD(self.model, iterations=xpbd_iterations)
+            if xpbd_iterations > iterations:
+                log.info(f"Newton backend: Using XPBD solver with {xpbd_iterations} iterations (increased from config value {iterations} for position control)")
+            else:
+                log.info(f"Newton backend: Using XPBD solver with {xpbd_iterations} iterations")
             return solver
         if name in {"semiimplicit", "semi_implicit", "solversemiimplicit"}:
             return newton.solvers.SolverSemiImplicit(self.model)
