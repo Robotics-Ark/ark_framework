@@ -73,37 +73,6 @@ def run_franka_vector_demo(
     unit test and assumes the Ark backend is available.
     """
     print(f"Creating {num_envs} FrankaEnv instances...")
-    # make_sim(
-    #     channel_schema=channel_schema,
-    #     global_config=config_path,
-    #     namespace="test",  # namespace,
-    # )
-    #
-    # env = DemoEnv(
-    #     namespace="test",
-    #     channel_schema=channel_schema,
-    #     global_config=config_path,
-    #     sim=True,
-    # )
-    # obs, info = env.reset()
-    # for k, v in obs.items():
-    #     print(k, v.shape)
-    #
-    # make_sim(
-    #     channel_schema=channel_schema,
-    #     global_config=config_path,
-    #     namespace="test2",
-    # )
-    #
-    # env = DemoEnv(
-    #     namespace="test2",
-    #     channel_schema=channel_schema,
-    #     global_config=config_path,
-    #     sim=True,
-    # )
-    # obs, info = env.reset()
-    # for k, v in obs.items():
-    #     print(k, v.shape)
 
     vec_env = make_vector_env(
         DemoEnv,
@@ -115,10 +84,10 @@ def run_franka_vector_demo(
     )
 
     obs, info = vec_env.reset()
-    # print("Initial obs:")
-    # for i in range(vec_env.num_envs):
-    #     per_env_obs = {k: v[i] for k, v in obs.items()}
-    #     print(f"  env[{i}] initial obs:", per_env_obs)
+    print("Initial obs:")
+    for i in range(vec_env.num_envs):
+        per_env_obs = {k: v[i] for k, v in obs.items()}
+        print(f"  env[{i}] initial obs:", per_env_obs)
 
     for step in range(num_steps):
         # Build distinct actions per env so we can trace them
@@ -134,10 +103,10 @@ def run_franka_vector_demo(
         for i in range(vec_env.num_envs):
             per_env_obs = {k: v[i] for k, v in obs.items()}
             print(f"  env[{i}]:")
-            # print("    action   :", actions[i])
-            # print("    obs      :", per_env_obs)
-            # print("    reward   :", rewards[i])
-            # print("    terminated:", terminated[i], "truncated:", truncated[i])
+            print("    action   :", actions[i])
+            print("    obs      :", per_env_obs)
+            print("    reward   :", rewards[i])
+            print("    terminated:", terminated[i], "truncated:", truncated[i])
 
     print("Final reset")
     obs, info = vec_env.reset()
