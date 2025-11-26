@@ -194,12 +194,10 @@ class SimulatorNode(BaseNode, ABC):
         self.step()
         self.backend.step()
 
-    @abstractmethod
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""
         pass
 
-    @abstractmethod
     def step(self) -> None:
         """!Hook executed every simulation step."""
         pass
