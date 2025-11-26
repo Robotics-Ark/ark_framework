@@ -6,6 +6,15 @@ from typing import Any
 from ark.client.comm_infrastructure.instance_node import InstanceNode
 from ark.env.spaces import ActionSpace, ObservationSpace
 from ark.tools.log import log
+from ark.utils.communication_utils import (
+    build_action_space,
+    build_observation_space,
+    get_channel_types,
+    _dynamic_observation_unpacker,
+    _dynamic_action_packer,
+    namespace_channels,
+)
+from ark.utils.data_utils import generate_flat_dict
 from ark.utils.utils import ConfigPath
 from arktypes import robot_init_t, flag_t, rigid_body_state_t
 from gymnasium import Env
@@ -37,10 +46,10 @@ class ArkEnv(Env, InstanceNode, ABC):
     def __init__(
         self,
         environment_name: str,
-        action_channels: dict[str, type],
-        observation_channels: dict[str, type],
-        global_config: str | dict[str, Any] | Path | None = None,
+        channel_schema: str,
+        global_config: str,
         sim=True,
+        namespace: str = "ark",
     ) -> None:
         """!Construct the environment.
 
@@ -59,83 +68,83 @@ class ArkEnv(Env, InstanceNode, ABC):
         @param global_config Optional path or dictionary describing the system.
         @param sim If ``True`` the environment interacts with the simulator.
         """
-        super().__init__(environment_name, global_config)
+        super().__init__(
+            environment_name, global_config
+        )  # TODO check why global config needed here
 
-        self._load_config(global_config)  # creates self.global_config
+        schema = ConfigPath(channel_schema).read_yaml()
+
+        # Derive observation and action channel types from schema
+        obs_chans = get_channel_types(schema=schema, channel_type="observation_space")
+        act_chans = get_channel_types(schema=schema, channel_type="action_space")
+
+        # Namespace channels with rank
+        observation_channels = namespace_channels(
+            channels=obs_chans, namespace=namespace
+        )
+        action_channels = namespace_channels(channels=act_chans, namespace=namespace)
+
+        self._flatten_action_space = schema["env"]["flatten_action_space"]
+        self._flatten_obs_space = schema["env"]["flatten_obs_space"]
+
         self.sim = sim
+        self.namespace = namespace
+        self.prev_state = None
+
         # Create the action space
-        self.action_space = ActionSpace(action_channels, self.action_packing, self._lcm)
-        self.observation_space = ObservationSpace(
+        self.ark_action_space = ActionSpace(
+            action_channels, self.action_packing, self._lcm
+        )
+        self.ark_observation_space = ObservationSpace(
             observation_channels, self.observation_unpacking, self._lcm
         )
 
-        self._multi_comm_handlers.append(self.action_space.action_space_publisher)
+        self._multi_comm_handlers.append(self.ark_action_space.action_space_publisher)
         self._multi_comm_handlers.append(
-            self.observation_space.observation_space_listener
+            self.ark_observation_space.observation_space_listener
         )
 
-        self.prev_state = None
+        self._load_config(global_config)  # creates self.global_config
+
+        # Build Gym-style observation / action spaces from schema
+        self.observation_space = build_observation_space(
+            schema=schema, flatten_obs_space=self._flatten_obs_space
+        )
+        self.action_space = build_action_space(schema=schema)
+
+        self._obs_unpacker = _dynamic_observation_unpacker(
+            schema, namespace=self.namespace
+        )
+        self._action_packer = _dynamic_action_packer(schema, namespace=self.namespace)
+
+        # Reward and Termination Conditions
+        self._termination_conditions = self._create_termination_conditions()
+        self._reward_functions = self._create_reward_functions()
+
+    def action_packing(self, action):
+        """
+        Packs the action into a task_space_command_t format.
+
+        Expected layout:
+            [EE_X, EE_Y, EE_Z, EE_QX, EE_QY, EE_QZ, EE_QW, Gripper]
+        """
+        return self._action_packer(action)
+
+    def observation_unpacking(self, observation_dict):
+        """
+        Unpack raw LCM observations into a compact dict used by the agent.
+
+        """
+        obs = self._obs_unpacker(observation_dict)
+        if self._flatten_obs_space:
+            obs = generate_flat_dict(obs)
+        return obs
 
     @abstractmethod
-    def action_packing(self, action: Any) -> dict[str, Any]:
-        """!Serialize an action.
-
-        This method converts the high level action passed to :func:`step` into
-        a dictionary that can be published over LCM.  The dictionary keys are
-        channel names and the values are already packed LCM messages.
-
-        @param action The high level action provided by the agent.
-        @return A mapping from channel names to packed LCM messages.
-        @rtype dict[str, Any]
-        """
-        raise NotImplementedError
+    def _create_termination_conditions(self): ...
 
     @abstractmethod
-    def observation_unpacking(self, observation_dict: dict[str, Any]) -> Any:
-        """!Deserialize observations.
-
-        ``observation_dict`` contains the raw LCM messages keyed by channel
-        name.  Implementations should convert these messages into a convenient
-        format for the agent.
-
-        @param observation_dict Raw messages indexed by channel name.
-        @return Processed observation in an arbitrary format.
-        @rtype Any
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def terminated_truncated_info(
-        self, state: Any, action: Any, next_state: Any
-    ) -> tuple[bool, bool, Any]:
-        """!Evaluate episode status.
-
-        Determines whether the episode has terminated or been truncated after
-        transitioning from ``state`` to ``next_state`` by ``action``.  When
-        :func:`reset` is called ``action`` and ``next_state`` will be ``None``.
-
-        @param state Previous environment state.
-        @param action Action taken to reach ``next_state``.
-        @param next_state New state after the action.
-        @return tuple of termination flag, truncation flag and optional info.
-        @rtype tuple[bool, bool, Any]
-        """
-        return False, False, None
-
-    @abstractmethod
-    def reward(self, state: Any, action: Any, next_state: Any) -> float:
-        """!Compute the reward for a transition.
-
-        Sub‑classes must implement the task specific reward computation given
-        a state transition.
-
-        @param state Environment state before the action.
-        @param action Action taken by the agent.
-        @param next_state Environment state after the action.
-        @return Scalar reward.
-        @rtype float
-        """
-        raise NotImplementedError
+    def _create_reward_functions(self): ...
 
     @abstractmethod
     def reset_objects(self):
@@ -153,28 +162,25 @@ class ArkEnv(Env, InstanceNode, ABC):
         @return Observation after reset and information tuple.
         @rtype tuple[Any, Any]
         """
-        # self.suspend_node()
-        self.reset_objects(**kwargs)
-        self.observation_space.is_ready = False
-        # self.restart_node()
-        # if self.sim:
-        #     self.reset_backend()
-        self.observation_space.wait_until_observation_space_is_ready()
-        obs = self.observation_space.get_observation()
-        info = self.terminated_truncated_info(obs, None, None)
+        if not self.ark_observation_space.is_ready:
+            self.ark_observation_space.wait_until_observation_space_is_ready()
+        self.reset_objects()
+        self.ark_observation_space.is_ready = False
+        self.ark_observation_space.wait_until_observation_space_is_ready()
+        obs = self.ark_observation_space.get_observation()
+        # Reset per-episode state for reward / termination functions
+        for termination in self._termination_conditions.values():
+            termination.reset()
+        for reward_fn in self._reward_functions.values():
+            reward_fn.reset(initial_obs=obs)
+
         self.prev_state = obs
 
-        return obs, info
+        return obs, {}
 
     def reset_backend(self):
         """!Reset the simulation backend."""
         raise NotImplementedError("This feature is to be added soon.")
-        # service_name = self.global_config["simulator"]["name"] + "/backend/reset/sim"
-        # self.send_service_request(
-        #     service_name=service_name,
-        #     request=flag_t(),
-        #     response_type=flag_t,
-        # )
 
     def reset_component(self, name: str, **kwargs):
         """!Reset a single component.
@@ -195,7 +201,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         # if name in [robot["name"] for robot in self.global_config["robots"]]:
         if name in self.global_config["robots"]:
 
-            service_name = name + "/reset/"
+            service_name = f"{self.namespace}/" + name + "/reset/"
             if self.sim:
                 service_name = service_name + "sim"
 
@@ -220,7 +226,7 @@ class ArkEnv(Env, InstanceNode, ABC):
 
         # elif name in [obj["name"] for obj in self.global_config["objects"]]:
         elif name in self.global_config["objects"]:
-            service_name = name + "/reset/"
+            service_name = f"{self.namespace}/" + name + "/reset/"
             if self.sim:
                 service_name = service_name + "sim"
 
@@ -241,9 +247,76 @@ class ArkEnv(Env, InstanceNode, ABC):
         else:
             log.error(f"Component {name} not part of the system.")
 
-        response = self.send_service_request(
+        _ = self.send_service_request(
             service_name=service_name, request=request, response_type=flag_t
         )
+
+    def _step_termination(self, obs, action, info=None):
+        """
+        Step and aggregate termination conditions
+
+        Args:
+            env (Environment): Environment instance
+            action (n-array): 1D flattened array of actions executed by all agents in the environment
+            info (None or dict): Any info to return
+
+        Returns:
+            2-tuple:
+                - float: aggregated termination at the current timestep
+                - dict: any information passed through this function or generated by this function
+        """
+        # Get all dones and successes from individual termination conditions
+        dones = []
+        successes = []
+        info = dict() if info is None else info
+        if "termination_conditions" not in info:
+            info["termination_conditions"] = dict()
+        for name, termination_condition in self._termination_conditions.items():
+            d, s = termination_condition.step(obs=obs, action=action)
+            dones.append(d)
+            successes.append(s)
+            info["termination_conditions"][name] = {
+                "done": d,
+                "success": s,
+            }
+        # Any True found corresponds to a done / success
+        done = sum(dones) > 0
+        success = sum(successes) > 0
+
+        # Populate info
+        info["success"] = success
+        return done, info
+
+    def _step_reward(self, obs, action, info=None):
+        """
+        Step and aggregate reward functions
+
+        Args:
+            env (Environment): Environment instance
+            action (n-array): 1D flattened array of actions executed by all agents in the environment
+            info (None or dict): Any info to return
+
+        Returns:
+            2-tuple:
+                - float: aggregated reward at the current timestep
+                - dict: any information passed through this function or generated by this function
+        """
+        # Make sure info is a dict
+        total_info = dict() if info is None else info
+        # We'll also store individual reward split as well
+        breakdown_dict = dict()
+        # Aggregate rewards over all reward functions
+        total_reward = 0.0
+        for reward_name, reward_function in self._reward_functions.items():
+            reward, reward_info = reward_function.step(obs=obs, action=action)
+            total_reward += reward
+            breakdown_dict[reward_name] = reward
+            total_info[reward_name] = reward_info
+
+        # Store breakdown dict
+        total_info["reward_breakdown"] = breakdown_dict
+
+        return total_reward, total_info
 
     def step(self, action: Any) -> tuple[Any, float, bool, bool, Any]:
         """!Advance the environment by one step.
@@ -260,21 +333,29 @@ class ArkEnv(Env, InstanceNode, ABC):
         if self.prev_state == None:
             raise ValueError("Please call reset() before calling step().")
 
-        self.action_space.pack_and_publish(action)
+        self.ark_action_space.pack_and_publish(action)
 
         # Wait for the observation space to be ready
-        self.observation_space.wait_until_observation_space_is_ready()
+        self.ark_observation_space.wait_until_observation_space_is_ready()
 
         # Get the observation
-        obs = self.observation_space.get_observation()
-        reward = self.reward(self.prev_state, action, obs)
-        terminated, truncated, info = self.terminated_truncated_info(
-            self.prev_state, action, obs
-        )
+        obs = self.ark_observation_space.get_observation()
+
+        # Calculate reward
+        done, done_info = self._step_termination(obs=obs, action=action)
+        reward, reward_info = self._step_reward(obs=obs, action=action)
+        truncated = True if done and not done_info["success"] else False
+
+        info = {
+            "reward": reward_info,
+            "done": done_info,
+        }
+
         self.prev_state = obs
 
-        # Return the observation (excluding termination and truncation flags), reward, and flags
-        return obs, reward, terminated, truncated, info
+        if done or truncated:
+            print(f"Episode terminated, {done}, {truncated}")
+        return obs, reward, done, truncated, info
 
     def _load_config(self, global_config: str | ConfigPath) -> None:
         """!Load and merge the environment configuration.
@@ -375,3 +456,10 @@ class ArkEnv(Env, InstanceNode, ABC):
             section_config[subconfig["name"]] = subconfig["config"]
 
         return section_config
+
+    def close(self):
+        """!Gracefully shut down communications and background threads."""
+        self.suspend_communications(services=True)
+        spin_thread = getattr(self, "spin_thread", None)
+        if spin_thread and spin_thread.is_alive():
+            spin_thread.join(timeout=1.0)

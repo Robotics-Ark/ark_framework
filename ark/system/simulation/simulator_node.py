@@ -30,7 +30,13 @@ class SimulatorNode(BaseNode, ABC):
     tick.
     """
 
-    def __init__(self, global_config):
+    def __init__(
+        self,
+        global_config,
+        observation_channels: dict[str, type] | None = None,
+        action_channels: dict[str, type] | None = None,
+        namespace: str = "ark",
+    ):
         """!Construct the simulator node.
 
         The constructor loads the global configuration, instantiates the
@@ -42,6 +48,10 @@ class SimulatorNode(BaseNode, ABC):
         """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
+
+        self.global_config["observation_channels"] = observation_channels
+        self.global_config["action_channels"] = action_channels
+        self.global_config["namespace"] = namespace
 
         super().__init__(self.name, global_config=global_config)
 
@@ -66,7 +76,7 @@ class SimulatorNode(BaseNode, ABC):
         self.initialize_scene()
 
         ## Reset Backend Service
-        reset_service_name = self.name + "/backend/reset/sim"
+        reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
         freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
