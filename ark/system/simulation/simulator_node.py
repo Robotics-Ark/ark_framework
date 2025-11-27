@@ -31,7 +31,13 @@ class SimulatorNode(BaseNode, ABC):
     tick.
     """
 
-    def __init__(self, global_config):
+    def __init__(
+        self,
+        global_config,
+        observation_channels: dict[str, type] | None = None,
+        action_channels: dict[str, type] | None = None,
+        namespace: str = "ark",
+    ):
         """!Construct the simulator node.
 
         The constructor loads the global configuration, instantiates the
@@ -43,6 +49,10 @@ class SimulatorNode(BaseNode, ABC):
         """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
+
+        self.global_config["observation_channels"] = observation_channels
+        self.global_config["action_channels"] = action_channels
+        self.global_config["namespace"] = namespace
 
         super().__init__(self.name, global_config=global_config)
 
@@ -70,9 +80,10 @@ class SimulatorNode(BaseNode, ABC):
 
         # to initialize a scene with objects that dont need to publish, e.g. for visuals
         self.initialize_scene()
+        self.step_physics()
 
         ## Reset Backend Service
-        reset_service_name = self.name + "/backend/reset/sim"
+        reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
         freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
@@ -193,12 +204,25 @@ class SimulatorNode(BaseNode, ABC):
         self.step()
         self.backend.step()
 
-    @abstractmethod
+    def step_physics(self, num_steps: int = 25, call_step_hook: bool = False) -> None:
+        """
+        Advance the physics backend
+        Args:
+            num_steps: Number of physics ticks to run.
+            call_step_hook: If True, also invoke the subclass step() each tick.
+
+        Returns:
+            None
+        """
+        for _ in range(max(0, num_steps)):
+            if call_step_hook:
+                self.step()
+            self.backend.step()
+
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""
         pass
 
-    @abstractmethod
     def step(self) -> None:
         """!Hook executed every simulation step."""
         pass

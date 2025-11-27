@@ -3,19 +3,15 @@
 These classes encapsulate the LCM based communication used by the environment
 to publish actions and receive observations."""
 
-from lcm import LCM
-from abc import ABC, abstractmethod
-
-
-from typing import Any, Tuple, List, Dict, Callable
-import numpy as np
-from numpy.typing import NDArray
+import os
 import time
+from abc import ABC
+from typing import Any, List, Dict, Callable
 
 from ark.client.comm_handler.multi_channel_listener import MultiChannelListener
 from ark.client.comm_handler.multi_channel_publisher import MultiChannelPublisher
-
 from ark.tools.log import log
+from lcm import LCM
 
 
 class Space(ABC):
@@ -118,6 +114,7 @@ class ObservationSpace(Space):
         )
         self.observation_unpacking = observation_unpacking
         self.is_ready = False
+        self.debug = os.getenv("ARK_DEBUG", "").lower() in ("1", "true")
 
     def unpack_message(self, observation_dict: Dict) -> Any:
         """!Unpack a raw observation dictionary.
@@ -134,15 +131,18 @@ class ObservationSpace(Space):
 
         lcm_dictionary = self.observation_space_listener.get()
         self.is_ready = not any(value is None for value in lcm_dictionary.values())
+        if self.debug:
+            log.info(f"Observation space {lcm_dictionary.values()}.")
 
     def wait_until_observation_space_is_ready(self):
         """!Block until a complete observation has been received."""
 
         while not self.is_ready:
-            log.warning("Observation space is getting checked")
+            if self.debug:
+                log.warning("Observation space is getting checked")
             self.check_readiness()
             time.sleep(0.05)
-            if not self.is_ready:
+            if not self.is_ready and self.debug:
                 log.warning("Observation space is still not ready. Retrying...")
 
     def empty_data(self):
