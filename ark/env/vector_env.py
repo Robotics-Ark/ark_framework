@@ -47,6 +47,7 @@ def _make_env_thunk(
     channel_schema: str,
     global_config: str,
     sim: bool,
+    env_kwargs: dict[str, Any] | None = None,
 ) -> Callable[[], Env]:
     """
     Create a thunk (callable) that initializes a new environment instance.
@@ -62,11 +63,13 @@ def _make_env_thunk(
     """
 
     def _init() -> Env:
+        kwargs = env_kwargs or {}
         return env_cls(
             namespace=namespace,
             channel_schema=channel_schema,
             global_config=global_config,
             sim=sim,
+            **kwargs,
         )
 
     return _init
@@ -153,6 +156,7 @@ def make_vector_env(
     global_config: str,
     sim: bool = True,
     asynchronous: bool = True,
+    env_kwargs: dict[str, Any] | None = None,
 ) -> VectorEnv:
     """
     Create a vectorized environment with optional simulator processes.
@@ -185,7 +189,14 @@ def make_vector_env(
             sim_procs.append(sim_proc)
 
         thunks.append(
-            _make_env_thunk(env_cls, namespace, channel_schema, global_config, sim)
+            _make_env_thunk(
+                env_cls,
+                namespace,
+                channel_schema,
+                global_config,
+                sim,
+                env_kwargs=env_kwargs,
+            )
         )
 
         env: VectorEnv = (

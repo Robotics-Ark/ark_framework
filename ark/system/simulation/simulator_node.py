@@ -74,6 +74,7 @@ class SimulatorNode(BaseNode, ABC):
 
         # to initialize a scene with objects that dont need to publish, e.g. for visuals
         self.initialize_scene()
+        self.step_physics()
 
         ## Reset Backend Service
         reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
@@ -193,6 +194,21 @@ class SimulatorNode(BaseNode, ABC):
         """!Advance the simulation by one step and call :func:`step`."""
         self.step()
         self.backend.step()
+
+    def step_physics(self, num_steps: int = 25, call_step_hook: bool = False) -> None:
+        """
+        Advance the physics backend
+        Args:
+            num_steps: Number of physics ticks to run.
+            call_step_hook: If True, also invoke the subclass step() each tick.
+
+        Returns:
+            None
+        """
+        for _ in range(max(0, num_steps)):
+            if call_step_hook:
+                self.step()
+            self.backend.step()
 
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""

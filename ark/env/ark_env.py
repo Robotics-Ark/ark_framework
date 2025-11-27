@@ -172,7 +172,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         for termination in self._termination_conditions.values():
             termination.reset()
         for reward_fn in self._reward_functions.values():
-            reward_fn.reset(initial_obs=obs)
+            reward_fn.reset()
 
         self.prev_state = obs
 
@@ -251,13 +251,12 @@ class ArkEnv(Env, InstanceNode, ABC):
             service_name=service_name, request=request, response_type=flag_t
         )
 
-    def _step_termination(self, obs, action, info=None):
+    def _step_termination(self, obs, info=None):
         """
         Step and aggregate termination conditions
 
         Args:
             env (Environment): Environment instance
-            action (n-array): 1D flattened array of actions executed by all agents in the environment
             info (None or dict): Any info to return
 
         Returns:
@@ -272,7 +271,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         if "termination_conditions" not in info:
             info["termination_conditions"] = dict()
         for name, termination_condition in self._termination_conditions.items():
-            d, s = termination_condition.step(obs=obs, action=action)
+            d, s = termination_condition.step(obs=obs)
             dones.append(d)
             successes.append(s)
             info["termination_conditions"][name] = {
@@ -287,13 +286,12 @@ class ArkEnv(Env, InstanceNode, ABC):
         info["success"] = success
         return done, info
 
-    def _step_reward(self, obs, action, info=None):
+    def _step_reward(self, obs, info=None):
         """
         Step and aggregate reward functions
 
         Args:
             env (Environment): Environment instance
-            action (n-array): 1D flattened array of actions executed by all agents in the environment
             info (None or dict): Any info to return
 
         Returns:
@@ -308,7 +306,7 @@ class ArkEnv(Env, InstanceNode, ABC):
         # Aggregate rewards over all reward functions
         total_reward = 0.0
         for reward_name, reward_function in self._reward_functions.items():
-            reward, reward_info = reward_function.step(obs=obs, action=action)
+            reward, reward_info = reward_function.step(obs=obs)
             total_reward += reward
             breakdown_dict[reward_name] = reward
             total_info[reward_name] = reward_info
@@ -342,8 +340,8 @@ class ArkEnv(Env, InstanceNode, ABC):
         obs = self.ark_observation_space.get_observation()
 
         # Calculate reward
-        done, done_info = self._step_termination(obs=obs, action=action)
-        reward, reward_info = self._step_reward(obs=obs, action=action)
+        done, done_info = self._step_termination(obs=obs)
+        reward, reward_info = self._step_reward(obs=obs)
         truncated = True if done and not done_info["success"] else False
 
         info = {
@@ -353,8 +351,6 @@ class ArkEnv(Env, InstanceNode, ABC):
 
         self.prev_state = obs
 
-        if done or truncated:
-            print(f"Episode terminated, {done}, {truncated}")
         return obs, reward, done, truncated, info
 
     def _load_config(self, global_config: str | ConfigPath) -> None:
