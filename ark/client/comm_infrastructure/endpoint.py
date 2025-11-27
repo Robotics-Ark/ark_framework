@@ -1,15 +1,14 @@
-import lcm
-from lcm import LCM
-
 # from typing import Any, Optional, Dict, Tuple, List, Union
 from pathlib import Path
 
+import lcm
+
 # import os
-import yaml
 from ark.tools.log import log
 
 # import socket
-import os
+from ark.utils.utils import ConfigPath
+from lcm import LCM
 
 
 class EndPoint:
@@ -49,7 +48,7 @@ class EndPoint:
         self.network_config = {}
         # extract network part of the global config
         if isinstance(global_config, str):
-            global_config = Path(global_config)  # Convert string to a Path object
+            global_config = ConfigPath(global_config)  # Convert string to a Path object
 
             # Check if the given path exists
             if not global_config.exists():
@@ -64,19 +63,14 @@ class EndPoint:
 
         # If global_config is now a Path object, treat it as a configuration file
         if isinstance(global_config, Path):
-            config_path = str(global_config)  # Convert Path to string
-
-            try:
-                # Attempt to open and read the YAML configuration file
-                with open(config_path, "r") as file:
-                    cfg = (
-                        yaml.safe_load(file) or {}
-                    )  # Load YAML content, default to an empty dictionary if None
-            except Exception as e:
+            global_config = ConfigPath(str(global_config))
+        if isinstance(global_config, ConfigPath):
+            cfg = global_config.read_yaml(raise_fnf_error=False)
+            if not cfg:
                 log.error(
-                    f"Error reading config file {config_path}: {e}. Using default system configuration."
+                    f"Error reading config file {global_config.str}. Using default system configuration."
                 )
-                return {}  # Exit on failure to read file
+                return cfg  # Exit on failure to read file
 
             try:
                 # Extract and update the 'system' configuration if it exists in the loaded YAML

@@ -1,0 +1,43 @@
+env:
+  flatten_obs_space: true
+  flatten_action_space: false
+  normalise_obs_space: True
+  num_envs: 5
+
+robot:
+  num_joints : 9
+
+observation_space:
+  proprio:
+    - from: franka/joint_states/sim
+      using: joint_state
+    - from: franka/ee_state/sim
+      using: pose
+
+  sensors:
+    - sensor_type: VisionSensor
+      name: top_camera
+      from: IntelRealSense/rgbd/sim
+      using: rgbd
+      image_height: 480
+      image_width: 640
+
+  objects:
+    - from: cube/ground_truth/sim
+      using: rigid_body_state
+      name: cube
+    - from: target/ground_truth/sim
+      using: rigid_body_state
+      name: target
+
+
+action_space:
+  action:
+    - from: franka/cartesian_command/sim
+      dim: 8
+      using: task_space_command
+      select:
+        name: "all"                   # All channels
+        position: [ 0, 1, 2 ]         # x, y, z
+        orientation: [ 3, 4, 5, 6 ]   # quaternion indices
+        gripper: 7                    # single index

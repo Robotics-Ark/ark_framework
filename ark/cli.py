@@ -1,12 +1,15 @@
 import typer
 
 from ark.client.comm_infrastructure import registry
+from ark.decoders import list_decoders
 from ark.tools.ark_graph import ark_graph
 from ark.tools import launcher
 from ark.tools import network
 from ark.tools.visualization import image_viewer
 
 app = typer.Typer()
+decoders_app = typer.Typer(help="Decoder registry utilities.")
+
 
 # Core tooling
 app.add_typer(registry.app, name="registry")
@@ -19,8 +22,11 @@ app.add_typer(network.channel, name="channel")
 app.add_typer(network.service, name="service")
 app.add_typer(image_viewer.app, name="view")
 
+# Decoder registry utilities
+app.add_typer(list_decoders.app, name="decoders")
 
-def main():
+
+def main() -> None:
     """Main CLI entry point."""
     app()
 

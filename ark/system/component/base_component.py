@@ -100,9 +100,10 @@ class SimToRealComponent(BaseComponent, ABC):
         super().__init__(name, global_config)
         self._driver = driver
         self.sim = self._driver.is_sim()
+        self.namespace = global_config["namespace"]
 
         # initialize service for reset of any component
-        self.reset_service_name = self.name + "/reset"
+        self.reset_service_name = f"{self.namespace }/" + self.name + "/reset"
         if self.sim:
             self.reset_service_name = self.reset_service_name + "/sim"
 

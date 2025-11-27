@@ -7,19 +7,17 @@ managing the simulation lifecycle.  Concrete simulations should derive from
 this class and implement :func:`initialize_scene` and :func:`step`.
 """
 
-from pathlib import Path
-from abc import ABC, abstractmethod
-from typing import Dict, Any
 import os
-import yaml
-import sys
-from ark.client.comm_infrastructure.base_node import BaseNode
-from ark.system.pybullet.pybullet_backend import PyBulletBackend
-from ark.system.mujoco.mujoco_backend import MujocoBackend
-from ark.tools.log import log
-from arktypes import flag_t
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any
 
-import pdb
+from ark.client.comm_infrastructure.base_node import BaseNode
+from ark.system.mujoco.mujoco_backend import MujocoBackend
+from ark.system.pybullet.pybullet_backend import PyBulletBackend
+from ark.tools.log import log
+from ark.utils.utils import ConfigPath
+from arktypes import flag_t
 
 
 class SimulatorNode(BaseNode, ABC):
@@ -32,7 +30,13 @@ class SimulatorNode(BaseNode, ABC):
     tick.
     """
 
-    def __init__(self, global_config):
+    def __init__(
+        self,
+        global_config,
+        observation_channels: dict[str, type] | None = None,
+        action_channels: dict[str, type] | None = None,
+        namespace: str = "ark",
+    ):
         """!Construct the simulator node.
 
         The constructor loads the global configuration, instantiates the
@@ -44,6 +48,10 @@ class SimulatorNode(BaseNode, ABC):
         """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
+
+        self.global_config["observation_channels"] = observation_channels
+        self.global_config["action_channels"] = action_channels
+        self.global_config["namespace"] = namespace
 
         super().__init__(self.name, global_config=global_config)
 
@@ -66,9 +74,10 @@ class SimulatorNode(BaseNode, ABC):
 
         # to initialize a scene with objects that dont need to publish, e.g. for visuals
         self.initialize_scene()
+        self.step_physics()
 
         ## Reset Backend Service
-        reset_service_name = self.name + "/backend/reset/sim"
+        reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
         freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
@@ -89,20 +98,19 @@ class SimulatorNode(BaseNode, ABC):
             raise ValueError("Please provide a global configuration file.")
 
         if isinstance(global_config, str):
-            global_config = Path(global_config)
-
+            global_config = ConfigPath(global_config)
+        elif isinstance(global_config, Path):
+            global_config = ConfigPath(str(global_config))
         if not global_config.exists():
             raise ValueError(
                 "Given configuration file path does not exist, currently: "
-                + str(global_config)
+                + global_config.str
             )
 
         if not global_config.is_absolute():
             global_config = global_config.resolve()
 
-        config_path = str(global_config)
-        with open(config_path, "r") as file:
-            cfg = yaml.safe_load(file)
+        cfg = global_config.read_yaml()
 
         # assert that the config is a dict
         if not isinstance(cfg, dict):
@@ -122,23 +130,23 @@ class SimulatorNode(BaseNode, ABC):
             )
 
         try:
-            config["robots"] = self._load_section(cfg, config_path, "robots")
+            config["robots"] = self._load_section(cfg, global_config, "robots")
         except KeyError as e:
             config["robots"] = {}
         try:
-            config["sensors"] = self._load_section(cfg, config_path, "sensors")
+            config["sensors"] = self._load_section(cfg, global_config, "sensors")
         except KeyError as e:
             config["sensors"] = {}
         try:
-            config["objects"] = self._load_section(cfg, config_path, "objects")
+            config["objects"] = self._load_section(cfg, global_config, "objects")
         except KeyError as e:
             config["objects"] = {}
 
-        log.ok("Config file under " + config_path + " loaded successfully.")
+        log.ok("Config file under " + global_config.str + " loaded successfully.")
         self.global_config = config
 
     def _load_section(
-        self, cfg: dict[str, Any], config_path: str, section_name: str
+        self, cfg: dict[str, Any], config_path: str | ConfigPath, section_name: str
     ) -> dict[str, Any]:
         """!Load a sub‑configuration section.
 
@@ -162,12 +170,11 @@ class SimulatorNode(BaseNode, ABC):
                 ".yaml"
             ):  # If it's a path to an external file
                 if os.path.isabs(item):  # Check if the path is absolute
-                    external_path = item
+                    external_path = ConfigPath(item)
                 else:  # Relative path, use the directory of the main config file
-                    external_path = os.path.join(os.path.dirname(config_path), item)
+                    external_path = config_path.parent / item
                 # Load the YAML file and return its content
-                with open(external_path, "r") as file:
-                    subconfig = yaml.safe_load(file)
+                subconfig = external_path.read_yaml()
             else:
                 log.error(
                     f"Invalid entry in '{section_name}': {item}. Please provide either a config or a path to another config."
@@ -188,12 +195,25 @@ class SimulatorNode(BaseNode, ABC):
         self.step()
         self.backend.step()
 
-    @abstractmethod
+    def step_physics(self, num_steps: int = 25, call_step_hook: bool = False) -> None:
+        """
+        Advance the physics backend
+        Args:
+            num_steps: Number of physics ticks to run.
+            call_step_hook: If True, also invoke the subclass step() each tick.
+
+        Returns:
+            None
+        """
+        for _ in range(max(0, num_steps)):
+            if call_step_hook:
+                self.step()
+            self.backend.step()
+
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""
         pass
 
-    @abstractmethod
     def step(self) -> None:
         """!Hook executed every simulation step."""
         pass

@@ -42,6 +42,7 @@ class PyBulletMultiBody(SimComponent):
 
         super().__init__(name, global_config)
         self.client = client
+        self.namespace = global_config["namespace"]
         source_str = self.config["source"]
         source_type = getattr(SourceType, source_str.upper())
 
@@ -139,7 +140,8 @@ class PyBulletMultiBody(SimComponent):
             log.error("Unknown source specification. Check your config file.")
 
         # setup communication
-        self.publisher_name = self.name + "/ground_truth/sim"
+        self.publisher_name = f"{self.namespace}/" + self.name + "/ground_truth/sim"
+
         if self.publish_ground_truth:
             self.state_publisher = self.component_channels_init(
                 {self.publisher_name: rigid_body_state_t}
