@@ -9,7 +9,7 @@ import numpy as np
 
 class VideoRecorder:
     """
-    Minimal video recorder for Ark environments.
+    Video recorder for Ark environments.
     """
 
     def __init__(

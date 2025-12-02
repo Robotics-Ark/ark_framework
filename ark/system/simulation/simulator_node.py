@@ -86,8 +86,11 @@ class SimulatorNode(BaseNode, ABC):
         reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
-        freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
-        self.create_stepper(freq, self._step_simulation)
+        custom_loop = getattr(self.backend, "custom_event_loop", None)
+        self.custom_loop = True if callable(custom_loop) else False
+        if self.custom_loop is None:
+            freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
+            self.create_stepper(freq, self._step_simulation)
 
     def _load_config(self, global_config) -> None:
         """!Load and merge the global configuration.
@@ -232,6 +235,11 @@ class SimulatorNode(BaseNode, ABC):
         backend for spinning all components.  It terminates when an
         ``OSError`` occurs or :attr:`_done` is set to ``True``.
         """
+        # Allow backends to provide their own event loop (e.g., IsaacSim main thread)
+        if self.custom_loop:
+            self.backend.custom_event_loop(lcm_handle=self._lcm)
+            return
+
         while not self._done:
             try:
                 self._lcm.handle_timeout(0)
