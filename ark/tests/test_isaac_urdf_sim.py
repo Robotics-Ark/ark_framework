@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 # Allow overriding USD path; defaults to the requested asset.
@@ -26,53 +27,61 @@ omni_kit = pytest.importorskip(
 )
 def test_isaac_sim_headless_loads_usd():
     """Boot Isaac Sim headless, reference the USD, and verify a prim appears on the stage."""
-    app = omni_kit.SimulationApp({"headless": True})
-    try:
-        from omni.isaac.core import World
-        from isaacsim.asset.importer.urdf import URDFCreateImportConfig
-        import omni.kit.commands
-        from omni.isaac.core.utils.stage import get_current_stage
-        from omni.isaac.core.articulations import Articulation
-        import omni.kit.commands
+    from isaacsim import SimulationApp
 
-        # config.set_search_path([root_dir])
+    app = SimulationApp({"renderer": "RaytracedLighting", "headless": False})
+    try:
+        import omni.kit.commands
+        from isaacsim.core.api import World
+        from isaacsim.core.prims import Articulation
+        from isaacsim.core.utils.stage import get_stage_units
 
         world = World(physics_dt=1 / 60.0, rendering_dt=1 / 60.0)
-        prim_path = "/World/Robot"
-        root_dir = os.path.dirname(URDF_ASSET_PATH)
+        world.scene.add_default_ground_plane()
 
-        # Configure physics and import options via _config
-        config = URDFCreateImportConfig()
-        config.fix_base = False
-        config.self_collision = True
-        config.merge_fixed_joints = True
+        # Setting up import configuration:
+        status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
+        import_config.merge_fixed_joints = False
+        import_config.convex_decomp = False
+        import_config.import_inertia_tensor = True
+        import_config.fix_base = True
+        import_config.distance_scale = 1.0
 
-        articulation = omni.kit.commands.execute(
+
+        # Import URDF, prim_path contains the path to the usd prim in the stage.
+        status, prim_path = omni.kit.commands.execute(
             "URDFParseAndImportFile",
-            urdf_path=URDF_ASSET_PATH,
-            import_config=config,
+            urdf_path=str(URDF_ASSET_PATH),
+            import_config=import_config,
             get_articulation_root=True,
         )
-        breakpoint()
 
-        stage = get_current_stage()
-        prim = stage.GetPrimAtPath(prim_path)
-        assert prim and prim.IsValid(), "Referenced USD prim failed to load in stage"
+        robot = Articulation(prim_path)
 
-        for p in stage.Traverse():
-            print(p.GetPath(), p.GetTypeName())
+        robot.set_world_poses(positions=np.array([[0.0, 1.0, 0.0]]) / get_stage_units())
 
-        component_name = "Robot"
-        world.scene.add(Articulation(prim_path=prim_path, name=component_name))
-        _articulation = world.scene.get_object(component_name)
         world.reset()
-        _joint_names = list(_articulation.get_joint_names())
-        _joint_name_to_index = {name: idx for idx, name in enumerate(_joint_names)}
-        world.step(render=False)
+
+        for i in range(4):
+            print("running cycle: ", i)
+            if i == 1:
+                print("moving")
+                # move the arm
+                robot.set_joint_positions(
+                    [[-1.5, 0.0, 0.0, -1.5, 0.0, 1.5, 0.5, 0.04, 0.04]]
+                )
+            if i == 2:
+                print("stopping")
+                # reset the arm
+                robot.set_joint_positions(
+                    [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
+                )
+            for j in range(1000):
+                # step the simulation, both rendering and physics
+                world.step(render=True)
 
     finally:
-        pass
-        # app.close()
+        app.close()
 
 
 if __name__ == "__main__":
