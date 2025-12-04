@@ -12,6 +12,9 @@ from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.tools.log import log
 from ark.utils import lazy
 
+from ark.utils.isaac_utils import configure_isaac_setup
+
+configure_isaac_setup()
 try:
     from isaacsim import SimulationApp
 except ImportError as exc:
