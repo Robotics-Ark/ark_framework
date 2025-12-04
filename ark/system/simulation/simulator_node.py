@@ -65,15 +65,15 @@ class SimulatorNode(BaseNode, ABC):
         self.backend_type = self.global_config["simulator"]["backend_type"]
         if self.backend_type == "pybullet":
             from ark.system.pybullet.pybullet_backend import PyBulletBackend
-
             self.backend = PyBulletBackend(self.global_config)
         elif self.backend_type == "mujoco":
             from ark.system.mujoco.mujoco_backend import MujocoBackend
-
             self.backend = MujocoBackend(self.global_config)
+        elif self.backend_type == "genesis":
+            from ark.system.genesis.genesis_backend import GenesisBackend
+            self.backend = GenesisBackend(self.global_config)
         elif self.backend_type in ["isaacsim", "isaac_sim", "isaac"]:
             from ark.system.isaac.isaac_backend import IsaacSimBackend
-
             self.backend = IsaacSimBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
