@@ -8,9 +8,7 @@ import numpy as np
 
 
 class VideoRecorder:
-    """
-    Video recorder for Ark environments.
-    """
+    """Video recorder for Ark environments."""
 
     def __init__(
         self,
