@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import ast
-import asyncio
 import importlib.util
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any, Optional
 
-from ark.system.isaac.isaac_camera_driver import IsaacCameraDriver
 from ark.system.isaac.isaac_object import IsaacSimObject
-from ark.system.isaac.isaac_robot_driver import IsaacSimRobotDriver
 from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.tools.log import log
 
@@ -50,8 +46,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
         class_ = getattr(module, class_names[0])
         sys.path.pop(0)
-
-        driver_cls = getattr(class_, "ISAAC_DRIVER", None)
+        driver_cls = class_.ISAAC_DRIVER
         class_names.remove("Drivers")
 
     spec = importlib.util.spec_from_file_location(class_name, file_path)
@@ -100,11 +95,13 @@ class IsaacSimBackend(SimulatorBackend):
         # render_dt = 1 / sim_cfg.get("render_frequency", physics_dt)
         render_dt = 1 / sim_cfg.get("render_frequency", 60)
 
-        self.world = World(physics_dt=physics_dt, rendering_dt=render_dt)
+        self.world = World(
+            stage_units_in_meters=1.0, physics_dt=physics_dt, rendering_dt=render_dt
+        )
         self.world.scene.add_default_ground_plane()
 
         # gravity = sim_cfg.get("gravity", [0.0, 0.0, -9.81])
-        # self.set_gravity(gravity)
+        # self.set_gravity(gravity) # TODO check gravity is needed or not
         self.timestep = physics_dt
 
         if self.global_config.get("objects", None):
@@ -119,8 +116,10 @@ class IsaacSimBackend(SimulatorBackend):
             for sensor_name, sensor_config in self.global_config["sensors"].items():
                 self.add_sensor(sensor_name, sensor_config)
 
-        self.world.reset()
-        self.world.step(render=True)
+        self._app.update()
+        for _ in range(250):
+            self.world.step(render=True)
+
 
     def set_gravity(self, gravity: tuple[float, float, float]) -> None:
         """Set gravity using the physics context (World lacks set_gravity in some versions)."""
@@ -165,6 +164,9 @@ class IsaacSimBackend(SimulatorBackend):
         for robot_name, robot in self.robot_ref.items():
             robot._driver.sim_reset()
 
+        for _ in range(10):
+            self.world.step(render=True)
+
     def add_robot(
         self,
         name: str,
@@ -175,11 +177,11 @@ class IsaacSimBackend(SimulatorBackend):
             class_path = class_path.parent
 
         RobotClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass or IsaacSimRobotDriver
 
         driver = DriverClass(
             component_name=name,
             component_config=robot_config,
+            sim_app=self._app,
             world=self.world,
         )
         robot = RobotClass(
@@ -199,7 +201,6 @@ class IsaacSimBackend(SimulatorBackend):
             class_path = class_path.parent
 
         SensorClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass or IsaacCameraDriver
 
         driver = DriverClass(
             component_name=name,
@@ -228,21 +229,25 @@ class IsaacSimBackend(SimulatorBackend):
     def remove(self, name: str) -> None:
         log.warn("Dynamic removal is not supported in the IsaacSim backend yet.")
 
-    def run(self, lcm_handle):
+    def run(self, sim_node):
+        lcms = (
+            [sim_node._lcm]
+            + [r._lcm for r in self.robot_ref.values()]
+            + [s._lcm for s in self.sensor_ref.values()]
+        )
         while self._app.is_running():
-            lcm_handle.handle_timeout(0)
+            # lcm_handle.handle_timeout(0)
+            for lc in lcms:
+                lc.handle_timeout(0)
+            sim_node.step()
             self._step()
 
-    def _step(self):
-        print("stepping....")
+    def _step(self) -> None:
         self._step_sim_components()
-        print("Stepping world...")
         self.world.step(render=True)
-        print("Finished Stepping world...")
         self._simulation_time += self.timestep
 
     def step(self) -> None:
-        print("CALLED ZOMBIE STEP.....")
         pass
 
     def shutdown_backend(self) -> None:

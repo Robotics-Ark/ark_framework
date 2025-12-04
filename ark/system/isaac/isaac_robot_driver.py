@@ -1,9 +1,9 @@
-"""Isaac Sim robot driver for ARK with on-the-fly URDF to USD conversion."""
-
 from __future__ import annotations
 
+import os
+from abc import abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 from ark.system.driver.robot_driver import SimRobotDriver
@@ -16,31 +16,32 @@ class IsaacSimRobotDriver(SimRobotDriver):
     def __init__(
         self,
         component_name: str,
-        component_config: Dict[str, Any],
+        component_config: dict[str, Any],
+        sim_app: Any,
         world: Any,
     ) -> None:
+
+        self.sim_app = sim_app
         self.world = world
         self._articulation = None
-        self._joint_names: List[str] = []
-        self._joint_name_to_index: Dict[str, int] = {}
+        self._joint_name_to_index: dict[str, int] = {}
+        self.component_name = component_name
 
         super().__init__(
             component_name=component_name, component_config=component_config
         )
         self._load_robot()
-
         self.sim_reset()
 
     def _load_robot(self) -> None:
         """Import the robot asset, converting URDF to USD in-place when needed."""
         from isaacsim.core.utils.stage import add_reference_to_stage
         from isaacsim.core.prims import Articulation
+        import omni.kit.commands
+        from pxr import Gf, PhysicsSchemaTools, PhysxSchema, Sdf, UsdLux, UsdPhysics
 
-        sim_cfg = self.config.get("config", {})
-        prim_path = sim_cfg.get("prim_path", f"/World/{self.component_name}")
-
-        usd_path_cfg = sim_cfg.get("usd_path") or self.config.get("usd_path")
-        urdf_path_cfg = sim_cfg.get("urdf_path") or self.config.get("urdf_path")  # TODO
+        self.prim_path = self.config.get("prim_path", f"/World/{self.component_name}")
+        urdf_path_cfg = self.config.get("urdf_path")
 
         base_dir = Path(self.config.get("class_dir", ".")).resolve()
 
@@ -54,54 +55,62 @@ class IsaacSimRobotDriver(SimRobotDriver):
                 else (base_dir / candidate).resolve()
             )
 
-        usd_path = _resolve(usd_path_cfg)
         urdf_path = _resolve(urdf_path_cfg)
+        usd_path = None  # For future extensions, to load usd file
+        self.urdf_path = urdf_path
 
-        if usd_path is None and urdf_path is None:
-            raise ValueError(f"Robot '{self.component_name}' needs a USD  or URDF.")
-
-        if usd_path and urdf_path:
-            raise ValueError(
-                f"Robot '{self.component_name}' provide either a USD  or URDF, but not both."
-            )
+        if urdf_path is None:
+            raise ValueError(f"Robot '{self.component_name}' needs a URDF file.")
 
         if usd_path:
-            add_reference_to_stage(str(usd_path), prim_path)
+            # Load robot from USD file
+            add_reference_to_stage(str(usd_path), self.prim_path)
             self._articulation = Articulation(
-                prim_paths_expr=prim_path, name=self.component_name
+                prim_paths_expr=self.prim_path, name=self.component_name
             )
-
         elif urdf_path:
-            import omni.kit.commands
-
+            # Load robot from URDF file
             # Setting up import configuration:
             status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
             import_config.merge_fixed_joints = False
             import_config.convex_decomp = False
             import_config.import_inertia_tensor = True
             import_config.fix_base = True
-            import_config.distance_scale = 1.0
+            # import_config.distance_scale = 1.0
 
-            # Import URDF, prim_path contains the path to the usd prim in the stage.
-            status, prim_path = omni.kit.commands.execute(
+            status, self.prim_path = omni.kit.commands.execute(
                 "URDFParseAndImportFile",
                 urdf_path=urdf_path,
                 import_config=import_config,
                 get_articulation_root=True,
             )
 
-            self._articulation = Articulation(prim_path)
+            # Get stage handle
+            stage = omni.usd.get_context().get_stage()
 
-        self.world.reset()
+            # Enable physics
+            scene = UsdPhysics.Scene.Define(stage, Sdf.Path("/physicsScene"))
+            # Set gravity
+            scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
+            scene.CreateGravityMagnitudeAttr().Set(9.81)
+            # Set solver settings
+            PhysxSchema.PhysxSceneAPI.Apply(stage.GetPrimAtPath("/physicsScene"))
+            physxSceneAPI = PhysxSchema.PhysxSceneAPI.Get(stage, "/physicsScene")
+            physxSceneAPI.CreateEnableCCDAttr(True)
+            physxSceneAPI.CreateEnableStabilizationAttr(True)
+            physxSceneAPI.CreateEnableGPUDynamicsAttr(False)
+            physxSceneAPI.CreateBroadphaseTypeAttr("MBP")
+            physxSceneAPI.CreateSolverTypeAttr("TGS")
 
-        self._joint_names = self._articulation.joint_names[
-            :9
-        ]  # TODO handle 10 joints and 9 positions
-        self._joint_name_to_index = {
-            name: self._articulation.get_joint_index(name)
-            for idx, name in enumerate(self._joint_names)
-        }
+            omni.timeline.get_timeline_interface().play()
+            self.sim_app.update()
+            self._articulation = Articulation(self.prim_path)
+            self.world.scene.add(self._articulation)
+            self._articulation.initialize()
 
+        # self.world.step(render=True)
+
+        # Set initial Position and Orientation
         self.base_position = self.config.get("base_position", [0.0, 0.0, 0.0])
         self.base_orientation = self.config.get(
             "base_orientation", [0.0, 0.0, 0.0, 1.0]
@@ -110,10 +119,15 @@ class IsaacSimRobotDriver(SimRobotDriver):
             "initial_configuration", [0.0] * len(self._articulation.joint_names)
         )
 
+        self._joint_name_to_index = {
+            name: self._articulation.get_dof_index(name)
+            for name in self._articulation.dof_names
+        }
+
     def check_torque_status(self) -> bool:
         return True
 
-    def pass_joint_positions(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_positions(self, joints: list[str]) -> dict[str, float]:
         positions = self._articulation.get_joint_positions().flatten()
         return {
             name: float(positions[self._joint_name_to_index[name]])
@@ -121,7 +135,7 @@ class IsaacSimRobotDriver(SimRobotDriver):
             if name in self._joint_name_to_index
         }
 
-    def pass_joint_velocities(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_velocities(self, joints: list[str]) -> dict[str, float]:
         velocities = self._articulation.get_joint_velocities().flatten()
         return {
             name: float(velocities[self._joint_name_to_index[name]])
@@ -129,12 +143,13 @@ class IsaacSimRobotDriver(SimRobotDriver):
             if name in self._joint_name_to_index
         }
 
-    def pass_joint_efforts(self, joints: List[str]) -> Dict[str, float]:
+    def pass_joint_efforts(self, joints: list[str]) -> dict[str, float]:
         return {name: 0.0 for name in joints}
 
     def pass_joint_group_control_cmd(
-        self, control_mode: str, cmd: Dict[str, float], **kwargs
+        self, control_mode: str, cmd: dict[str, float], **kwargs
     ) -> None:
+        # TODO check this
         from omni.isaac.core.utils.types import ArticulationAction
 
         positions = self._articulation.get_joint_positions()
@@ -161,45 +176,10 @@ class IsaacSimRobotDriver(SimRobotDriver):
         )
         self._articulation.apply_action(action)
 
-    def pass_cartesian_control_cmd(
-        self, control_mode: str, position, quaternion, **kwargs
-    ) -> None:
-        """Compute IK for the end-effector and apply joint targets."""
-        from omni.isaac.core.utils.types import ArticulationAction
-
-        print("Z" * 100)
-        if control_mode != "position":
-            log.warn(f"Cartesian control_mode '{control_mode}' not supported in Isaac.")
-            return
-
-        # Choose EE index: use provided idx, otherwise default to last joint
-        ee_idx = kwargs.get("end_effector_idx")
-        if ee_idx is None:
-            ee_idx = len(self._joint_names) - 1
-
-        try:
-            ik_positions = self._articulation.compute_inverse_kinematics(
-                target_position=position,
-                target_orientation=quaternion,
-                end_effector_index=ee_idx,
-            )
-        except Exception as exc:
-            log.error(f"Isaac IK failed: {exc}")
-            return
-
-        ik_positions = np.array(ik_positions, dtype=float).flatten()
-
-        # Optional gripper control: overwrite last two joints if provided
-        gripper_target = kwargs.get("gripper", None)
-        if gripper_target is not None and ik_positions.size >= 2:
-            ik_positions[-2:] = float(gripper_target)
-
-        action = ArticulationAction(joint_positions=ik_positions)
-        self._articulation.apply_action(action)
-
     def sim_reset(self, *kargs, **kwargs) -> None:
         self._articulation.set_world_poses(
-            positions=self.base_position, orientations=self.base_orientation
+            positions=np.array([self.base_position]),
+            orientations=np.array([self.base_orientation]),
         )
         if len(self.initial_configuration) > 9:
             q_init = self.initial_configuration[:9]
@@ -210,6 +190,9 @@ class IsaacSimRobotDriver(SimRobotDriver):
         self._articulation.set_joint_velocities(
             np.zeros_like(self._articulation.get_joint_positions())
         )
+
+    @abstractmethod
+    def pass_cartesian_control_cmd(self, *kargs, **kwargs) -> None: ...
 
     # TODO check eef
     def get_ee_pose(self) -> dict[str, float]:

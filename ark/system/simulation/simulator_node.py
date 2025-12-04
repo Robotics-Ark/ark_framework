@@ -88,8 +88,10 @@ class SimulatorNode(BaseNode, ABC):
 
         custom_loop = getattr(self.backend, "custom_event_loop", None)
         self.custom_loop = True if callable(custom_loop) else False
-        if self.custom_loop is None:
-            freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
+        if not self.custom_loop:
+            freq = self.global_config["simulator"]["config"].get(
+                "node_frequency", 240.0
+            )
             self.create_stepper(freq, self._step_simulation)
 
     def _load_config(self, global_config) -> None:
@@ -237,7 +239,7 @@ class SimulatorNode(BaseNode, ABC):
         """
         # Allow backends to provide their own event loop (e.g., IsaacSim main thread)
         if self.custom_loop:
-            self.backend.custom_event_loop(lcm_handle=self._lcm)
+            self.backend.custom_event_loop(sim_node=self)
             return
 
         while not self._done:

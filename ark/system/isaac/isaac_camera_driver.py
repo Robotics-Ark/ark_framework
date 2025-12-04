@@ -99,7 +99,7 @@ class IsaacCameraDriver(CameraDriver):
             orientation=orientation,
         )
 
-        self.world.reset()
+        # self.world.reset()
         self._camera.initialize()
         self._camera.add_motion_vectors_to_frame()
 
