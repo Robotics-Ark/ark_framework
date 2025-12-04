@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any
@@ -8,10 +7,18 @@ from typing import Any
 import numpy as np
 from ark.system.driver.robot_driver import SimRobotDriver
 from ark.tools.log import log
+from ark.utils import lazy
+from pxr import Gf, PhysxSchema, Sdf, UsdPhysics
 
 
 class IsaacSimRobotDriver(SimRobotDriver):
-    """Minimal Isaac Sim driver bridging ARK robot commands to an articulation."""
+    """Isaac Sim robot driver connecting ARK robot commands to an articulation.
+
+    The driver acts as the low-level bridge between ARK control messages and
+    Isaac Sim physics, ensuring that all robot joints map correctly to
+    articulation DOFs.
+
+    """
 
     def __init__(
         self,
@@ -20,6 +27,17 @@ class IsaacSimRobotDriver(SimRobotDriver):
         sim_app: Any,
         world: Any,
     ) -> None:
+        """Initialize the Isaac Sim robot driver.
+
+        Loads and imports the robot asset, creates the articulation, and
+        performs an initial reset.
+
+        Args:
+            component_name (str): Robot name in ARK.
+            component_config (dict[str, Any]): Configuration containing:.
+            sim_app (SimulationApp): Isaac Sim application instance.
+            world (World): World instance to which the articulation is added.
+        """
 
         self.sim_app = sim_app
         self.world = world
@@ -34,11 +52,7 @@ class IsaacSimRobotDriver(SimRobotDriver):
         self.sim_reset()
 
     def _load_robot(self) -> None:
-        """Import the robot asset, converting URDF to USD in-place when needed."""
-        from isaacsim.core.utils.stage import add_reference_to_stage
-        from isaacsim.core.prims import Articulation
-        import omni.kit.commands
-        from pxr import Gf, PhysicsSchemaTools, PhysxSchema, Sdf, UsdLux, UsdPhysics
+        """Import the robot asset and construct the robot articulation."""
 
         self.prim_path = self.config.get("prim_path", f"/World/{self.component_name}")
         urdf_path_cfg = self.config.get("urdf_path")
@@ -64,21 +78,25 @@ class IsaacSimRobotDriver(SimRobotDriver):
 
         if usd_path:
             # Load robot from USD file
-            add_reference_to_stage(str(usd_path), self.prim_path)
-            self._articulation = Articulation(
+            lazy.isaacsim.core.utils.stage.add_reference_to_stage(
+                str(usd_path), self.prim_path
+            )
+            self._articulation = lazy.isaacsim.core.prims.Articulation(
                 prim_paths_expr=self.prim_path, name=self.component_name
             )
         elif urdf_path:
             # Load robot from URDF file
+
             # Setting up import configuration:
-            status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
+            status, import_config = lazy.omni.kit.commands.execute(
+                "URDFCreateImportConfig"
+            )
             import_config.merge_fixed_joints = False
             import_config.convex_decomp = False
             import_config.import_inertia_tensor = True
             import_config.fix_base = True
-            # import_config.distance_scale = 1.0
 
-            status, self.prim_path = omni.kit.commands.execute(
+            status, self.prim_path = lazy.omni.kit.commands.execute(
                 "URDFParseAndImportFile",
                 urdf_path=urdf_path,
                 import_config=import_config,
@@ -86,7 +104,7 @@ class IsaacSimRobotDriver(SimRobotDriver):
             )
 
             # Get stage handle
-            stage = omni.usd.get_context().get_stage()
+            stage = lazy.omni.usd.get_context().get_stage()
 
             # Enable physics
             scene = UsdPhysics.Scene.Define(stage, Sdf.Path("/physicsScene"))
@@ -102,13 +120,11 @@ class IsaacSimRobotDriver(SimRobotDriver):
             physxSceneAPI.CreateBroadphaseTypeAttr("MBP")
             physxSceneAPI.CreateSolverTypeAttr("TGS")
 
-            omni.timeline.get_timeline_interface().play()
+            lazy.omni.timeline.get_timeline_interface().play()
             self.sim_app.update()
-            self._articulation = Articulation(self.prim_path)
+            self._articulation = lazy.isaacsim.core.prims.Articulation(self.prim_path)
             self.world.scene.add(self._articulation)
             self._articulation.initialize()
-
-        # self.world.step(render=True)
 
         # Set initial Position and Orientation
         self.base_position = self.config.get("base_position", [0.0, 0.0, 0.0])
@@ -125,9 +141,22 @@ class IsaacSimRobotDriver(SimRobotDriver):
         }
 
     def check_torque_status(self) -> bool:
+        """Check whether torque control is enabled.
+
+        Returns:
+            bool: Always True for this minimal driver implementation.
+        """
         return True
 
     def pass_joint_positions(self, joints: list[str]) -> dict[str, float]:
+        """Retrieve joint positions for the requested joints.
+
+        Args:
+            joints (list[str]): Joint names to query.
+
+        Returns:
+            dict[str, float]: Mapping joint_name → position_value.
+        """
         positions = self._articulation.get_joint_positions().flatten()
         return {
             name: float(positions[self._joint_name_to_index[name]])
@@ -136,6 +165,14 @@ class IsaacSimRobotDriver(SimRobotDriver):
         }
 
     def pass_joint_velocities(self, joints: list[str]) -> dict[str, float]:
+        """Retrieve joint velocities for the requested joints.
+
+        Args:
+            joints (list[str]): Joint names to query.
+
+        Returns:
+            dict[str, float]: Mapping joint_name → velocity_value.
+        """
         velocities = self._articulation.get_joint_velocities().flatten()
         return {
             name: float(velocities[self._joint_name_to_index[name]])
@@ -143,14 +180,37 @@ class IsaacSimRobotDriver(SimRobotDriver):
             if name in self._joint_name_to_index
         }
 
-    def pass_joint_efforts(self, joints: list[str]) -> dict[str, float]:
+    @staticmethod
+    def pass_joint_efforts(joints: list[str]) -> dict[str, float]:
+        """Retrieve joint efforts.
+
+        Notes:
+            Efforts are currently not simulated and always return 0.0.
+
+        Args:
+            joints (list[str]): Joint names to query.
+
+        Returns:
+            dict[str, float]: Mapping joint_name → effort_value (0.0).
+        """
+        # TODO check for the implementation
         return {name: 0.0 for name in joints}
 
     def pass_joint_group_control_cmd(
         self, control_mode: str, cmd: dict[str, float], **kwargs
     ) -> None:
-        # TODO check this
-        from omni.isaac.core.utils.types import ArticulationAction
+        """Send a group joint control command to the robot.
+
+        Supported control modes:
+            - "position": Sets joint target positions.
+            - "velocity": Sets joint target velocities.
+            - "torque": Applies joint efforts.
+
+        Args:
+            control_mode (str): Control mode type.
+            cmd (dict[str, float]): Mapping joint_name → target_value.
+            **kwargs: Additional unused parameters for compatibility.
+        """
 
         positions = self._articulation.get_joint_positions()
         velocities = self._articulation.get_joint_velocities()
@@ -169,7 +229,7 @@ class IsaacSimRobotDriver(SimRobotDriver):
             else:
                 log.warn(f"Unsupported control_mode '{control_mode}' for Isaac Sim.")
 
-        action = ArticulationAction(
+        action = lazy.omni.isaac.core.utils.types.ArticulationAction(
             joint_positions=positions,
             joint_velocities=velocities if control_mode == "velocity" else None,
             joint_efforts=efforts if control_mode == "torque" else None,
@@ -177,6 +237,12 @@ class IsaacSimRobotDriver(SimRobotDriver):
         self._articulation.apply_action(action)
 
     def sim_reset(self, *kargs, **kwargs) -> None:
+        """Reset the robot articulation.
+
+        Args:
+            *kargs: Ignored.
+            **kwargs: Ignored.
+        """
         self._articulation.set_world_poses(
             positions=np.array([self.base_position]),
             orientations=np.array([self.base_orientation]),
@@ -192,13 +258,13 @@ class IsaacSimRobotDriver(SimRobotDriver):
         )
 
     @abstractmethod
-    def pass_cartesian_control_cmd(self, *kargs, **kwargs) -> None: ...
+    def pass_cartesian_control_cmd(self, *kargs, **kwargs) -> None:
+        """Send a Cartesian-space control command.
 
-    # TODO check eef
-    def get_ee_pose(self) -> dict[str, float]:
-        """!Get the end-effector pose in the world frame."""
-        position, orientation = self._articulation.get_world_poses()
-        return {"position": position[0], "orientation": orientation[0]}
+        Abstract method  must be implemented by subclasses.
 
-    def shutdown_driver(self) -> None:
-        pass
+        Args:
+            *kargs: Implementation-specific arguments.
+            **kwargs: Implementation-specific arguments.
+        """
+        ...

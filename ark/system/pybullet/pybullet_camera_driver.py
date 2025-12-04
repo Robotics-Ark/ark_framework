@@ -13,6 +13,8 @@ import numpy as np
 import pybullet as p
 from scipy.spatial.transform import Rotation as R
 
+from ark.utils.camera_utils import CameraType
+
 
 def rotation_matrix_to_euler(R_world):
     """!Convert a rotation matrix to Euler angles.
@@ -24,13 +26,6 @@ def rotation_matrix_to_euler(R_world):
     r = R.from_matrix(R_world)
     euler_angles = r.as_euler("xyz", degrees=True)
     return euler_angles
-
-
-class CameraType(Enum):
-    """Supported camera models."""
-
-    FIXED = "fixed"
-    ATTACHED = "attached"
 
 
 class BulletCameraDriver(CameraDriver):

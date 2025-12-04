@@ -1,20 +1,50 @@
-"""Isaac Sim object helper with LCM ground-truth publishing."""
-
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 from ark.system.component.sim_component import SimComponent
 from ark.tools.log import log
+from ark.utils import lazy
 from ark.utils.source_type_utils import SourceType
 from arktypes import flag_t, rigid_body_state_t
 
 
 class IsaacSimObject(SimComponent):
-    """Generic Isaac Sim object that can load USD / URDF / primitives and publish pose."""
+    """Generic Isaac Sim object loader and pose publisher.
 
-    def __init__(self, name: str, world: Any, global_config: Dict[str, Any]) -> None:
+    This component abstracts loading and managing objects in Isaac Sim using USD, URDF, or simple primitives.
+    It automatically loads the asset, creates the corresponding prim hierarchy, attaches a transform handle
+    (`XFormPrim`) for pose access, and optionally publishes ground-truth simulation state.
+
+    Supported types are:
+      - `USD`: load a USD asset via reference.
+      - `URDF`: import a URDF model into the stage.
+      - `PRIMITIVE`: create a DynamicCuboid representing a simple shape.
+
+    Attributes:
+        world (Any): Reference to the simulation world.
+        _prim_path (str): Path to the Isaac Sim prim representing this object.
+        _xform (XFormPrim): Transform handle used for reading and setting poses.
+        publisher_name (str): LCM topic name for ground-truth publishing.
+        state_publisher (dict[str, Publisher]): Optional publisher for state output.
+    """
+
+    def __init__(self, name: str, world: Any, global_config: dict[str, Any]) -> None:
+        """Initialize and load the object into the Isaac Sim stage.
+
+        Depending on the configured source type, the object is created by:
+        - Adding a USD reference.
+        - Importing a URDF.
+        - Constructing a primitive (DynamicCuboid) and optionally disabling physics if the mass is zero.
+            TODO - Other shapes needs to be added based on config
+
+        Args:
+            name (str): Unique component name.
+            world (Any): Simulation world or scene container.
+            global_config (dict[str, Any]): Global configuration dict.
+
+        """
         self.world = world
         self._prim_path = None
         self._xform = None
@@ -31,9 +61,10 @@ class IsaacSimObject(SimComponent):
                 raise ValueError(
                     f"USD source selected for '{name}' but no usd_path provided."
                 )
-            from omni.isaac.core.utils.stage import add_reference_to_stage
 
-            add_reference_to_stage(str(usd_path), self._prim_path)
+            lazy.omni.isaac.core.utils.stage.add_reference_to_stage(
+                str(usd_path), self._prim_path
+            )
 
         elif source_type == SourceType.URDF:
             urdf_path = self.config.get("urdf_path")
@@ -41,14 +72,13 @@ class IsaacSimObject(SimComponent):
                 raise ValueError(
                     f"URDF source selected for '{name}' but no urdf_path provided."
                 )
-            from isaacsim.asset.importer.urdf import import_urdf
 
-            import_urdf(str(urdf_path), prim_path=self._prim_path)
+            lazy.isaacsim.asset.importer.urdf.import_urdf(
+                str(urdf_path), prim_path=self._prim_path
+            )
 
         elif source_type == SourceType.PRIMITIVE:
-            from isaacsim.core.api.objects import DynamicCuboid
-
-            object = DynamicCuboid(
+            object = lazy.isaacsim.core.api.objects.DynamicCuboid(
                 name=name,
                 position=np.array(self.config["base_position"]),
                 prim_path=self._prim_path,
@@ -65,9 +95,9 @@ class IsaacSimObject(SimComponent):
             raise RuntimeError(f"Unsupported object source type '{source_type}'.")
 
         # Wrap prim for pose access
-        from isaacsim.core.prims import XFormPrim
-
-        self._xform = XFormPrim(prim_paths_expr=self._prim_path, name=name)
+        self._xform = lazy.isaacsim.core.prims.XFormPrim(
+            prim_paths_expr=self._prim_path, name=name
+        )
 
         # Setup publisher for ground truth
         self.publisher_name = f"{self.namespace}/" + self.name + "/ground_truth/sim"
@@ -76,8 +106,19 @@ class IsaacSimObject(SimComponent):
                 {self.publisher_name: rigid_body_state_t}
             )
 
-    def get_object_data(self) -> Dict[str, Any]:
-        """Return current pose (velocities zeroed for now)."""
+    def get_object_data(self) -> dict[str, Any]:
+        """Retrieve the object's current pose in world coordinates.
+
+        Returns:
+            dict[str, Any]: Information describing the object's state:
+                {
+                    "name": str,
+                    "position": ndarray,
+                    "orientation": ndarray,
+                    "lin_velocity": list[float],
+                    "ang_velocity": list[float],
+                }
+        """
         position, orientation = self._xform.get_world_poses()
         return {
             "name": self.name,
@@ -87,7 +128,21 @@ class IsaacSimObject(SimComponent):
             "ang_velocity": [0.0, 0.0, 0.0],
         }
 
-    def pack_data(self, data_dict: Dict[str, Any]) -> dict[str, rigid_body_state_t]:
+    def pack_data(self, data_dict: dict[str, Any]) -> dict[str, rigid_body_state_t]:
+        """Convert pose data into a rigid-body LCM message.
+
+        Takes the raw pose data generated by :meth:`get_object_data`,
+        constructs a `rigid_body_state_t` message, and returns it mapped
+        to the component's publisher name.
+
+        Args:
+            data_dict (dict[str, Any]): Pose information from
+                :meth:`get_object_data`.
+
+        Returns:
+            dict[str, rigid_body_state_t]: Mapping from publisher topic
+            to LCM message ready for transmission.
+        """
         msg = rigid_body_state_t()
         msg.name = data_dict["name"]
         msg.position = data_dict["position"]
@@ -97,7 +152,19 @@ class IsaacSimObject(SimComponent):
         return {self.publisher_name: msg}
 
     def reset_component(self, channel, msg) -> flag_t:
-        """Reset object pose via LCM."""
+        """Reset the object's world pose via an incoming LCM message.
+
+        This method updates the underlying prim's world position and
+        orientation using data from the received state message.
+
+        Args:
+            channel (str): LCM channel the message arrived at.
+            msg (rigid_body_state_t): Message containing new position and orientation values.
+
+        Returns:
+            flag_t: Status flag indicating completion.
+
+        """
         if self._xform:
             self._xform.set_world_pose(msg.position, msg.orientation)
             log.ok(f"Reset object {self.name} to position {msg.position}")
