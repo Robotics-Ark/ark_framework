@@ -35,7 +35,7 @@ class VideoRecorder:
 
         frame = obs.get(self.obs_rgb_key)
         if frame is None:
-            print("empty  frame")
+            # print("empty  frame")
             return
 
         arr = np.asarray(frame)
