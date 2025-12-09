@@ -157,6 +157,7 @@ def make_vector_env(
     sim: bool = True,
     asynchronous: bool = True,
     env_kwargs: dict[str, Any] | None = None,
+    namespace:str="ark"
 ) -> VectorEnv:
     """
     Create a vectorized environment with optional simulator processes.
@@ -167,6 +168,7 @@ def make_vector_env(
         global_config: Path to the global configuration file.
         sim: Whether to connect the environment to a simulator process.
         asynchronous: Whether to use asynchronous (AsyncVectorEnv) or synchronous (SyncVectorEnv).
+        namespace: Given name for Env namespace.
 
     Returns:
         A vectorized environment instance.
@@ -178,7 +180,7 @@ def make_vector_env(
     thunks = []
     sim_procs = []
     for rank in range(num_envs):
-        namespace = uuid.uuid4().hex[:8]
+        namespace = namespace if  num_envs==1 else uuid.uuid4().hex[:8]
 
         if sim:
             sim_proc = make_sim(
