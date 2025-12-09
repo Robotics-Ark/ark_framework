@@ -140,11 +140,6 @@ class NewtonRobotDriver(SimRobotDriver):
                 # This follows Newton's own examples (see example_basic_urdf.py:72)
                 self.builder.joint_target[i] = self.builder.joint_q[i]
 
-            # DIAGNOSTIC: Verify builder arrays before finalization
-            log.warning(f"[DIAGNOSTIC BUILDER] joint_target after init: {self.builder.joint_target[pre_joint_dof_count:post_joint_dof_count]}")
-            log.warning(f"[DIAGNOSTIC BUILDER] joint_q: {self.builder.joint_q[pre_joint_dof_count:post_joint_dof_count]}")
-            log.warning(f"[DIAGNOSTIC BUILDER] joint_target_ke sample: {self.builder.joint_target_ke[pre_joint_dof_count:pre_joint_dof_count+3]}")
-
             log.ok(
                 f"Newton robot driver: Applied joint defaults to {num_new_dofs} DOFs "
                 f"(ke={default_cfg.target_ke}, kd={default_cfg.target_kd}, mode={default_cfg.mode})"
@@ -356,14 +351,6 @@ class NewtonRobotDriver(SimRobotDriver):
             self._control_handle.assign(handle_np)
             self._articulation_view.set_attribute("joint_target", self._control, self._control_handle)
 
-            # DEBUG logging
-            if not hasattr(self, '_articulation_write_count'):
-                self._articulation_write_count = 0
-            self._articulation_write_count += 1
-
-            if self._articulation_write_count <= 5:
-                log.ok(f"[ARTICULATION VIEW] Wrote {joint_name}={value} via set_attribute()")
-
         # APPROACH 2: Direct assignment fallback (if ArticulationView failed)
         else:
             joint_target_np = self._control.joint_target.numpy().copy()
@@ -426,30 +413,8 @@ class NewtonRobotDriver(SimRobotDriver):
         return result
 
     def pass_joint_positions(self, joints: list[str]) -> dict[str, float | Sequence[float]]:
-        # DIAGNOSTIC: Track state reads
-        if not hasattr(self, '_state_read_count'):
-            self._state_read_count = 0
-        self._state_read_count += 1
-
         state = self._state_accessor()
-
-        # DIAGNOSTIC: Log state validity
-        if self._state_read_count % 500 == 0:
-            log.info(f"[STATE READ #{self._state_read_count}] state is None: {state is None}")
-            if state and state.joint_q is not None:
-                sample = state.joint_q.numpy()[:7]
-                log.info(f"[STATE READ #{self._state_read_count}] state.joint_q[:7]: {sample}")
-            else:
-                log.error(f"[STATE READ #{self._state_read_count}] state.joint_q is None!")
-
-        # CRITICAL CHECK: Are we hitting the early return?
         if state is None or state.joint_q is None or self._joint_q_start is None:
-            if self._state_read_count <= 5:
-                log.error(
-                    f"[STATE READ #{self._state_read_count}] RETURNING ZEROS! "
-                    f"state={state is not None}, joint_q={state.joint_q is not None if state else False}, "
-                    f"joint_q_start={self._joint_q_start is not None}"
-                )
             return {joint: 0.0 for joint in joints}
 
         # Convert Warp array to numpy once for efficient indexing
@@ -465,14 +430,7 @@ class NewtonRobotDriver(SimRobotDriver):
                 return float(joint_q_np[start])
             return [float(joint_q_np[start + k]) for k in range(width)]
 
-        result = self._gather_joint_values(joints, getter)
-
-        # DIAGNOSTIC: Log returned values
-        if self._state_read_count % 500 == 0:
-            sample_result = {k: v for k, v in list(result.items())[:3]}
-            log.info(f"[STATE READ #{self._state_read_count}] Returning: {sample_result}")
-
-        return result
+        return self._gather_joint_values(joints, getter)
 
     def pass_joint_velocities(self, joints: list[str]) -> dict[str, float | Sequence[float]]:
         state = self._state_accessor()
@@ -503,19 +461,10 @@ class NewtonRobotDriver(SimRobotDriver):
         cmd: dict[str, float | Sequence[float]],
         **_: Any,
     ) -> None:
-        # DEBUG: Log command reception
-        log.info(
-            f"[DEBUG DRIVER] pass_joint_group_control_cmd() called: "
-            f"mode={control_mode}, {len(cmd)} joints"
-        )
-        log.info(f"    Joints: {list(cmd.keys())[:5]}...")
-        log.info(f"    Values: {list(cmd.values())[:5]}...")
-
         mode = ControlType(control_mode.lower())
         if mode in {ControlType.POSITION, ControlType.VELOCITY}:
             for joint, value in cmd.items():
                 self._write_joint_target(joint, value)
-            log.ok(f"[DEBUG DRIVER] Wrote {len(cmd)} joint targets")
         elif mode == ControlType.TORQUE:
             for joint, value in cmd.items():
                 self._write_joint_force(joint, value)

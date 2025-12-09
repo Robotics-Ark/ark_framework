@@ -10,6 +10,7 @@ import os
 from typing import Any, Optional
 
 import newton
+import warp as wp
 
 from ark.tools.log import log
 
@@ -74,7 +75,18 @@ class NewtonViewerManager:
                     headless=False,
                 )
                 self.viewer.set_model(model)
+
+                # Position camera to view scene from bird's eye angle
+                # Without this, camera may not capture robot in view
+                self.viewer.set_camera(
+                    pos=wp.vec3(3.0, -3.0, 2.0),  # Back-left, elevated
+                    pitch=-20.0,                   # Look down slightly
+                    yaw=45.0                       # Diagonal view
+                )
+
                 self.viewer.show_contacts = show_contacts
+                self.viewer.show_collision = True   # Show collision geometry (robot meshes)
+                self.viewer.show_static = True      # Show static shapes (ground plane)
                 self._gui_enabled = True
 
                 log.ok(

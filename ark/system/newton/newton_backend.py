@@ -16,6 +16,7 @@ from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.system.newton.newton_builder import NewtonBuilder
 from ark.system.newton.newton_camera_driver import NewtonCameraDriver
+from ark.system.newton.newton_lidar_driver import NewtonLiDARDriver
 from ark.system.newton.newton_multibody import NewtonMultiBody
 from ark.system.newton.newton_robot_driver import NewtonRobotDriver
 from ark.system.newton.newton_viewer import NewtonViewerManager
@@ -251,27 +252,6 @@ class NewtonBackend(SimulatorBackend):
             f"{self.model.joint_count} joints, {self.model.body_count} bodies"
         )
 
-        # DIAGNOSTIC: Check model joint configuration
-        if hasattr(self.model, 'joint_target') and self.model.joint_target is not None:
-            model_targets = self.model.joint_target.numpy()
-            log.warning(f"[DIAGNOSTIC] Model HAS joint_target attribute!")
-            log.warning(f"[DIAGNOSTIC] Model.joint_target initial: {model_targets[:min(7, len(model_targets))]}")
-        else:
-            log.info("[DIAGNOSTIC] Model does NOT have joint_target attribute")
-
-        # DIAGNOSTIC: Check if ke/kd/mode values made it through finalization
-        if hasattr(self.model, 'joint_target_ke'):
-            ke_vals = self.model.joint_target_ke.numpy()[:min(7, len(self.model.joint_target_ke))]
-            log.warning(f"[DIAGNOSTIC] Model.joint_target_ke: {ke_vals}")
-        if hasattr(self.model, 'joint_target_kd'):
-            kd_vals = self.model.joint_target_kd.numpy()[:min(7, len(self.model.joint_target_kd))]
-            log.warning(f"[DIAGNOSTIC] Model.joint_target_kd: {kd_vals}")
-        if hasattr(self.model, 'joint_dof_mode'):
-            mode_vals = self.model.joint_dof_mode.numpy()[:min(7, len(self.model.joint_dof_mode))]
-            log.warning(f"[DIAGNOSTIC] Model.joint_dof_mode: {mode_vals} (1=TARGET_POSITION)")
-        else:
-            log.error("[DIAGNOSTIC] Model does NOT have joint_dof_mode attribute!")
-
         # Create solver through adapter (handles solver-specific configuration)
         self.solver = self.adapter.create_solver(self.model, sim_cfg)
 
@@ -289,10 +269,11 @@ class NewtonBackend(SimulatorBackend):
         # Sync state_next from state_current after drivers apply initial configurations
         # This is critical because drivers only modify state_current via state_accessor,
         # and Newton swaps buffers during stepping. Both states must be synchronized.
-        self.state_next.joint_q.assign(self.state_current.joint_q)
-        self.state_next.joint_qd.assign(self.state_current.joint_qd)
-        newton.eval_fk(self.model, self.state_next.joint_q, self.state_next.joint_qd, self.state_next)
-        log.info("Newton backend: Synchronized state_next from state_current after initial config")
+        if self.state_current.joint_q is not None and self.state_next.joint_q is not None:
+            self.state_next.joint_q.assign(self.state_current.joint_q)
+            self.state_next.joint_qd.assign(self.state_current.joint_qd)
+            newton.eval_fk(self.model, self.state_next.joint_q, self.state_next.joint_qd, self.state_next)
+            log.info("Newton backend: Synchronized state_next from state_current after initial config")
 
         # CRITICAL FIX: Initialize control.joint_target from current state
         # Without this, control.joint_target starts at zeros and PD controller
@@ -338,6 +319,10 @@ class NewtonBackend(SimulatorBackend):
         for sensor in self.sensor_ref.values():
             driver = getattr(sensor, "_driver", None)
             if isinstance(driver, NewtonCameraDriver):
+                # Pass viewer_manager for RGB capture capability
+                driver.bind_runtime(self.model, state_accessor, viewer_manager=self.viewer_manager)
+                bound_sensors += 1
+            elif isinstance(driver, NewtonLiDARDriver):
                 driver.bind_runtime(self.model, state_accessor)
                 bound_sensors += 1
 
@@ -498,7 +483,17 @@ class NewtonBackend(SimulatorBackend):
         if class_path.is_file():
             class_path = class_path.parent
         SensorClass, driver_enum = import_class_from_directory(class_path)
-        driver_cls = getattr(driver_enum, "value", driver_enum) or NewtonCameraDriver
+
+        # Determine driver class based on sensor type in config
+        config_type = sensor_config.get("type", "camera").lower()
+        if driver_enum is not None:
+            # Use custom driver if specified in module
+            driver_cls = getattr(driver_enum, "value", driver_enum)
+        elif config_type == "lidar":
+            driver_cls = NewtonLiDARDriver
+        else:
+            # Default to camera driver
+            driver_cls = NewtonCameraDriver
 
         driver = driver_cls(name, sensor_config)
         sensor = SensorClass(name=name, driver=driver, global_config=self.global_config)
@@ -532,21 +527,7 @@ class NewtonBackend(SimulatorBackend):
         if not self._all_available():
             return
 
-        # DEBUG: Sample control targets periodically
-        if not hasattr(self, '_step_count'):
-            self._step_count = 0
-        self._step_count += 1
-
         self._step_sim_components()
-
-        # DIAGNOSTIC: Log physics state vs control targets every 500 steps
-        if self._step_count % 500 == 0 and self.control.joint_target is not None:
-            targets = self.control.joint_target.numpy()[:7]  # First 7 joints
-            states_before = self.state_current.joint_q.numpy()[:7]  # Before physics step
-            log.info(f"[PHYSICS DIAGNOSTIC #{self._step_count}] BEFORE physics step:")
-            log.info(f"  Control targets: {targets}")
-            log.info(f"  State positions: {states_before}")
-            log.info(f"  Error (target-state): {targets - states_before}")
 
         for _ in range(self.sim_substeps):
             self.state_current.clear_forces()
@@ -560,16 +541,17 @@ class NewtonBackend(SimulatorBackend):
             )
             self.state_current, self.state_next = self.state_next, self.state_current
 
-        # DIAGNOSTIC: Log state AFTER physics to see if it changed
-        if self._step_count % 500 == 0 and self.control.joint_target is not None:
-            states_after = self.state_current.joint_q.numpy()[:7]
-            targets = self.control.joint_target.numpy()[:7]
-            log.info(f"[PHYSICS DIAGNOSTIC #{self._step_count}] AFTER physics step:")
-            log.info(f"  State positions: {states_after}")
-            log.info(f"  Did state change from before? {not np.allclose(states_before, states_after)}")
-            log.info(f"  Error (target-state): {targets - states_after}")
-
         self._simulation_time += self._time_step
+
+        # Evaluate forward kinematics before rendering
+        # This computes body transforms from joint positions - required for correct visualization
+        newton.eval_fk(
+            self.model,
+            self.state_current.joint_q,
+            self.state_current.joint_qd,
+            self.state_current
+        )
+
         self.viewer_manager.render(self.state_current, self.contacts, self._simulation_time)
 
     def shutdown_backend(self) -> None:
