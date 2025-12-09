@@ -543,15 +543,8 @@ class NewtonBackend(SimulatorBackend):
 
         self._simulation_time += self._time_step
 
-        # Evaluate forward kinematics before rendering
-        # This computes body transforms from joint positions - required for correct visualization
-        newton.eval_fk(
-            self.model,
-            self.state_current.joint_q,
-            self.state_current.joint_qd,
-            self.state_current
-        )
-
+        # Note: Do NOT call eval_fk() here - Newton's viewer.log_state() internally
+        # handles FK computation when updating shape transforms for rendering.
         self.viewer_manager.render(self.state_current, self.contacts, self._simulation_time)
 
     def shutdown_backend(self) -> None:
