@@ -223,14 +223,17 @@ class NewtonBackend(SimulatorBackend):
             descriptor = GeometryDescriptor.from_ground_plane_config(ground_cfg)
             self.adapter.adapt_ground_plane(descriptor)
 
+        # Add robots FIRST - URDF loader must come before primitives
+        # Otherwise Newton's add_urdf overwrites primitive body indices
+        if self.global_config.get("robots"):
+            for robot_name, robot_cfg in self.global_config["robots"].items():
+                self.add_robot(robot_name, robot_cfg)
+
+        # Add objects AFTER robots to preserve body indices
         if self.global_config.get("objects"):
             for obj_name, obj_cfg in self.global_config["objects"].items():
                 obj_type = obj_cfg.get("type", "primitive")
                 self.add_sim_component(obj_name, obj_type, obj_cfg)
-
-        if self.global_config.get("robots"):
-            for robot_name, robot_cfg in self.global_config["robots"].items():
-                self.add_robot(robot_name, robot_cfg)
 
         if self.global_config.get("sensors"):
             for sensor_name, sensor_cfg in self.global_config["sensors"].items():
