@@ -11,6 +11,9 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+import sys
+import traceback
+import threading
 
 from ark.client.comm_infrastructure.base_node import BaseNode
 from ark.tools.log import log
@@ -28,13 +31,7 @@ class SimulatorNode(BaseNode, ABC):
     tick.
     """
 
-    def __init__(
-        self,
-        global_config,
-        observation_channels: dict[str, type] | None = None,
-        action_channels: dict[str, type] | None = None,
-        namespace: str = "ark",
-    ):
+    def __init__(self, global_config):
         """!Construct the simulator node.
 
         The constructor loads the global configuration, instantiates the
@@ -46,10 +43,6 @@ class SimulatorNode(BaseNode, ABC):
         """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
-
-        self.global_config["observation_channels"] = observation_channels
-        self.global_config["action_channels"] = action_channels
-        self.global_config["namespace"] = namespace
 
         super().__init__(self.name, global_config=global_config)
 
@@ -72,27 +65,24 @@ class SimulatorNode(BaseNode, ABC):
         elif self.backend_type == "genesis":
             from ark.system.genesis.genesis_backend import GenesisBackend
             self.backend = GenesisBackend(self.global_config)
-        elif self.backend_type in ["isaacsim", "isaac_sim", "isaac"]:
-            from ark.system.isaac.isaac_backend import IsaacSimBackend
-            self.backend = IsaacSimBackend(self.global_config)
+        elif self.backend_type == "newton":
+            from ark.system.newton.newton_backend import NewtonBackend
+            self.backend = NewtonBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
 
         # to initialize a scene with objects that dont need to publish, e.g. for visuals
         self.initialize_scene()
-        self.step_physics()
 
         ## Reset Backend Service
-        reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
+        reset_service_name = self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
-        custom_loop = getattr(self.backend, "custom_event_loop", None)
-        self.custom_loop = True if callable(custom_loop) else False
-        if not self.custom_loop:
-            freq = self.global_config["simulator"]["config"].get(
-                "node_frequency", 240.0
-            )
-            self.create_stepper(freq, self._step_simulation)
+        freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
+        # self.create_stepper(freq, self._step_simulation)
+
+        self.spin_thread = threading.Thread(target=self.spin, daemon=True)
+        self.spin_thread.start()
 
     def _load_config(self, global_config) -> None:
         """!Load and merge the global configuration.
@@ -152,6 +142,10 @@ class SimulatorNode(BaseNode, ABC):
             config["objects"] = self._load_section(cfg, global_config, "objects")
         except KeyError as e:
             config["objects"] = {}
+        try:
+            config["ground_plane"] = cfg.get("ground_plane", {})
+        except KeyError:
+            config["ground_plane"] = {}
 
         log.ok("Config file under " + global_config.str + " loaded successfully.")
         self.global_config = config
@@ -206,25 +200,12 @@ class SimulatorNode(BaseNode, ABC):
         self.step()
         self.backend.step()
 
-    def step_physics(self, num_steps: int = 25, call_step_hook: bool = False) -> None:
-        """
-        Advance the physics backend
-        Args:
-            num_steps: Number of physics ticks to run.
-            call_step_hook: If True, also invoke the subclass step() each tick.
-
-        Returns:
-            None
-        """
-        for _ in range(max(0, num_steps)):
-            if call_step_hook:
-                self.step()
-            self.backend.step()
-
+    @abstractmethod
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""
         pass
 
+    @abstractmethod
     def step(self) -> None:
         """!Hook executed every simulation step."""
         pass
@@ -237,11 +218,6 @@ class SimulatorNode(BaseNode, ABC):
         backend for spinning all components.  It terminates when an
         ``OSError`` occurs or :attr:`_done` is set to ``True``.
         """
-        # Allow backends to provide their own event loop (e.g., IsaacSim main thread)
-        if self.custom_loop:
-            self.backend.custom_event_loop(sim_node=self)
-            return
-
         while not self._done:
             try:
                 self._lcm.handle_timeout(0)
@@ -255,3 +231,38 @@ class SimulatorNode(BaseNode, ABC):
         """!Shut down the node and the underlying backend."""
         self.backend.shutdown_backend()
         super().kill_node()
+
+def main(node_cls: type[SimulatorNode], *args) -> None:
+    """!
+    Initializes and runs a node.
+
+    This function creates an instance of the specified `node_cls`, spins the node to handle messages,
+    and handles exceptions that occur during the node's execution.
+
+    @param node_cls: The class of the node to run.
+    @type node_cls: Type[BaseNode]
+    """
+
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(node_cls.get_cli_doc())
+        sys.exit(0)
+
+    node = None
+    log.ok(f"Initializing {node_cls.__name__} type node")
+    try:
+        node = node_cls(*args)
+        log.ok(f"Initialized {node.name}")
+        while not node._done:
+            node._step_simulation()
+    except KeyboardInterrupt:
+        log.warning(f"User killed node {node_cls.__name__}")
+    except Exception:
+        tb = traceback.format_exc()
+        div = "=" * 30
+        log.error(f"Exception thrown during node execution:\n{div}\n{tb}\n{div}")
+    finally:
+        if node is not None:
+            node.kill_node()
+            log.ok(f"Finished running node {node_cls.__name__}")
+        else:
+            log.warning(f"Node {node_cls.__name__} failed during initialization")

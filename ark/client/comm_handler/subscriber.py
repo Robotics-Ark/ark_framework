@@ -65,6 +65,19 @@ class Subscriber(CommHandler):
         @return: ``None``
         """
         self._sub = self._lcm.subscribe(self.channel_name, self.subscriber_callback)
+
+        if self._sub is None:
+            log.error(
+                f"Failed to subscribe to channel '{self.channel_name}'. "
+                f"LCM subscription returned None - this usually indicates:\n"
+                f"  - LCM networking issue (check firewall, routing, ttl settings)\n"
+                f"  - Invalid channel name\n"
+                f"  - LCM not properly initialized\n"
+                f"Current LCM URL: {getattr(self._lcm, '_url', 'unknown')}"
+            )
+            self.active = False
+            return
+
         self._sub.set_queue_capacity(1)  # TODO: configurable
         log.ok(f"subscribed to {self}")
         self.active = True
