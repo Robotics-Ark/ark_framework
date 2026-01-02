@@ -11,9 +11,6 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
-import sys
-import traceback
-import threading
 
 from ark.client.comm_infrastructure.base_node import BaseNode
 from ark.tools.log import log
@@ -31,7 +28,13 @@ class SimulatorNode(BaseNode, ABC):
     tick.
     """
 
-    def __init__(self, global_config):
+    def __init__(
+        self,
+        global_config,
+        observation_channels: dict[str, type] | None = None,
+        action_channels: dict[str, type] | None = None,
+        namespace: str = "ark",
+    ):
         """!Construct the simulator node.
 
         The constructor loads the global configuration, instantiates the
@@ -43,6 +46,10 @@ class SimulatorNode(BaseNode, ABC):
         """
         self._load_config(global_config)
         self.name = self.global_config["simulator"].get("name", "simulator")
+
+        self.global_config["observation_channels"] = observation_channels
+        self.global_config["action_channels"] = action_channels
+        self.global_config["namespace"] = namespace
 
         super().__init__(self.name, global_config=global_config)
 
@@ -58,15 +65,23 @@ class SimulatorNode(BaseNode, ABC):
         self.backend_type = self.global_config["simulator"]["backend_type"]
         if self.backend_type == "pybullet":
             from ark.system.pybullet.pybullet_backend import PyBulletBackend
+
             self.backend = PyBulletBackend(self.global_config)
         elif self.backend_type == "mujoco":
             from ark.system.mujoco.mujoco_backend import MujocoBackend
+
             self.backend = MujocoBackend(self.global_config)
         elif self.backend_type == "genesis":
             from ark.system.genesis.genesis_backend import GenesisBackend
+
             self.backend = GenesisBackend(self.global_config)
+        elif self.backend_type in ["isaacsim", "isaac_sim", "isaac"]:
+            from ark.system.isaac.isaac_backend import IsaacSimBackend
+
+            self.backend = IsaacSimBackend(self.global_config)
         elif self.backend_type == "newton":
             from ark.system.newton.newton_backend import NewtonBackend
+
             self.backend = NewtonBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
@@ -75,14 +90,16 @@ class SimulatorNode(BaseNode, ABC):
         self.initialize_scene()
 
         ## Reset Backend Service
-        reset_service_name = self.name + "/backend/reset/sim"
+        reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
         self.create_service(reset_service_name, flag_t, flag_t, self._reset_backend)
 
-        freq = self.global_config["simulator"]["config"].get("node_frequency", 240.0)
-        # self.create_stepper(freq, self._step_simulation)
-
-        self.spin_thread = threading.Thread(target=self.spin, daemon=True)
-        self.spin_thread.start()
+        custom_loop = getattr(self.backend, "custom_event_loop", None)
+        self.custom_loop = True if callable(custom_loop) else False
+        if not self.custom_loop:
+            freq = self.global_config["simulator"]["config"].get(
+                "node_frequency", 240.0
+            )
+            self.create_stepper(freq, self._step_simulation)
 
     def _load_config(self, global_config) -> None:
         """!Load and merge the global configuration.
@@ -200,12 +217,25 @@ class SimulatorNode(BaseNode, ABC):
         self.step()
         self.backend.step()
 
-    @abstractmethod
+    def step_physics(self, num_steps: int = 25, call_step_hook: bool = False) -> None:
+        """
+        Advance the physics backend
+        Args:
+            num_steps: Number of physics ticks to run.
+            call_step_hook: If True, also invoke the subclass step() each tick.
+
+        Returns:
+            None
+        """
+        for _ in range(max(0, num_steps)):
+            if call_step_hook:
+                self.step()
+            self.backend.step()
+
     def initialize_scene(self) -> None:
         """!Create the initial simulation scene."""
         pass
 
-    @abstractmethod
     def step(self) -> None:
         """!Hook executed every simulation step."""
         pass
@@ -218,6 +248,11 @@ class SimulatorNode(BaseNode, ABC):
         backend for spinning all components.  It terminates when an
         ``OSError`` occurs or :attr:`_done` is set to ``True``.
         """
+        # Allow backends to provide their own event loop (e.g., IsaacSim main thread)
+        if self.custom_loop:
+            self.backend.custom_event_loop(sim_node=self)
+            return
+
         while not self._done:
             try:
                 self._lcm.handle_timeout(0)
@@ -231,6 +266,7 @@ class SimulatorNode(BaseNode, ABC):
         """!Shut down the node and the underlying backend."""
         self.backend.shutdown_backend()
         super().kill_node()
+
 
 def main(node_cls: type[SimulatorNode], *args) -> None:
     """!
