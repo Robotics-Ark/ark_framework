@@ -152,21 +152,20 @@ class NewtonRobotDriver(SimRobotDriver):
 
             # Apply to all newly loaded joint DOFs
             for i in range(pre_joint_dof_count, post_joint_dof_count):
-                self.builder.joint_dof_mode[i] = default_cfg.mode
                 self.builder.joint_target_ke[i] = default_cfg.target_ke
                 self.builder.joint_target_kd[i] = default_cfg.target_kd
                 self.builder.joint_limit_ke[i] = default_cfg.limit_ke
                 self.builder.joint_limit_kd[i] = default_cfg.limit_kd
                 self.builder.joint_armature[i] = default_cfg.armature
 
-                # CRITICAL: Initialize joint_target to match joint_q (which now has initial config)
+                # CRITICAL: Initialize joint_target_pos to match joint_q (which now has initial config)
                 # Without this, PD controller has no target to track!
                 # This follows Newton's own examples (see example_basic_urdf.py:72)
-                self.builder.joint_target[i] = self.builder.joint_q[i]
+                self.builder.joint_target_pos[i] = self.builder.joint_q[i]
 
             log.ok(
                 f"Newton robot driver: Applied joint defaults to {num_new_dofs} DOFs "
-                f"(ke={default_cfg.target_ke}, kd={default_cfg.target_kd}, mode={default_cfg.mode})"
+                f"(ke={default_cfg.target_ke}, kd={default_cfg.target_kd})"
             )
 
         self._joint_names = list(
@@ -213,7 +212,7 @@ class NewtonRobotDriver(SimRobotDriver):
         self._joint_dof_dim = model.joint_dof_dim.numpy()
 
         # Create ArticulationView for proper Newton control API (UR10 example pattern)
-        # This is CRITICAL for TARGET_POSITION mode to work correctly
+        # This is CRITICAL for joint target position control to work correctly
         try:
             # Use component name as pattern (e.g., "panda" matches bodies with "panda" in name)
             pattern = f"*{self.component_name}*"
@@ -223,8 +222,8 @@ class NewtonRobotDriver(SimRobotDriver):
                 exclude_joint_types=[newton.JointType.FREE, newton.JointType.DISTANCE]
             )
 
-            # Get control handle for joint targets
-            self._control_handle = self._articulation_view.get_attribute("joint_target", control)
+            # Get control handle for joint target positions
+            self._control_handle = self._articulation_view.get_attribute("joint_target_pos", control)
 
             log.ok(
                 f"Newton robot driver '{self.component_name}': "
@@ -240,7 +239,7 @@ class NewtonRobotDriver(SimRobotDriver):
             self._control_handle = None
 
         # NOTE: _apply_initial_configuration() is NOT called here because initial config
-        # is already applied to builder.joint_q and builder.joint_target in _load_into_builder()
+        # is already applied to builder.joint_q and builder.joint_target_pos in _load_into_builder()
         # BEFORE finalize(). After model.state(), state.joint_q inherits these values, and
         # the backend's eval_fk with model.joint_q correctly computes body transforms.
         # Calling _apply_initial_configuration() here would be redundant and uses state.joint_q
@@ -341,7 +340,7 @@ class NewtonRobotDriver(SimRobotDriver):
         This follows Newton's official pattern from example_robot_ur10.py which uses
         ArticulationView.set_attribute() instead of direct array assignment.
         """
-        if self._control is None or self._control.joint_target is None:
+        if self._control is None or self._control.joint_target_pos is None:
             log.warning(f"Newton robot driver: Cannot write joint target, control not initialized")
             return
         idx = self._joint_index_map.get(joint_name)
@@ -381,19 +380,60 @@ class NewtonRobotDriver(SimRobotDriver):
 
             # Write back via ArticulationView
             self._control_handle.assign(handle_np)
-            self._articulation_view.set_attribute("joint_target", self._control, self._control_handle)
+            self._articulation_view.set_attribute("joint_target_pos", self._control, self._control_handle)
 
         # APPROACH 2: Direct assignment fallback (if ArticulationView failed)
         else:
-            joint_target_np = self._control.joint_target.numpy().copy()
+            joint_target_np = self._control.joint_target_pos.numpy().copy()
             for offset in range(width):
                 if offset < len(values):
                     joint_target_np[start + offset] = float(values[offset])
-            self._control.joint_target.assign(joint_target_np)
+            self._control.joint_target_pos.assign(joint_target_np)
 
             if not hasattr(self, '_direct_write_warned'):
                 self._direct_write_warned = True
                 log.warning(f"Newton robot driver: Using direct .assign() (ArticulationView not available)")
+
+    def _write_joint_target_velocity(self, joint_name: str, value: float | Sequence[float]) -> None:
+        """Write joint target velocity using ArticulationView API."""
+        if self._control is None or self._control.joint_target_vel is None:
+            log.warning("Newton robot driver: Cannot write joint target velocity, control not initialized")
+            return
+        idx = self._joint_index_map.get(joint_name)
+        if idx is None:
+            return
+        if self._joint_qd_start is None:
+            log.warning("Newton robot driver: joint_qd_start array not initialized")
+            return
+
+        if idx >= len(self._joint_qd_start) - 1:
+            log.error(
+                f"Newton robot driver: Joint index {idx} out of bounds for joint_qd_start "
+                f"(size {len(self._joint_qd_start)})"
+            )
+            return
+
+        start = int(self._joint_qd_start[idx])
+        end = int(self._joint_qd_start[idx + 1])
+        width = end - start
+        if width <= 0:
+            return
+        values = value if isinstance(value, Sequence) else [value] * width
+
+        if self._articulation_view is not None:
+            handle_np = self._articulation_view.get_attribute("joint_target_vel", self._control).numpy().copy()
+            env_idx = 0
+            for offset in range(width):
+                if offset < len(values):
+                    handle_np[env_idx, start + offset] = float(values[offset])
+            handle = wp.array(handle_np, dtype=self._control.joint_target_vel.dtype, device=self._control.joint_target_vel.device)
+            self._articulation_view.set_attribute("joint_target_vel", self._control, handle)
+        else:
+            joint_target_np = self._control.joint_target_vel.numpy().copy()
+            for offset in range(width):
+                if offset < len(values):
+                    joint_target_np[start + offset] = float(values[offset])
+            self._control.joint_target_vel.assign(joint_target_np)
 
     def _write_joint_force(self, joint_name: str, value: float | Sequence[float]) -> None:
         if self._control is None or self._control.joint_f is None:
@@ -496,7 +536,10 @@ class NewtonRobotDriver(SimRobotDriver):
         mode = ControlType(control_mode.lower())
         if mode in {ControlType.POSITION, ControlType.VELOCITY}:
             for joint, value in cmd.items():
-                self._write_joint_target(joint, value)
+                if mode == ControlType.VELOCITY:
+                    self._write_joint_target_velocity(joint, value)
+                else:
+                    self._write_joint_target(joint, value)
         elif mode == ControlType.TORQUE:
             for joint, value in cmd.items():
                 self._write_joint_force(joint, value)

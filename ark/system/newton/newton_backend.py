@@ -109,20 +109,18 @@ class NewtonBackend(SimulatorBackend):
             log.info("Newton backend: No joint_defaults in config, using Newton defaults")
             return
 
-        # Map string mode to Newton enum
-        mode_str = joint_cfg.get("mode", "TARGET_POSITION").upper()
-        mode_value = None
-        if mode_str == "TARGET_POSITION":
-            mode_value = newton.JointMode.TARGET_POSITION
-        elif mode_str == "TARGET_VELOCITY":
-            mode_value = newton.JointMode.TARGET_VELOCITY
-        elif mode_str == "FORCE":
-            mode_value = newton.JointMode.FORCE
-
         # Build kwargs dict for set_default_joint_config
         joint_defaults = {}
-        if mode_value is not None:
-            joint_defaults["mode"] = mode_value
+        mode_str = joint_cfg.get("mode", "").upper()
+        if mode_str:
+            log.info(
+                "Newton backend: joint_defaults.mode is deprecated in newton-physics; "
+                "using target_pos/target_vel + gains instead."
+            )
+        if "target_pos" in joint_cfg:
+            joint_defaults["target_pos"] = float(joint_cfg["target_pos"])
+        if "target_vel" in joint_cfg:
+            joint_defaults["target_vel"] = float(joint_cfg["target_vel"])
         if "target_ke" in joint_cfg:
             joint_defaults["target_ke"] = float(joint_cfg["target_ke"])
         if "target_kd" in joint_cfg:
@@ -258,16 +256,19 @@ class NewtonBackend(SimulatorBackend):
         # _apply_initial_configuration() during bind_runtime, there's no state modification
         # to synchronize. The initial config was applied to builder before finalize.
 
-        # CRITICAL FIX: Initialize control.joint_target from current state
-        # Without this, control.joint_target starts at zeros and PD controller
+        # CRITICAL FIX: Initialize control.joint_target_pos from current state
+        # Without this, control.joint_target_pos starts at zeros and PD controller
         # drives all joints toward zero instead of maintaining current positions!
         # This follows Newton's own examples (see example_basic_urdf.py:72)
-        if self.control.joint_target is not None and self.state_current.joint_q is not None:
-            self.control.joint_target.assign(self.state_current.joint_q)
-            target_sample = self.control.joint_target.numpy()[:min(7, len(self.control.joint_target))]
-            log.ok(f"Newton backend: Initialized control.joint_target from state: {target_sample}")
+        if self.control.joint_target_pos is not None and self.state_current.joint_q is not None:
+            self.control.joint_target_pos.assign(self.state_current.joint_q)
+            target_sample = self.control.joint_target_pos.numpy()[:min(7, len(self.control.joint_target_pos))]
+            log.ok(f"Newton backend: Initialized control.joint_target_pos from state: {target_sample}")
         else:
-            log.error("Newton backend: FAILED to initialize control.joint_target - array is None!")
+            log.error("Newton backend: FAILED to initialize control.joint_target_pos - array is None!")
+
+        if self.control.joint_target_vel is not None:
+            self.control.joint_target_vel.zero_()
 
         # Initialize viewer manager
         self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
