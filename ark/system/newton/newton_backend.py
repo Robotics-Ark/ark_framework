@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -24,55 +25,133 @@ from ark.client.frequencies.rate import Rate
 from arktypes import *
 
 
-def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[Any]]]:
-    """Import a class (and optional driver enum) from ``path``.
-        The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
+def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
+    """!Load a class from ``path``.
+
+    The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
     class with the same name.  If a ``Drivers`` class is present in the module
-    its ``NEWTON_DRIVER`` attribute is returned alongside the main class.
+    its ``PYBULLET_DRIVER`` attribute is returned alongside the main class.
 
     @param path Path to the directory containing the module.
     @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
             driver is defined.
     @rtype Tuple[type, Optional[type]]
-
     """
-
-    ## Extract the class name from the last part of the directory path (last directory name)
+    # Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
-    file_path = (path / f"{class_name}.py").resolve() ##just add the resolve here instead of newline
-    ## Defensive check for the filepath, raise error if not found
+    file_path = path / f"{class_name}.py"
+    # get the full absolute path
+    file_path = file_path.resolve()
     if not file_path.exists():
         raise FileNotFoundError(f"The file {file_path} does not exist.")
 
-    with open(file_path, "r", encoding="utf-8") as handle:
-        tree = ast.parse(handle.read(), filename=str(file_path))
-
-    module_dir = str(file_path.parent)
+    with open(file_path, "r", encoding="utf-8") as file:
+        tree = ast.parse(file.read(), filename=file_path)
+    # for imports
+    module_dir = os.path.dirname(file_path)
     sys.path.insert(0, module_dir)
-        ## Import the module dynamically and extract class names defensively
-    try:
-        class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-        drivers_attr: Optional[type[Any]] = None
-
-        spec = importlib.util.spec_from_file_location(class_name, file_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not create module spec for {file_path}")
+    # Extract class names from the AST
+    class_names = [
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    ]
+    # check if Sensor_Drivers is in the class_names
+    if "Drivers" in class_names:
+        # Load the module dynamically
+        spec = importlib.util.spec_from_file_location(class_names[0], file_path)
         module = importlib.util.module_from_spec(spec)
-        sys.modules[class_name] = module
+        sys.modules[class_names[0]] = module
         spec.loader.exec_module(module)
 
-        if "Drivers" in class_names:
-            drivers_cls = getattr(module, "Drivers", None)
-            drivers_attr = getattr(drivers_cls, "NEWTON_DRIVER", None) if drivers_cls else None
-            class_names.remove("Drivers")
-
-        target_name = class_names[0] if class_names else class_name
-        target_cls = getattr(module, target_name)
-    finally:
+        class_ = getattr(module, class_names[0])
         sys.path.pop(0)
-        sys.modules.pop(class_name, None)
+        breakpoint()
+        drivers = class_.NEWTON_DRIVER.load()
+        class_names.remove("Drivers")
 
-    return target_cls, drivers_attr
+    # Retrieve the class from the module (has to be list of one)
+    class_ = getattr(module, class_names[0])
+
+    if len(class_names) != 1:
+        raise ValueError(
+            f"Expected exactly two class definition in {file_path}, but found {len(class_names)}."
+        )
+
+    # Load the module dynamically
+    spec = importlib.util.spec_from_file_location(class_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[class_name] = module
+    spec.loader.exec_module(module)
+
+    # Retrieve the class from the module (has to be list of one)
+    class_ = getattr(module, class_names[0])
+    sys.path.pop(0)
+
+    # Return the class
+    return class_, drivers
+
+
+# def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[Any]]]:
+#     """Import a class (and optional driver enum) from ``path``.
+#         The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
+#     class with the same name.  If a ``Drivers`` class is present in the module
+#     its ``NEWTON_DRIVER`` attribute is returned alongside the main class.
+#
+#     @param path Path to the directory containing the module.
+#     @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
+#             driver is defined.
+#     @rtype Tuple[type, Optional[type]]
+#
+#     """
+#
+#     ## Extract the class name from the last part of the directory path (last directory name)
+#     class_name = path.name
+#     file_path = (
+#         path / f"{class_name}.py"
+#     ).resolve()  ##just add the resolve here instead of newline
+#     ## Defensive check for the filepath, raise error if not found
+#     if not file_path.exists():
+#         raise FileNotFoundError(f"The file {file_path} does not exist.")
+#
+#     with open(file_path, "r", encoding="utf-8") as handle:
+#         tree = ast.parse(handle.read(), filename=str(file_path))
+#
+#     module_dir = str(file_path.parent)
+#     sys.path.insert(0, module_dir)
+#     ## Import the module dynamically and extract class names defensively
+#     try:
+#         class_names = [
+#             node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+#         ]
+#         drivers_attr: Optional[type[Any]] = None
+#
+#         spec = importlib.util.spec_from_file_location(class_name, file_path)
+#         if spec is None or spec.loader is None:
+#             raise ImportError(f"Could not create module spec for {file_path}")
+#         module = importlib.util.module_from_spec(spec)
+#         sys.modules[class_name] = module
+#         spec.loader.exec_module(module)
+#
+#         if "Drivers" in class_names:
+#             # Load the module dynamically
+#             spec = importlib.util.spec_from_file_location(class_names[0], file_path)
+#             module = importlib.util.module_from_spec(spec)
+#             sys.modules[class_names[0]] = module
+#             spec.loader.exec_module(module)
+#
+#             class_ = getattr(module, class_names[0])
+#             sys.path.pop(0)
+#
+#             breakpoint()
+#             drivers = class_.NEWTON_DRIVER.load()
+#             class_names.remove("Drivers")
+#
+#         target_name = class_names[0] if class_names else class_name
+#         target_cls = getattr(module, target_name)
+#     finally:
+#         sys.path.pop(0)
+#         sys.modules.pop(class_name, None)
+#
+#     return target_cls, drivers
 
 
 class NewtonBackend(SimulatorBackend):
@@ -106,7 +185,9 @@ class NewtonBackend(SimulatorBackend):
         joint_cfg = newton_cfg.get("joint_defaults", {})
 
         if not joint_cfg:
-            log.info("Newton backend: No joint_defaults in config, using Newton defaults")
+            log.info(
+                "Newton backend: No joint_defaults in config, using Newton defaults"
+            )
             return
 
         # Map string mode to Newton enum
@@ -165,9 +246,7 @@ class NewtonBackend(SimulatorBackend):
         gravity_magnitude = self._extract_gravity_magnitude(gravity)
 
         self.scene_builder = NewtonBuilder(
-            model_name="ark_world",
-            up_axis=up_axis,
-            gravity=gravity_magnitude
+            model_name="ark_world", up_axis=up_axis, gravity=gravity_magnitude
         )
 
         # Create solver-specific adapter early (before scene building)
@@ -181,7 +260,9 @@ class NewtonBackend(SimulatorBackend):
             try:
                 wp.set_device(device_name)
             except Exception as exc:  # noqa: BLE001
-                log.warning(f"Newton backend: unable to select device '{device_name}': {exc}")
+                log.warning(
+                    f"Newton backend: unable to select device '{device_name}': {exc}"
+                )
 
         self._apply_joint_defaults(sim_cfg)
 
@@ -189,6 +270,7 @@ class NewtonBackend(SimulatorBackend):
         ground_cfg = self.global_config.get("ground_plane", {})
         if ground_cfg.get("enabled", False):
             from ark.system.newton.geometry_descriptors import GeometryDescriptor
+
             descriptor = GeometryDescriptor.from_ground_plane_config(ground_cfg)
             self.adapter.adapt_ground_plane(descriptor)
 
@@ -207,7 +289,8 @@ class NewtonBackend(SimulatorBackend):
         if self.global_config.get("sensors"):
             for sensor_name, sensor_cfg in self.global_config["sensors"].items():
                 from ark.system.driver.sensor_driver import SensorType
-                sensor_type = SensorType(sensor_cfg.get("type", "camera").upper())
+
+                sensor_type = SensorType(sensor_cfg.get("type", "camera").lower())
                 self.add_sensor(sensor_name, sensor_type, sensor_cfg)
 
         # Finalize model via NewtonBuilder and get metadata
@@ -247,10 +330,21 @@ class NewtonBackend(SimulatorBackend):
 
         # Use model arrays for initial FK (these contain initial config from builder)
         # This matches Newton's own examples (see test_franka_standalone.py)
-        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_current)
-        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_next)
+        newton.eval_fk(
+            self.model, self.model.joint_q, self.model.joint_qd, self.state_current
+        )
+        newton.eval_fk(
+            self.model, self.model.joint_q, self.model.joint_qd, self.state_next
+        )
 
         self._state_accessor: Callable[[], newton.State] = lambda: self.state_current
+
+        # Initialize viewer manager
+        self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
+        if self.viewer_manager.gui_enabled:
+            # When GUI is active, step physics from the main thread to keep GL interop happy.
+            self.custom_event_loop = self._viewer_event_loop
+
         self._bind_runtime_handles()
 
         # NOTE: No state sync needed here - both state_current and state_next were already
@@ -262,18 +356,27 @@ class NewtonBackend(SimulatorBackend):
         # Without this, control.joint_target starts at zeros and PD controller
         # drives all joints toward zero instead of maintaining current positions!
         # This follows Newton's own examples (see example_basic_urdf.py:72)
-        if self.control.joint_target is not None and self.state_current.joint_q is not None:
+        if (
+            self.control.joint_target is not None
+            and self.state_current.joint_q is not None
+        ):
             self.control.joint_target.assign(self.state_current.joint_q)
-            target_sample = self.control.joint_target.numpy()[:min(7, len(self.control.joint_target))]
-            log.ok(f"Newton backend: Initialized control.joint_target from state: {target_sample}")
+            target_sample = self.control.joint_target.numpy()[
+                : min(7, len(self.control.joint_target))
+            ]
+            log.ok(
+                f"Newton backend: Initialized control.joint_target from state: {target_sample}"
+            )
         else:
-            log.error("Newton backend: FAILED to initialize control.joint_target - array is None!")
+            log.error(
+                "Newton backend: FAILED to initialize control.joint_target - array is None!"
+            )
 
-        # Initialize viewer manager
-        self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
-        if self.viewer_manager.gui_enabled:
-            # When GUI is active, step physics from the main thread to keep GL interop happy.
-            self.custom_event_loop = self._viewer_event_loop
+        # # Initialize viewer manager
+        # self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
+        # if self.viewer_manager.gui_enabled:
+        #     # When GUI is active, step physics from the main thread to keep GL interop happy.
+        #     self.custom_event_loop = self._viewer_event_loop
 
         # Log successful initialization
         log.ok(
@@ -294,7 +397,9 @@ class NewtonBackend(SimulatorBackend):
         for robot in self.robot_ref.values():
             driver = getattr(robot, "_driver", None)
             if isinstance(driver, NewtonRobotDriver):
-                driver.bind_runtime(self.model, self.control, state_accessor, self._substep_dt)
+                driver.bind_runtime(
+                    self.model, self.control, state_accessor, self._substep_dt
+                )
                 bound_robots += 1
 
         for obj in self.object_ref.values():
@@ -306,7 +411,9 @@ class NewtonBackend(SimulatorBackend):
             driver = getattr(sensor, "_driver", None)
             if isinstance(driver, NewtonCameraDriver):
                 # Pass viewer_manager for RGB capture capability
-                driver.bind_runtime(self.model, state_accessor, viewer_manager=self.viewer_manager)
+                driver.bind_runtime(
+                    self.model, state_accessor, viewer_manager=self.viewer_manager
+                )
                 bound_sensors += 1
             elif isinstance(driver, NewtonLiDARDriver):
                 driver.bind_runtime(self.model, state_accessor)
@@ -353,9 +460,7 @@ class NewtonBackend(SimulatorBackend):
         adapter_cls = adapter_map.get(solver_key)
 
         if not adapter_cls:
-            log.warning(
-                f"Unknown solver '{solver_name}', falling back to XPBD adapter"
-            )
+            log.warning(f"Unknown solver '{solver_name}', falling back to XPBD adapter")
             adapter_cls = XPBDAdapter
 
         return adapter_cls(self.scene_builder)
@@ -416,7 +521,9 @@ class NewtonBackend(SimulatorBackend):
         robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
         self.robot_ref[name] = robot
 
-    def add_sim_component(self, name: str, _type: str, _obj_config: dict[str, Any]) -> None:
+    def add_sim_component(
+        self, name: str, _type: str, _obj_config: dict[str, Any]
+    ) -> None:
         """Add a generic simulation object.
 
         Args:
@@ -427,11 +534,13 @@ class NewtonBackend(SimulatorBackend):
         component = NewtonMultiBody(
             name=name,
             builder=self.scene_builder.builder,
-            global_config=self.global_config
+            global_config=self.global_config,
         )
         self.object_ref[name] = component
 
-    def add_sensor(self, name: str, _sensor_type: Any, sensor_config: dict[str, Any]) -> None:
+    def add_sensor(
+        self, name: str, _sensor_type: Any, sensor_config: dict[str, Any]
+    ) -> None:
         """Add a sensor to the simulation.
 
         Args:
@@ -542,10 +651,12 @@ class NewtonBackend(SimulatorBackend):
 
         # Note: Do NOT call eval_fk() here - Newton's viewer.log_state() internally
         # handles FK computation when updating shape transforms for rendering.
-        self.viewer_manager.render(self.state_current, self.contacts, self._simulation_time)
+        self.viewer_manager.render(
+            self.state_current, self.contacts, self._simulation_time
+        )
 
     def shutdown_backend(self) -> None:
-        if hasattr(self, 'viewer_manager'):
+        if hasattr(self, "viewer_manager"):
             self.viewer_manager.shutdown()
         for robot in list(self.robot_ref.values()):
             robot.kill_node()

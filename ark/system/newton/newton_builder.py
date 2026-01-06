@@ -68,7 +68,9 @@ class BodySpec:
     name: str
     body_idx: int
     articulation: Optional[str] = None
-    xform: wp.transform = field(default_factory=lambda: wp.transform([0, 0, 0], [0, 0, 0, 1]))
+    xform: wp.transform = field(
+        default_factory=lambda: wp.transform([0, 0, 0], [0, 0, 0, 1])
+    )
     mass: float = 0.0
 
 
@@ -104,7 +106,7 @@ class NewtonBuilder:
         self,
         model_name: str = "world",
         up_axis: newton.Axis = newton.Axis.Z,
-        gravity: float = -9.81
+        gravity: float = -9.81,
     ):
         """
         Initialize Newton scene builder.
@@ -195,7 +197,7 @@ class NewtonBuilder:
                 name=name,
                 key=artic_key,
                 joint_q_start=len(self.builder.joint_q),
-                joint_qd_start=len(self.builder.joint_qd)
+                joint_qd_start=len(self.builder.joint_qd),
             )
 
         self._current_articulation = name
@@ -204,7 +206,9 @@ class NewtonBuilder:
     def set_current_articulation(self, name: str) -> "NewtonBuilder":
         """Switch to an existing articulation context."""
         if name not in self._articulations:
-            raise ValueError(f"Articulation '{name}' not found. Call add_articulation('{name}') first.")
+            raise ValueError(
+                f"Articulation '{name}' not found. Call add_articulation('{name}') first."
+            )
         self._current_articulation = name
         return self
 
@@ -217,7 +221,7 @@ class NewtonBuilder:
         mass: float = 1.0,
         com: Optional[Vec3] = None,
         inertia: Optional[Mat33] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add a rigid body to the scene.
@@ -250,11 +254,7 @@ class NewtonBuilder:
 
         # Add to Newton builder
         body_idx = self.builder.add_body(
-            xform=xform,
-            mass=mass,
-            com=com,
-            I_m=inertia,
-            **kwargs
+            xform=xform, mass=mass, com=com, I_m=inertia, **kwargs
         )
 
         # Track metadata
@@ -263,7 +263,7 @@ class NewtonBuilder:
             body_idx=body_idx,
             articulation=self._current_articulation,
             xform=xform,
-            mass=mass
+            mass=mass,
         )
 
         # Associate with current articulation
@@ -278,22 +278,16 @@ class NewtonBuilder:
     # ---------- Shapes ----------
 
     def add_shape_plane(
-        self,
-        body: Union[str, int],
-        width: float = 10.0,
-        length: float = 10.0,
-        **kwargs
+        self, body: Union[str, int], width: float = 10.0, length: float = 10.0, **kwargs
     ) -> "NewtonBuilder":
         """Add plane shape to body."""
         body_idx = self._resolve_body_idx(body)
-        self.builder.add_shape_plane(body=body_idx, width=width, length=length, **kwargs)
+        self.builder.add_shape_plane(
+            body=body_idx, width=width, length=length, **kwargs
+        )
         return self
 
-    def add_ground_plane(
-        self,
-        size: float = 1000.0,
-        **kwargs
-    ) -> "NewtonBuilder":
+    def add_ground_plane(self, size: float = 1000.0, **kwargs) -> "NewtonBuilder":
         """Add infinite ground plane."""
         self.builder.add_ground_plane(size=size, **kwargs)
         return self
@@ -304,7 +298,7 @@ class NewtonBuilder:
         hx: float = 0.5,
         hy: float = 0.5,
         hz: float = 0.5,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add box shape to body.
@@ -319,10 +313,7 @@ class NewtonBuilder:
         return self
 
     def add_shape_sphere(
-        self,
-        body: Union[str, int],
-        radius: float = 0.5,
-        **kwargs
+        self, body: Union[str, int], radius: float = 0.5, **kwargs
     ) -> "NewtonBuilder":
         """Add sphere shape to body."""
         body_idx = self._resolve_body_idx(body)
@@ -334,7 +325,7 @@ class NewtonBuilder:
         body: Union[str, int],
         radius: float = 0.5,
         half_height: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add capsule shape to body.
@@ -347,10 +338,7 @@ class NewtonBuilder:
         """
         body_idx = self._resolve_body_idx(body)
         self.builder.add_shape_capsule(
-            body=body_idx,
-            radius=radius,
-            half_height=half_height,
-            **kwargs
+            body=body_idx, radius=radius, half_height=half_height, **kwargs
         )
         return self
 
@@ -359,23 +347,17 @@ class NewtonBuilder:
         body: Union[str, int],
         radius: float = 0.5,
         half_height: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """Add cylinder shape to body."""
         body_idx = self._resolve_body_idx(body)
         self.builder.add_shape_cylinder(
-            body=body_idx,
-            radius=radius,
-            half_height=half_height,
-            **kwargs
+            body=body_idx, radius=radius, half_height=half_height, **kwargs
         )
         return self
 
     def add_shape_mesh(
-        self,
-        body: Union[str, int],
-        mesh: newton.Mesh,
-        **kwargs
+        self, body: Union[str, int], mesh: newton.Mesh, **kwargs
     ) -> "NewtonBuilder":
         """Add mesh shape to body."""
         body_idx = self._resolve_body_idx(body)
@@ -383,10 +365,7 @@ class NewtonBuilder:
         return self
 
     def add_shape_sdf(
-        self,
-        body: Union[str, int],
-        sdf: newton.SDF,
-        **kwargs
+        self, body: Union[str, int], sdf: newton.SDF, **kwargs
     ) -> "NewtonBuilder":
         """Add SDF (signed distance field) shape to body."""
         body_idx = self._resolve_body_idx(body)
@@ -403,7 +382,7 @@ class NewtonBuilder:
         axis: Union[newton.Axis, wp.vec3] = newton.Axis.Z,
         limit_lower: float = -1e6,
         limit_upper: float = 1e6,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add revolute (hinge) joint.
@@ -431,7 +410,7 @@ class NewtonBuilder:
             axis=axis,
             limit_lower=limit_lower,
             limit_upper=limit_upper,
-            **kwargs
+            **kwargs,
         )
 
         # Track metadata
@@ -441,7 +420,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=1,
-            qd_dofs=1
+            qd_dofs=1,
         )
 
         return self
@@ -454,7 +433,7 @@ class NewtonBuilder:
         axis: Union[newton.Axis, wp.vec3] = newton.Axis.Z,
         limit_lower: float = -1e6,
         limit_upper: float = 1e6,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add prismatic (slider) joint.
@@ -481,7 +460,7 @@ class NewtonBuilder:
             axis=axis,
             limit_lower=limit_lower,
             limit_upper=limit_upper,
-            **kwargs
+            **kwargs,
         )
 
         self._track_joint(
@@ -490,7 +469,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=1,
-            qd_dofs=1
+            qd_dofs=1,
         )
 
         return self
@@ -500,7 +479,7 @@ class NewtonBuilder:
         name: Optional[str] = None,
         parent: Union[str, int] = -1,
         child: Union[str, int] = -1,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add ball (spherical) joint.
@@ -516,9 +495,7 @@ class NewtonBuilder:
             self._unnamed_joint_count += 1
 
         joint_idx = self.builder.add_joint_ball(
-            parent=parent_idx,
-            child=child_idx,
-            **kwargs
+            parent=parent_idx, child=child_idx, **kwargs
         )
 
         self._track_joint(
@@ -527,7 +504,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=4,  # Quaternion
-            qd_dofs=3  # Angular velocity
+            qd_dofs=3,  # Angular velocity
         )
 
         return self
@@ -537,7 +514,7 @@ class NewtonBuilder:
         name: Optional[str] = None,
         parent: Union[str, int] = -1,
         child: Union[str, int] = -1,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add free (6-DOF) joint for floating base robots/objects.
@@ -553,9 +530,7 @@ class NewtonBuilder:
             self._unnamed_joint_count += 1
 
         joint_idx = self.builder.add_joint_free(
-            parent=parent_idx,
-            child=child_idx,
-            **kwargs
+            parent=parent_idx, child=child_idx, **kwargs
         )
 
         self._track_joint(
@@ -564,7 +539,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=7,  # Position + quaternion
-            qd_dofs=6  # Linear + angular velocity
+            qd_dofs=6,  # Linear + angular velocity
         )
 
         return self
@@ -574,7 +549,7 @@ class NewtonBuilder:
         name: Optional[str] = None,
         parent: Union[str, int] = -1,
         child: Union[str, int] = -1,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """Add fixed joint (rigid connection between bodies)."""
         parent_idx = self._resolve_body_idx(parent) if parent != -1 else -1
@@ -585,9 +560,7 @@ class NewtonBuilder:
             self._unnamed_joint_count += 1
 
         joint_idx = self.builder.add_joint_fixed(
-            parent=parent_idx,
-            child=child_idx,
-            **kwargs
+            parent=parent_idx, child=child_idx, **kwargs
         )
 
         self._track_joint(
@@ -596,7 +569,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=0,
-            qd_dofs=0
+            qd_dofs=0,
         )
 
         return self
@@ -608,7 +581,7 @@ class NewtonBuilder:
         child: Union[str, int] = -1,
         linear_axes: Optional[List] = None,
         angular_axes: Optional[List] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Add D6 (generic 6-DOF configurable) joint.
@@ -633,7 +606,7 @@ class NewtonBuilder:
             child=child_idx,
             linear_axes=linear_axes or [],
             angular_axes=angular_axes or [],
-            **kwargs
+            **kwargs,
         )
 
         # D6 DOF count depends on axes configuration
@@ -647,7 +620,7 @@ class NewtonBuilder:
             parent_idx=parent_idx,
             child_idx=child_idx,
             q_dofs=total_dofs,
-            qd_dofs=total_dofs
+            qd_dofs=total_dofs,
         )
 
         return self
@@ -661,7 +634,7 @@ class NewtonBuilder:
         xform: Optional[wp.transform] = None,
         floating: bool = False,
         collapse_fixed_joints: bool = False,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Load a URDF file as an articulation.
@@ -691,7 +664,7 @@ class NewtonBuilder:
             xform=xform,
             floating=floating,
             collapse_fixed_joints=collapse_fixed_joints,
-            **kwargs
+            **kwargs,
         )
 
         # Update articulation metadata
@@ -699,8 +672,10 @@ class NewtonBuilder:
         artic.joint_q_count = len(self.builder.joint_q) - artic.joint_q_start
         artic.joint_qd_count = len(self.builder.joint_qd) - artic.joint_qd_start
 
-        log.info(f"Loaded URDF '{file}' as articulation '{name}' "
-                 f"({artic.joint_q_count} DOFs)")
+        log.info(
+            f"Loaded URDF '{file}' as articulation '{name}' "
+            f"({artic.joint_q_count} DOFs)"
+        )
 
         return self
 
@@ -709,7 +684,7 @@ class NewtonBuilder:
         name: str,
         file: Union[str, Path],
         xform: Optional[wp.transform] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Load a USD (Universal Scene Description) file.
@@ -727,11 +702,7 @@ class NewtonBuilder:
 
         xform = xform or wp.transform([0, 0, 0], [0, 0, 0, 1])
 
-        self.builder.add_usd(
-            source=str(file),
-            xform=xform,
-            **kwargs
-        )
+        self.builder.add_usd(source=str(file), xform=xform, **kwargs)
 
         artic = self._articulations[name]
         artic.joint_q_count = len(self.builder.joint_q) - artic.joint_q_start
@@ -747,7 +718,7 @@ class NewtonBuilder:
         file: Union[str, Path],
         xform: Optional[wp.transform] = None,
         ignore_names: Optional[List[str]] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """
         Load a MuJoCo MJCF XML file.
@@ -767,10 +738,7 @@ class NewtonBuilder:
         xform = xform or wp.transform([0, 0, 0], [0, 0, 0, 1])
 
         self.builder.add_mjcf(
-            source=str(file),
-            xform=xform,
-            ignore_names=ignore_names or [],
-            **kwargs
+            source=str(file), xform=xform, ignore_names=ignore_names or [], **kwargs
         )
 
         artic = self._articulations[name]
@@ -791,7 +759,7 @@ class NewtonBuilder:
         xform: Optional[wp.transform] = None,
         mass: float = 1.0,
         free: bool = True,
-        **shape_kwargs
+        **shape_kwargs,
     ) -> "NewtonBuilder":
         """
         Convenience method to add a simple geometric object.
@@ -833,13 +801,17 @@ class NewtonBuilder:
                 radius, half_height = size[0], size[1]
             else:
                 radius = half_height = size
-            self.add_shape_capsule(body=name, radius=radius, half_height=half_height, **shape_kwargs)
+            self.add_shape_capsule(
+                body=name, radius=radius, half_height=half_height, **shape_kwargs
+            )
         elif shape == "cylinder":
             if isinstance(size, (list, tuple)):
                 radius, half_height = size[0], size[1]
             else:
                 radius = half_height = size
-            self.add_shape_cylinder(body=name, radius=radius, half_height=half_height, **shape_kwargs)
+            self.add_shape_cylinder(
+                body=name, radius=radius, half_height=half_height, **shape_kwargs
+            )
         else:
             raise ValueError(f"Unknown shape type: {shape}")
 
@@ -853,7 +825,7 @@ class NewtonBuilder:
         vel: Union[wp.vec3, Tuple, List] = (0, 0, 0),
         mass: float = 1.0,
         radius: Optional[float] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """Add a single particle to the scene."""
         radius = radius or self.builder.default_particle_radius
@@ -866,7 +838,7 @@ class NewtonBuilder:
         velocities: Optional[np.ndarray] = None,
         masses: Optional[np.ndarray] = None,
         radii: Optional[np.ndarray] = None,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """Add multiple particles at once."""
         self.builder.add_particles(
@@ -874,7 +846,7 @@ class NewtonBuilder:
             velocities=velocities,
             masses=masses,
             radii=radii,
-            **kwargs
+            **kwargs,
         )
         return self
 
@@ -883,18 +855,18 @@ class NewtonBuilder:
         lower: Union[wp.vec3, Tuple, List],
         upper: Union[wp.vec3, Tuple, List],
         spacing: float,
-        **kwargs
+        **kwargs,
     ) -> "NewtonBuilder":
         """Add a regular grid of particles."""
-        self.builder.add_particle_grid(lower=lower, upper=upper, spacing=spacing, **kwargs)
+        self.builder.add_particle_grid(
+            lower=lower, upper=upper, spacing=spacing, **kwargs
+        )
         return self
 
     # ---------- Environment Replication ----------
 
     def replicate_articulation(
-        self,
-        num_envs: int,
-        spacing: Union[float, Tuple[float, float, float]] = 2.0
+        self, num_envs: int, spacing: Union[float, Tuple[float, float, float]] = 2.0
     ) -> "NewtonBuilder":
         """
         Replicate the current scene for parallel environments.
@@ -915,23 +887,21 @@ class NewtonBuilder:
         # Note: Newton's replicate works on the whole builder, not per-articulation
         # For now, we'll just call it directly
         # TODO: Implement per-articulation replication if needed
-        log.warning("replicate_articulation() replicates the entire scene, not just one articulation")
+        log.warning(
+            "replicate_articulation() replicates the entire scene, not just one articulation"
+        )
 
         # We can't actually replicate here because it would duplicate everything
         # This should be called after all articulations are added
         # Store parameters for later
-        self._replicate_params = {
-            "num_envs": num_envs,
-            "spacing": spacing
-        }
+        self._replicate_params = {"num_envs": num_envs, "spacing": spacing}
 
         return self
 
     # ---------- Spawn State Generation ----------
 
     def set_joint_defaults(
-        self,
-        joint_defaults: Dict[str, Union[float, List[float]]]
+        self, joint_defaults: Dict[str, Union[float, List[float]]]
     ) -> "NewtonBuilder":
         """
         Set default joint positions for spawn state generation.
@@ -953,7 +923,7 @@ class NewtonBuilder:
     def make_spawn_state(
         self,
         name: str = "spawn",
-        joint_positions: Optional[Dict[str, Union[float, List[float]]]] = None
+        joint_positions: Optional[Dict[str, Union[float, List[float]]]] = None,
     ) -> Dict[str, np.ndarray]:
         """
         Generate initial spawn state for the scene.
@@ -1001,15 +971,28 @@ class NewtonBuilder:
                     # Free joint: [x, y, z, qx, qy, qz, qw]
                     # Use body's initial transform if available
                     body_spec = self._bodies.get(
-                        next((b.name for b in self._bodies.values()
-                             if b.body_idx == joint_spec.child_body_idx), None)
+                        next(
+                            (
+                                b.name
+                                for b in self._bodies.values()
+                                if b.body_idx == joint_spec.child_body_idx
+                            ),
+                            None,
+                        )
                     )
                     if body_spec:
                         xform = body_spec.xform
-                        joint_q.extend([
-                            xform.p[0], xform.p[1], xform.p[2],  # position
-                            xform.q[0], xform.q[1], xform.q[2], xform.q[3]  # quat (xyzw)
-                        ])
+                        joint_q.extend(
+                            [
+                                xform.p[0],
+                                xform.p[1],
+                                xform.p[2],  # position
+                                xform.q[0],
+                                xform.q[1],
+                                xform.q[2],
+                                xform.q[3],  # quat (xyzw)
+                            ]
+                        )
                     else:
                         joint_q.extend([0, 0, 0, 0, 0, 0, 1])
                 elif joint_spec.joint_type == newton.JointType.BALL:
@@ -1063,7 +1046,7 @@ class NewtonBuilder:
         parent_idx: int,
         child_idx: int,
         q_dofs: int,
-        qd_dofs: int
+        qd_dofs: int,
     ):
         """Internal helper to track joint metadata."""
         q_start = len(self._joints)  # Simplified - would need actual index tracking
@@ -1077,7 +1060,7 @@ class NewtonBuilder:
             q_start=q_start,
             q_size=q_dofs,
             qd_start=q_start,  # Simplified
-            qd_size=qd_dofs
+            qd_size=qd_dofs,
         )
 
         self._joints.append(joint_spec)
@@ -1100,7 +1083,7 @@ class NewtonBuilder:
             Tuple of (Newton Model, metadata dict)
         """
         # Apply environment replication if requested
-        if hasattr(self, '_replicate_params'):
+        if hasattr(self, "_replicate_params"):
             params = self._replicate_params
             log.info(f"Replicating scene {params['num_envs']} times...")
             # Newton's replicate needs to be called before finalize
@@ -1109,7 +1092,7 @@ class NewtonBuilder:
             log.warning("Environment replication not yet implemented in finalize()")
 
         # Finalize Newton model
-        log.info(f"Finalizing Newton model '{self.model_name}' on {device}...")
+        log.info(f"Finalizing Newton model '{self.model_name}' on {device}")
         model = self.builder.finalize(device=device)
 
         # Build metadata dict
@@ -1150,8 +1133,10 @@ class NewtonBuilder:
             "num_dofs": model.joint_dof_count,
         }
 
-        log.ok(f"Finalized model with {model.body_count} bodies, "
-               f"{model.joint_count} joints, {model.joint_dof_count} DOFs")
+        log.ok(
+            f"Finalized model with {model.body_count} bodies, "
+            f"{model.joint_count} joints, {model.joint_dof_count} DOFs"
+        )
 
         return model, metadata
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
+import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import cv2
 import genesis as gs
@@ -15,59 +17,69 @@ from ark.system.simulation.simulator_backend import SimulatorBackend
 from ark.system.genesis.genesis_multibody import GenesisMultiBody
 
 
-def import_class_from_directory(path: Path) -> tuple[type[Any], Any | None]:
-    """Load and return a class (and optional driver) from ``path``.
+def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
+    """!Load a class from ``path``.
 
     The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
-    class with the same name.  When the module exposes a ``Drivers`` class a
-    ``GENESIS_DRIVER`` attribute is returned alongside the main class.
-    """
+    class with the same name.  If a ``Drivers`` class is present in the module
+    its ``GENESIS_DRIVER`` attribute is returned alongside the main class.
 
+    @param path Path to the directory containing the module.
+    @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
+            driver is defined.
+    @rtype Tuple[type, Optional[type]]
+    """
+    # Extract the class name from the last part of the directory path (last directory name)
     class_name = path.name
-    file_path = (path / f"{class_name}.py").resolve()
+    file_path = path / f"{class_name}.py"
+    # get the full absolute path
+    file_path = file_path.resolve()
     if not file_path.exists():
         raise FileNotFoundError(f"The file {file_path} does not exist.")
 
-    module_dir = str(file_path.parent)
+    with open(file_path, "r", encoding="utf-8") as file:
+        tree = ast.parse(file.read(), filename=file_path)
+    # for imports
+    module_dir = os.path.dirname(file_path)
     sys.path.insert(0, module_dir)
-
-    try:
-        spec = importlib.util.spec_from_file_location(class_name, file_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load module from {file_path}")
-
+    # Extract class names from the AST
+    class_names = [
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    ]
+    # check if Sensor_Drivers is in the class_names
+    if "Drivers" in class_names:
+        # Load the module dynamically
+        spec = importlib.util.spec_from_file_location(class_names[0], file_path)
         module = importlib.util.module_from_spec(spec)
-        sys.modules[class_name] = module
+        sys.modules[class_names[0]] = module
         spec.loader.exec_module(module)
-    finally:
-        sys.modules.pop(class_name, None)
+
+        class_ = getattr(module, class_names[0])
         sys.path.pop(0)
 
-    drivers_attr: Any | None = None
-    drivers_cls = getattr(module, "Drivers", None)
-    if isinstance(drivers_cls, type):
-        drivers_attr = getattr(drivers_cls, "GENESIS_DRIVER", None)
+        drivers = class_.GENESIS_DRIVER.load()
+        class_names.remove("Drivers")
 
-    class_candidates = [
-        obj
-        for obj in vars(module).values()
-        if isinstance(obj, type) and obj.__module__ == module.__name__
-    ]
+    # Retrieve the class from the module (has to be list of one)
+    class_ = getattr(module, class_names[0])
 
-    target_class = next(
-        (cls for cls in class_candidates if cls.__name__ == class_name), None
-    )
-    if target_class is None:
-        non_driver_classes = [
-            cls for cls in class_candidates if cls.__name__ != "Drivers"
-        ]
-        if len(non_driver_classes) != 1:
-            raise ValueError(
-                f"Expected a single class definition in {file_path}, found {len(non_driver_classes)}."
-            )
-        target_class = non_driver_classes[0]
+    if len(class_names) != 1:
+        raise ValueError(
+            f"Expected exactly two class definition in {file_path}, but found {len(class_names)}."
+        )
 
-    return target_class, drivers_attr
+    # Load the module dynamically
+    spec = importlib.util.spec_from_file_location(class_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[class_name] = module
+    spec.loader.exec_module(module)
+
+    # Retrieve the class from the module (has to be list of one)
+    class_ = getattr(module, class_names[0])
+    sys.path.pop(0)
+
+    # Return the class
+    return class_, drivers
 
 
 class GenesisBackend(SimulatorBackend):
@@ -90,9 +102,7 @@ class GenesisBackend(SimulatorBackend):
         self.scene: gs.Scene | None = None
         self.scene_ready: bool = False
 
-        connection_mode = (
-            self.global_config["simulator"]["config"]["connection_mode"]
-        )
+        connection_mode = self.global_config["simulator"]["config"]["connection_mode"]
         show_viewer = connection_mode.upper() == "GUI"
 
         gs.init(backend=gs.cpu)
@@ -264,7 +274,7 @@ class GenesisBackend(SimulatorBackend):
             not sensor._is_suspended for sensor in self.sensor_ref.values()
         )
         return robots_ready and objects_ready and sensors_ready
-    
+
     def save_render(self) -> None:
         """Add the latest render to save folder if rendering is configured."""
 
@@ -289,7 +299,6 @@ class GenesisBackend(SimulatorBackend):
         # Convert RGB -> BGR for OpenCV
         img_bgr = img[..., ::-1]
         cv2.imwrite(str(save_path), img_bgr)
-
 
     def step(self) -> None:
         """!Advance the simulation by one timestep.
