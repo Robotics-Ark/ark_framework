@@ -58,7 +58,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
 
         class_ = getattr(module, class_names[0])
         sys.path.pop(0)
-        driver_cls = class_.ISAAC_DRIVER
+        driver_cls = class_.ISAAC_DRIVER.load()
         class_names.remove("Drivers")
 
     spec = importlib.util.spec_from_file_location(class_name, file_path)
@@ -69,8 +69,8 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     class_ = getattr(module, class_names[0])
     sys.path.pop(0)
 
-    if driver_cls is not None and hasattr(driver_cls, "value"):
-        driver_cls = driver_cls.value
+    # if driver_cls is not None and hasattr(driver_cls, "value"):
+    #     driver_cls = driver_cls.load()
 
     return class_, driver_cls
 
