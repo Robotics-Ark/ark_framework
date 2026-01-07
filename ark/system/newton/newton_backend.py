@@ -29,65 +29,67 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     """!Load a class from ``path``.
 
     The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
-    class with the same name.  If a ``Drivers`` class is present in the module
-    its ``PYBULLET_DRIVER`` attribute is returned alongside the main class.
+    class with the same name. If a ``Drivers`` class is present in the module
+    its ``NEWTON_DRIVER`` attribute is returned alongside the main class.
 
     @param path Path to the directory containing the module.
     @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
             driver is defined.
     @rtype Tuple[type, Optional[type]]
     """
-    # Extract the class name from the last part of the directory path (last directory name)
+
+    def _resolve_driver_entry(entry: Any | None) -> Optional[type]:
+        if entry is None:
+            return None
+        if hasattr(entry, "load") and callable(entry.load):
+            entry = entry.load()
+        if hasattr(entry, "value"):
+            entry = entry.value
+        return entry
+
     class_name = path.name
-    file_path = path / f"{class_name}.py"
-    # get the full absolute path
-    file_path = file_path.resolve()
+    file_path = (path / f"{class_name}.py").resolve()
     if not file_path.exists():
         raise FileNotFoundError(f"The file {file_path} does not exist.")
 
     with open(file_path, "r", encoding="utf-8") as file:
-        tree = ast.parse(file.read(), filename=file_path)
-    # for imports
+        tree = ast.parse(file.read(), filename=str(file_path))
+
     module_dir = os.path.dirname(file_path)
     sys.path.insert(0, module_dir)
-    # Extract class names from the AST
-    class_names = [
-        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-    ]
-    # check if Sensor_Drivers is in the class_names
-    if "Drivers" in class_names:
-        # Load the module dynamically
-        spec = importlib.util.spec_from_file_location(class_names[0], file_path)
+
+    try:
+        class_names = [
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        ]
+
+        spec = importlib.util.spec_from_file_location(class_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module spec from {file_path}")
         module = importlib.util.module_from_spec(spec)
-        sys.modules[class_names[0]] = module
+        sys.modules[class_name] = module
         spec.loader.exec_module(module)
 
-        class_ = getattr(module, class_names[0])
+        driver_cls = None
+        drivers_cls = getattr(module, "Drivers", None)
+        if isinstance(drivers_cls, type):
+            driver_entry = getattr(drivers_cls, "NEWTON_DRIVER", None)
+            driver_cls = _resolve_driver_entry(driver_entry)
+
+        if class_name in class_names:
+            target_class = getattr(module, class_name)
+        else:
+            non_driver_classes = [name for name in class_names if name != "Drivers"]
+            if len(non_driver_classes) != 1:
+                raise ValueError(
+                    f"Expected a single class definition in {file_path}, found {len(non_driver_classes)}."
+                )
+            target_class = getattr(module, non_driver_classes[0])
+
+        return target_class, driver_cls
+    finally:
         sys.path.pop(0)
-        breakpoint()
-        drivers = class_.NEWTON_DRIVER.load()
-        class_names.remove("Drivers")
-
-    # Retrieve the class from the module (has to be list of one)
-    class_ = getattr(module, class_names[0])
-
-    if len(class_names) != 1:
-        raise ValueError(
-            f"Expected exactly two class definition in {file_path}, but found {len(class_names)}."
-        )
-
-    # Load the module dynamically
-    spec = importlib.util.spec_from_file_location(class_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[class_name] = module
-    spec.loader.exec_module(module)
-
-    # Retrieve the class from the module (has to be list of one)
-    class_ = getattr(module, class_names[0])
-    sys.path.pop(0)
-
-    # Return the class
-    return class_, drivers
+        sys.modules.pop(class_name, None)
 
 
 # def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[Any]]]:
