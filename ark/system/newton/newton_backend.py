@@ -338,6 +338,7 @@ class NewtonBackend(SimulatorBackend):
         from ark.system.newton.scene_adapters import (
             XPBDAdapter,
             MuJoCoAdapter,
+            FeatherstoneAdapter,
         )
 
         # Map solver names to adapter classes
@@ -346,7 +347,8 @@ class NewtonBackend(SimulatorBackend):
             "solverxpbd": XPBDAdapter,
             "mujoco": MuJoCoAdapter,
             "solvermujoco": MuJoCoAdapter,
-            # TODO: Add Featherstone and SemiImplicit adapters in future
+            "featherstone": FeatherstoneAdapter,
+            "solverfeatherstone": FeatherstoneAdapter,
         }
 
         # Get adapter class (default to XPBD if unknown)
