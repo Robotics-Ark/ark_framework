@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import importlib.util
 import os
 import sys
@@ -38,14 +39,34 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
     @rtype Tuple[type, Optional[type]]
     """
 
-    def _resolve_driver_entry(entry: Any | None) -> Optional[type]:
+    def _resolve_driver_entry(entry: Any | None, module_dir: str) -> Optional[type]:
         if entry is None:
             return None
-        if hasattr(entry, "load") and callable(entry.load):
-            entry = entry.load()
+        if isinstance(entry, type):
+            return entry
         if hasattr(entry, "value"):
             entry = entry.value
-        return entry
+        if isinstance(entry, type):
+            return entry
+        if isinstance(entry, str):
+            module_path, class_name = entry.rsplit(".", 1)
+            try:
+                module = importlib.import_module(module_path)
+            except ModuleNotFoundError:
+                module_file = Path(module_dir) / f"{module_path.split('.')[-1]}.py"
+                if not module_file.exists():
+                    raise
+                spec = importlib.util.spec_from_file_location(module_path, module_file)
+                if spec is None or spec.loader is None:
+                    raise ImportError(
+                        f"Could not load module from '{module_file}' for driver '{entry}'"
+                    )
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            return getattr(module, class_name)
+        if hasattr(entry, "load") and callable(entry.load):
+            return entry.load()
+        return None
 
     class_name = path.name
     file_path = (path / f"{class_name}.py").resolve()
@@ -74,7 +95,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
         drivers_cls = getattr(module, "Drivers", None)
         if isinstance(drivers_cls, type):
             driver_entry = getattr(drivers_cls, "NEWTON_DRIVER", None)
-            driver_cls = _resolve_driver_entry(driver_entry)
+            driver_cls = _resolve_driver_entry(driver_entry, module_dir)
 
         if class_name in class_names:
             target_class = getattr(module, class_name)
