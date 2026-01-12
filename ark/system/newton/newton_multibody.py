@@ -95,9 +95,8 @@ class NewtonMultiBody(SimComponent):
         orn = self.config.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
         mass = float(self.config.get("mass", 0.0))
         transform = _as_transform(pos, orn)
+        armature = self.config.get("armature", None)
 
-        pre_body_count = self.builder.body_count
-        body_idx = self.builder.add_body(xform=transform, mass=mass, key=self.name)
         size = self.config.get("size", [1.0, 1.0, 1.0])
 
         # Validate size array
@@ -109,17 +108,71 @@ class NewtonMultiBody(SimComponent):
             size = [1.0, 1.0, 1.0]
 
         hx, hy, hz = [abs(float(component)) * 0.5 for component in size]
-        self.builder.add_shape_box(body_idx, hx=hx, hy=hy, hz=hz)
 
-        # Store the body index directly (stable across finalization)
-        self._body_indices = [body_idx]
-        self._body_names = [self.name]  # Keep for logging
+        shape_cfg = self.builder.default_shape_cfg.copy()
+        if "contact_ke" in self.config:
+            shape_cfg.ke = float(self.config["contact_ke"])
+        if "contact_kd" in self.config:
+            shape_cfg.kd = float(self.config["contact_kd"])
+        if "friction" in self.config:
+            shape_cfg.mu = float(self.config["friction"])
+        if "restitution" in self.config:
+            shape_cfg.restitution = float(self.config["restitution"])
+        if "rolling_friction" in self.config:
+            shape_cfg.rolling_friction = float(self.config["rolling_friction"])
+        if "torsional_friction" in self.config:
+            shape_cfg.torsional_friction = float(self.config["torsional_friction"])
+        if "thickness" in self.config:
+            shape_cfg.thickness = float(self.config["thickness"])
+        if "contact_margin" in self.config:
+            shape_cfg.contact_margin = float(self.config["contact_margin"])
 
-        log.info(
-            f"Newton multi-body '{self.name}': Created primitive box "
-            f"(size=[{hx*2:.3f}, {hy*2:.3f}, {hz*2:.3f}], mass={mass:.3f}), "
-            f"body_idx={body_idx}"
-        )
+        # Hydroelastic contact parameters (SDF-based volumetric contacts)
+        # Required for stable grasping without penetration
+        if self.config.get("is_hydroelastic"):
+            shape_cfg.is_hydroelastic = True
+            if "k_hydro" in self.config:
+                shape_cfg.k_hydro = float(self.config["k_hydro"])
+            if "sdf_max_resolution" in self.config:
+                shape_cfg.sdf_max_resolution = int(self.config["sdf_max_resolution"])
+            log.info(
+                f"Newton multi-body '{self.name}': Hydroelastic contacts enabled "
+                f"(k_hydro={getattr(shape_cfg, 'k_hydro', 'default')}, "
+                f"sdf_max_resolution={getattr(shape_cfg, 'sdf_max_resolution', 'default')})"
+            )
+
+        # Static bodies (mass=0) are attached to the world body (-1) for proper
+        # collision detection with MuJoCo solver. Dynamic bodies get their own body.
+        if mass == 0.0:
+            # Static body - attach shape directly to world body
+            body_idx = -1
+            self.builder.add_shape_box(body_idx, hx=hx, hy=hy, hz=hz, xform=transform, cfg=shape_cfg)
+            self._body_indices = []  # No dynamic body to track
+            self._body_names = []
+            log.info(
+                f"Newton multi-body '{self.name}': Created static box attached to world "
+                f"(size=[{hx*2:.3f}, {hy*2:.3f}, {hz*2:.3f}], pos={pos})"
+            )
+        else:
+            # Dynamic body - create a new body and attach shape
+            if armature is not None:
+                body_idx = self.builder.add_body(
+                    xform=transform, mass=mass, armature=float(armature), key=self.name
+                )
+            else:
+                body_idx = self.builder.add_body(xform=transform, mass=mass, key=self.name)
+
+            self.builder.add_shape_box(body_idx, hx=hx, hy=hy, hz=hz, cfg=shape_cfg)
+
+            # Store the body index directly (stable across finalization)
+            self._body_indices = [body_idx]
+            self._body_names = [self.name]  # Keep for logging
+
+            log.info(
+                f"Newton multi-body '{self.name}': Created primitive box "
+                f"(size=[{hx*2:.3f}, {hy*2:.3f}, {hz*2:.3f}], mass={mass:.3f}), "
+                f"body_idx={body_idx}"
+            )
 
     def _load_ground_plane(self) -> None:
         """Add a ground plane collision surface to the scene."""
@@ -190,6 +243,7 @@ class NewtonMultiBody(SimComponent):
         orientation = pose[3:].tolist()
         linear_velocity = vel[:3].tolist()
         angular_velocity = vel[3:].tolist()
+
         return {
             "name": self.name,
             "position": position,

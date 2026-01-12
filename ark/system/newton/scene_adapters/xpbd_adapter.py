@@ -34,6 +34,9 @@ class XPBDAdapter(SolverSceneAdapter):
     straightforward. The main complexity is in solver validation - XPBD
     requires many iterations for stiff position control.
 
+    XPBD is a maximal coordinate solver, so it needs coordinate reconstruction
+    after each step to keep joint_q/joint_qd synchronized with body state.
+
     Example:
         >>> adapter = XPBDAdapter(builder)
         >>> adapter.adapt_ground_plane(descriptor)
@@ -41,6 +44,11 @@ class XPBDAdapter(SolverSceneAdapter):
         >>> solver = adapter.create_solver(model, sim_cfg)
         # Returns SolverXPBD with appropriate iteration count
     """
+
+    @property
+    def needs_coordinate_reconstruction(self) -> bool:
+        """XPBD operates in maximal coordinates, needs IK reconstruction."""
+        return True
 
     @property
     def solver_name(self) -> str:
@@ -155,3 +163,23 @@ class XPBDAdapter(SolverSceneAdapter):
             )
 
         return issues
+
+    def post_step(
+        self,
+        model: "newton.Model",
+        state: "newton.State",
+    ) -> None:
+        """Reconstruct joint coordinates from body state after XPBD step.
+
+        XPBD operates in maximal coordinates (body positions/velocities).
+        After stepping, joint_q/joint_qd may drift from body state. This
+        method calls eval_ik() to reconstruct consistent joint coordinates.
+        """
+        import newton
+
+        newton.eval_ik(
+            model,
+            state,
+            state.joint_q,
+            state.joint_qd,
+        )

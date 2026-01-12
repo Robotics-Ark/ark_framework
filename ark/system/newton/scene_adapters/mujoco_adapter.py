@@ -37,6 +37,9 @@ class MuJoCoAdapter(SolverSceneAdapter):
     thin box geometry placed at the world origin. This provides equivalent
     collision behavior for most scenarios.
 
+    MuJoCo uses maximal coordinates internally, so it needs coordinate
+    reconstruction after each step to keep joint_q/joint_qd synchronized.
+
     Example:
         >>> adapter = MuJoCoAdapter(builder)
         >>> adapter.adapt_ground_plane(descriptor)
@@ -44,6 +47,11 @@ class MuJoCoAdapter(SolverSceneAdapter):
         >>> solver = adapter.create_solver(model, sim_cfg)
         # Returns SolverMuJoCo with default parameters
     """
+
+    @property
+    def needs_coordinate_reconstruction(self) -> bool:
+        """MuJoCo may drift from joint coords, needs IK reconstruction."""
+        return True
 
     @property
     def solver_name(self) -> str:
@@ -117,32 +125,56 @@ class MuJoCoAdapter(SolverSceneAdapter):
         model: "newton.Model",
         sim_cfg: Dict[str, Any]
     ) -> "newton.solvers.SolverBase":
-        """Create MuJoCo solver with default parameters.
+        """Create MuJoCo solver optimized for grasping.
 
-        MuJoCo solver uses robust defaults (20 iterations, CG solver,
-        implicitfast integrator) that work well for most robotic scenarios.
-        Unlike XPBD, MuJoCo doesn't require iteration tuning because its
-        direct solver achieves quadratic convergence.
+        MuJoCo solver is configured based on Newton's panda_hydro example
+        which demonstrates successful gripper-object interaction. Key settings:
+        - use_mujoco_contacts=False: Use Newton's contact system
+        - impratio=1000.0: High implicit/explicit friction cone ratio for grasping
+        - cone="elliptic": Elliptic friction cone (more accurate than pyramidal)
 
         Args:
             model: Finalized Newton model
-            sim_cfg: Simulation config (solver_iterations ignored - MuJoCo
-                     uses its own defaults)
+            sim_cfg: Simulation config with optional newton_physics.mujoco overrides
 
         Returns:
-            Configured SolverMuJoCo instance with:
-            - iterations: 20 (default, sufficient for robots)
-            - ls_iterations: 10 (line search for Newton solver)
-            - solver: "cg" (Conjugate Gradient, fast)
-            - integrator: "implicitfast" (recommended for control)
+            Configured SolverMuJoCo instance optimized for manipulation
         """
         import newton
 
-        log.info("MuJoCo adapter: Creating solver (recommended for articulated robots)")
+        # Extract MuJoCo-specific settings from config if present
+        newton_cfg = sim_cfg.get("newton_physics", {})
+        mujoco_cfg = newton_cfg.get("mujoco", {})
 
-        # MuJoCo solver uses default parameters (20 iterations, CG solver)
-        # These are robust for most scenarios and don't require tuning
-        return newton.solvers.SolverMuJoCo(model)
+        # Default parameters based on panda_hydro example (successful grasping)
+        use_mujoco_contacts = mujoco_cfg.get("use_mujoco_contacts", False)
+        solver_type = mujoco_cfg.get("solver", "newton")
+        integrator = mujoco_cfg.get("integrator", "implicitfast")
+        cone = mujoco_cfg.get("cone", "elliptic")
+        iterations = int(mujoco_cfg.get("iterations", 15))
+        ls_iterations = int(mujoco_cfg.get("ls_iterations", 100))
+        njmax = int(mujoco_cfg.get("njmax", 500))
+        nconmax = int(mujoco_cfg.get("nconmax", 500))
+        # impratio: High value creates stiff friction cone for better grasping
+        impratio = float(mujoco_cfg.get("impratio", 1000.0))
+
+        log.info(
+            f"MuJoCo adapter: Creating solver (impratio={impratio}, "
+            f"cone={cone}, iterations={iterations})"
+        )
+
+        return newton.solvers.SolverMuJoCo(
+            model,
+            use_mujoco_contacts=use_mujoco_contacts,
+            solver=solver_type,
+            integrator=integrator,
+            cone=cone,
+            njmax=njmax,
+            nconmax=nconmax,
+            iterations=iterations,
+            ls_iterations=ls_iterations,
+            impratio=impratio,
+        )
 
     def validate_scene(self, global_config: Dict[str, Any]) -> list[str]:
         """Validate MuJoCo-specific configuration requirements.
@@ -178,3 +210,23 @@ class MuJoCoAdapter(SolverSceneAdapter):
             )
 
         return issues
+
+    def post_step(
+        self,
+        model: "newton.Model",
+        state: "newton.State",
+    ) -> None:
+        """Reconstruct joint coordinates from body state after MuJoCo step.
+
+        MuJoCo operates with its own internal state representation. After
+        stepping, joint_q/joint_qd may drift from body state. This method
+        calls eval_ik() to reconstruct consistent joint coordinates.
+        """
+        import newton
+
+        newton.eval_ik(
+            model,
+            state,
+            state.joint_q,
+            state.joint_qd,
+        )

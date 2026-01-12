@@ -20,10 +20,18 @@ Example:
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict
 
+import newton
+
 if TYPE_CHECKING:
-    import newton
     from ark.system.newton.newton_builder import NewtonBuilder
     from ark.system.newton.geometry_descriptors import GeometryDescriptor
+
+
+# Collision flag - centralize version detection here once
+try:
+    _COLLIDE_FLAG: int = newton.ShapeFlags.COLLIDE
+except AttributeError:
+    _COLLIDE_FLAG: int = 1  # Fallback for older Newton versions (bit 0)
 
 
 class SolverSceneAdapter(ABC):
@@ -35,6 +43,7 @@ class SolverSceneAdapter(ABC):
     1. Translate generic geometry descriptions to solver-compatible forms
     2. Handle solver-specific constraints (e.g., MuJoCo ground plane limitation)
     3. Create and configure the appropriate solver instance
+    4. Handle post-step coordinate reconstruction if needed
 
     The adapter pattern keeps solver-specific logic isolated, making it easy
     to add new solvers without modifying existing code.
@@ -42,7 +51,11 @@ class SolverSceneAdapter(ABC):
     Attributes:
         builder: NewtonBuilder instance that provides access to Newton's
                  ModelBuilder for adding geometry
+        collide_flag: Solver-appropriate collision flag value
     """
+
+    # Class-level collision flag (shared by all instances)
+    collide_flag: int = _COLLIDE_FLAG
 
     def __init__(self, builder: "NewtonBuilder"):
         """Initialize adapter with a scene builder.
@@ -161,3 +174,40 @@ class SolverSceneAdapter(ABC):
         """
         # Base implementation - subclasses can override to add solver-specific checks
         return []
+
+    @property
+    def needs_coordinate_reconstruction(self) -> bool:
+        """Whether solver needs joint coordinates reconstructed from body state.
+
+        Maximal coordinate solvers (XPBD, MuJoCo) operate on body positions/velocities
+        and may drift from joint coordinates. These solvers need eval_ik() called
+        after each step to reconstruct joint_q/joint_qd from body state.
+
+        Generalized coordinate solvers (Featherstone) integrate directly in joint
+        space and don't need reconstruction.
+
+        Returns:
+            True for maximal coordinate solvers (XPBD, MuJoCo).
+            False for generalized coordinate solvers (Featherstone).
+        """
+        return False
+
+    def post_step(
+        self,
+        model: "newton.Model",
+        state: "newton.State",
+    ) -> None:
+        """Perform solver-specific post-step updates.
+
+        This method is called after each physics step to handle solver-specific
+        post-processing. The primary use case is coordinate reconstruction for
+        maximal coordinate solvers.
+
+        Override in subclasses that need IK reconstruction or other post-step work.
+        The base implementation does nothing (suitable for generalized coord solvers).
+
+        Args:
+            model: Newton model instance
+            state: Current simulation state after stepping
+        """
+        pass

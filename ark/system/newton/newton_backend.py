@@ -16,6 +16,8 @@ import warp as wp
 
 from ark.tools.log import log
 from ark.system.simulation.simulator_backend import SimulatorBackend
+
+from ark.system.newton.collision_pipeline_factory import CollisionPipelineFactory
 from ark.system.newton.newton_builder import NewtonBuilder
 from ark.system.newton.newton_camera_driver import NewtonCameraDriver
 from ark.system.newton.newton_lidar_driver import NewtonLiDARDriver
@@ -113,70 +115,6 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
         sys.modules.pop(class_name, None)
 
 
-# def import_class_from_directory(path: Path) -> tuple[type[Any], Optional[type[Any]]]:
-#     """Import a class (and optional driver enum) from ``path``.
-#         The helper searches for ``<ClassName>.py`` inside ``path`` and imports the
-#     class with the same name.  If a ``Drivers`` class is present in the module
-#     its ``NEWTON_DRIVER`` attribute is returned alongside the main class.
-#
-#     @param path Path to the directory containing the module.
-#     @return Tuple ``(cls, driver_cls)`` where ``driver_cls`` is ``None`` when no
-#             driver is defined.
-#     @rtype Tuple[type, Optional[type]]
-#
-#     """
-#
-#     ## Extract the class name from the last part of the directory path (last directory name)
-#     class_name = path.name
-#     file_path = (
-#         path / f"{class_name}.py"
-#     ).resolve()  ##just add the resolve here instead of newline
-#     ## Defensive check for the filepath, raise error if not found
-#     if not file_path.exists():
-#         raise FileNotFoundError(f"The file {file_path} does not exist.")
-#
-#     with open(file_path, "r", encoding="utf-8") as handle:
-#         tree = ast.parse(handle.read(), filename=str(file_path))
-#
-#     module_dir = str(file_path.parent)
-#     sys.path.insert(0, module_dir)
-#     ## Import the module dynamically and extract class names defensively
-#     try:
-#         class_names = [
-#             node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-#         ]
-#         drivers_attr: Optional[type[Any]] = None
-#
-#         spec = importlib.util.spec_from_file_location(class_name, file_path)
-#         if spec is None or spec.loader is None:
-#             raise ImportError(f"Could not create module spec for {file_path}")
-#         module = importlib.util.module_from_spec(spec)
-#         sys.modules[class_name] = module
-#         spec.loader.exec_module(module)
-#
-#         if "Drivers" in class_names:
-#             # Load the module dynamically
-#             spec = importlib.util.spec_from_file_location(class_names[0], file_path)
-#             module = importlib.util.module_from_spec(spec)
-#             sys.modules[class_names[0]] = module
-#             spec.loader.exec_module(module)
-#
-#             class_ = getattr(module, class_names[0])
-#             sys.path.pop(0)
-#
-#             breakpoint()
-#             drivers = class_.NEWTON_DRIVER.load()
-#             class_names.remove("Drivers")
-#
-#         target_name = class_names[0] if class_names else class_name
-#         target_cls = getattr(module, target_name)
-#     finally:
-#         sys.path.pop(0)
-#         sys.modules.pop(class_name, None)
-#
-#     return target_cls, drivers
-
-
 class NewtonBackend(SimulatorBackend):
     """Simulation backend using the Newton physics engine."""
 
@@ -235,6 +173,12 @@ class NewtonBackend(SimulatorBackend):
             joint_defaults["limit_kd"] = float(joint_cfg["limit_kd"])
         if "armature" in joint_cfg:
             joint_defaults["armature"] = float(joint_cfg["armature"])
+        if "effort_limit" in joint_cfg:
+            joint_defaults["effort_limit"] = float(joint_cfg["effort_limit"])
+        if "velocity_limit" in joint_cfg:
+            joint_defaults["velocity_limit"] = float(joint_cfg["velocity_limit"])
+        if "friction" in joint_cfg:
+            joint_defaults["friction"] = float(joint_cfg["friction"])
 
         # Apply via NewtonBuilder
         self.scene_builder.set_default_joint_config(**joint_defaults)
@@ -257,6 +201,15 @@ class NewtonBackend(SimulatorBackend):
         self.global_config.setdefault("action_channels", None)
 
         self.sim_frequency = float(sim_cfg.get("sim_frequency", 240.0))
+        node_frequency = float(self.global_config.get("simulator", {}).get("node_frequency", self.sim_frequency))
+        if node_frequency > 0.0 and abs(node_frequency - self.sim_frequency) > 1e-6:
+            log.warning(
+                "Newton backend: sim_frequency=%.3f != node_frequency=%.3f. "
+                "Backend.step() advances time at sim_frequency but is called at node_frequency; "
+                "for real-time/stable control, consider making them equal.",
+                self.sim_frequency,
+                node_frequency,
+            )
         self.sim_substeps = max(int(sim_cfg.get("substeps", 1)), 1)
         base_dt = 1.0 / self.sim_frequency if self.sim_frequency > 0 else 0.005
         self.set_time_step(base_dt)
@@ -286,6 +239,41 @@ class NewtonBackend(SimulatorBackend):
                 )
 
         self._apply_joint_defaults(sim_cfg)
+
+        # Set robot collision shape defaults
+        newton_cfg = sim_cfg.get("newton_physics", {})
+        robot_shape_cfg = newton_cfg.get("robot_shape", {})
+        if isinstance(robot_shape_cfg, dict) and robot_shape_cfg:
+            robot_shape_kwargs: dict[str, Any] = dict(robot_shape_cfg)
+            # Backwards-compatible aliases
+            if "mu" not in robot_shape_kwargs and "friction" in robot_shape_kwargs:
+                robot_shape_kwargs["mu"] = robot_shape_kwargs.pop("friction")
+            if "mu" not in robot_shape_kwargs and "robot_friction" in newton_cfg:
+                robot_shape_kwargs["mu"] = float(newton_cfg.get("robot_friction", 2.0))
+            self.scene_builder.set_default_shape_config(**robot_shape_kwargs)
+            default_cfg = self.scene_builder.builder.default_shape_cfg
+            mu = getattr(default_cfg, "mu", None)
+            ke = getattr(default_cfg, "ke", None)
+            kd = getattr(default_cfg, "kd", None)
+            is_hydro = getattr(default_cfg, "is_hydroelastic", False)
+            k_hydro = getattr(default_cfg, "k_hydro", None) if is_hydro else None
+            if is_hydro:
+                log.info(
+                    "Newton backend: Set default robot ShapeConfig (mu=%s, is_hydroelastic=True, k_hydro=%s)",
+                    mu,
+                    k_hydro,
+                )
+            else:
+                log.info(
+                    "Newton backend: Set default robot ShapeConfig (mu=%s, ke=%s, kd=%s)",
+                    mu,
+                    ke,
+                    kd,
+                )
+        else:
+            robot_friction = float(newton_cfg.get("robot_friction", 2.0))
+            self.scene_builder.set_default_shape_config(mu=robot_friction)
+            log.info("Newton backend: Set robot shape friction mu=%s", robot_friction)
 
         # Add ground plane if requested (adapter handles solver-specific implementation)
         ground_cfg = self.global_config.get("ground_plane", {})
@@ -328,6 +316,13 @@ class NewtonBackend(SimulatorBackend):
             f"{self.model.joint_count} joints, {self.model.body_count} bodies"
         )
 
+        # Debug: Print shape count and body names for collision diagnostics
+        shape_count = len(self.scene_builder.builder.shape_type) if hasattr(self.scene_builder.builder, "shape_type") else "N/A"
+        log.info(f"Newton backend: Total collision shapes created: {shape_count}")
+        if hasattr(self.scene_builder.builder, "body_key"):
+            body_names = list(self.scene_builder.builder.body_key)
+            log.info(f"Newton backend: Body names: {body_names}")
+
         # Apply safety multiplier to rigid_contact_max to handle complex mesh collisions
         # Newton calculates a conservative contact limit, but complex mesh-mesh interactions
         # (like Franka Panda's 10 STL collision geometries) can exceed this estimate.
@@ -347,7 +342,6 @@ class NewtonBackend(SimulatorBackend):
         self.state_current = self.model.state()
         self.state_next = self.model.state()
         self.control = self.model.control()
-        self.contacts = self.model.collide(self.state_current)
 
         # Use model arrays for initial FK (these contain initial config from builder)
         # This matches Newton's own examples (see test_franka_standalone.py)
@@ -356,6 +350,12 @@ class NewtonBackend(SimulatorBackend):
         )
         newton.eval_fk(
             self.model, self.model.joint_q, self.model.joint_qd, self.state_next
+        )
+
+        # Optional collision pipeline configuration (improves contact-rich scenes)
+        self.collision_pipeline = CollisionPipelineFactory.from_config(self.model, sim_cfg)
+        self.contacts, _ = CollisionPipelineFactory.collide(
+            self.model, self.state_current, self.collision_pipeline
         )
 
         self._state_accessor: Callable[[], newton.State] = lambda: self.state_current
@@ -378,20 +378,30 @@ class NewtonBackend(SimulatorBackend):
         # drives all joints toward zero instead of maintaining current positions!
         # This follows Newton's own examples (see example_basic_urdf.py:72)
         if self.control.joint_target_pos is not None and self.state_current.joint_q is not None:
-            self.control.joint_target_pos.assign(self.state_current.joint_q)
-            target_sample = self.control.joint_target_pos.numpy()[:min(7, len(self.control.joint_target_pos))]
-            log.ok(f"Newton backend: Initialized control.joint_target_pos from state: {target_sample}")
+            target_len = len(self.control.joint_target_pos)
+            state_len = len(self.state_current.joint_q)
+            if target_len != state_len:
+                log.warning(
+                    "Newton backend: joint_target_pos length (%d) != joint_q length (%d); "
+                    "copying overlapping range only.",
+                    target_len,
+                    state_len,
+                )
+            copy_len = min(target_len, state_len)
+            target_np = self.control.joint_target_pos.numpy().copy()
+            state_np = self.state_current.joint_q.numpy()
+            target_np[:copy_len] = state_np[:copy_len]
+            self.control.joint_target_pos.assign(target_np)
+            target_sample = self.control.joint_target_pos.numpy()[: min(7, target_len)]
+            log.ok(
+                "Newton backend: Initialized control.joint_target_pos from state: %s",
+                target_sample,
+            )
         else:
             log.error("Newton backend: FAILED to initialize control.joint_target_pos - array is None!")
 
         if self.control.joint_target_vel is not None:
             self.control.joint_target_vel.zero_()
-
-        # # Initialize viewer manager
-        # self.viewer_manager = NewtonViewerManager(sim_cfg, self.model)
-        # if self.viewer_manager.gui_enabled:
-        #     # When GUI is active, step physics from the main thread to keep GL interop happy.
-        #     self.custom_event_loop = self._viewer_event_loop
 
         # Log successful initialization
         log.ok(
@@ -654,7 +664,13 @@ class NewtonBackend(SimulatorBackend):
 
         for _ in range(self.sim_substeps):
             self.state_current.clear_forces()
-            self.contacts = self.model.collide(self.state_current)
+            self.contacts, pipeline_ok = CollisionPipelineFactory.collide(
+                self.model, self.state_current, self.collision_pipeline
+            )
+            if not pipeline_ok:
+                # Pipeline failed, disable it for future steps
+                self.collision_pipeline = None
+
             self.solver.step(
                 self.state_current,
                 self.state_next,
@@ -663,6 +679,10 @@ class NewtonBackend(SimulatorBackend):
                 self._substep_dt,
             )
             self.state_current, self.state_next = self.state_next, self.state_current
+
+        # Post-step processing (e.g., coordinate reconstruction for maximal coord solvers)
+        # Each adapter knows if it needs IK reconstruction and handles it in post_step()
+        self.adapter.post_step(self.model, self.state_current)
 
         self._simulation_time += self._time_step
 
