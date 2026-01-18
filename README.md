@@ -67,7 +67,7 @@ Think of it as the PyTorch + Gym for robotics — simple, modular, and built for
   title = {An Open-source Python-based Framework for Embodied AI},
   author = {Magnus Dierking, Christopher E. Mower, Refinath S N, Abhineet Kumar, Huang Helong, Jiacheng Qiu, Wei Chen, Huidong Liang, Huang Guowei, Jan Peters, Quan Xingyue, Jun Wang, Haitham Bou-Ammar},
   year = {2025},
-  howpublished = {\url{https://ark_robotics.github.io/}},
+  howpublished = {\url{https://robotics-ark.github.io/ark_robotics.github.io/}},
   note = {Technical report}
 }
 ```
