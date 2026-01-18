@@ -60,6 +60,17 @@ Think of it as the PyTorch + Gym for robotics — simple, modular, and built for
 - [⚙️ Documentation]()  
 - [📄 Research Paper]()
 
+# Installation
+
+1. Create and activate a conda environment.
+  - Python 3.12 is recommended.
+  - E.g, `conda create -n ark python=3.12`
+2. Clone this repository and change directory `cd ark_framework`.
+3. Install [zenoh-python](https://github.com/eclipse-zenoh/zenoh-python)
+   - Installation instructions are found [here](https://github.com/eclipse-zenoh/zenoh-python#how-to-install-it).
+   - It is recommended to [enable zenoh features](https://github.com/eclipse-zenoh/zenoh-python#enable-zenoh-features).
+4. Install: `pip install -e .`
+
 ## Cite
 
 ```bibtex

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ark"
+version = "1.0.0"
+requires-python = ">=3.12"
+description = "The Ark framework."
+
+authors = [
+  { name = "Christopher E. Mower" },
+  { name = "Refinath S N" }
+]
+
+maintainers = [
+  { name = "Christopher E. Mower" },
+  { name = "Refinath S N" }
+]
+
+dependencies = [
+  "protobuf>=4.21",
+  "numpy",
+  "ark_msgs @ git+https://github.com/Robotics-Ark/ark_msgs.git"
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
