@@ -61,7 +61,7 @@ def import_class_from_directory(path: Path) -> tuple[type, Optional[type]]:
         class_ = getattr(module, class_names[0])
         sys.path.pop(0)
 
-        drivers = class_.PYBULLET_DRIVER
+        drivers = class_.PYBULLET_DRIVER.load()
         class_names.remove("Drivers")
 
     # Retrieve the class from the module (has to be list of one)
@@ -235,7 +235,6 @@ class PyBulletBackend(SimulatorBackend):
         if class_path.is_file():
             class_path = class_path.parent
         RobotClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass.value
         driver = DriverClass(name, robot_config, self.client)
         robot = RobotClass(name=name, global_config=self.global_config, driver=driver)
 
@@ -268,7 +267,6 @@ class PyBulletBackend(SimulatorBackend):
             class_path = class_path.parent
 
         SensorClass, DriverClass = import_class_from_directory(class_path)
-        DriverClass = DriverClass.value
 
         attached_body_id = None
         if sensor_config["sim_config"].get("attach", None):

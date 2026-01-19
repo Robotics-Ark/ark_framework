@@ -65,22 +65,29 @@ class SimulatorNode(BaseNode, ABC):
         self.backend_type = self.global_config["simulator"]["backend_type"]
         if self.backend_type == "pybullet":
             from ark.system.pybullet.pybullet_backend import PyBulletBackend
+
             self.backend = PyBulletBackend(self.global_config)
         elif self.backend_type == "mujoco":
             from ark.system.mujoco.mujoco_backend import MujocoBackend
+
             self.backend = MujocoBackend(self.global_config)
         elif self.backend_type == "genesis":
             from ark.system.genesis.genesis_backend import GenesisBackend
+
             self.backend = GenesisBackend(self.global_config)
         elif self.backend_type in ["isaacsim", "isaac_sim", "isaac"]:
             from ark.system.isaac.isaac_backend import IsaacSimBackend
+
             self.backend = IsaacSimBackend(self.global_config)
+        elif self.backend_type == "newton":
+            from ark.system.newton.newton_backend import NewtonBackend
+
+            self.backend = NewtonBackend(self.global_config)
         else:
             raise ValueError(f"Unsupported backend '{self.backend_type}'")
 
         # to initialize a scene with objects that dont need to publish, e.g. for visuals
         self.initialize_scene()
-        self.step_physics()
 
         ## Reset Backend Service
         reset_service_name = f"{namespace}/" + self.name + "/backend/reset/sim"
@@ -152,6 +159,10 @@ class SimulatorNode(BaseNode, ABC):
             config["objects"] = self._load_section(cfg, global_config, "objects")
         except KeyError as e:
             config["objects"] = {}
+        try:
+            config["ground_plane"] = cfg.get("ground_plane", {})
+        except KeyError:
+            config["ground_plane"] = {}
 
         log.ok("Config file under " + global_config.str + " loaded successfully.")
         self.global_config = config
@@ -255,3 +266,39 @@ class SimulatorNode(BaseNode, ABC):
         """!Shut down the node and the underlying backend."""
         self.backend.shutdown_backend()
         super().kill_node()
+
+
+def main(node_cls: type[SimulatorNode], *args) -> None:
+    """!
+    Initializes and runs a node.
+
+    This function creates an instance of the specified `node_cls`, spins the node to handle messages,
+    and handles exceptions that occur during the node's execution.
+
+    @param node_cls: The class of the node to run.
+    @type node_cls: Type[BaseNode]
+    """
+
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(node_cls.get_cli_doc())
+        sys.exit(0)
+
+    node = None
+    log.ok(f"Initializing {node_cls.__name__} type node")
+    try:
+        node = node_cls(*args)
+        log.ok(f"Initialized {node.name}")
+        while not node._done:
+            node._step_simulation()
+    except KeyboardInterrupt:
+        log.warning(f"User killed node {node_cls.__name__}")
+    except Exception:
+        tb = traceback.format_exc()
+        div = "=" * 30
+        log.error(f"Exception thrown during node execution:\n{div}\n{tb}\n{div}")
+    finally:
+        if node is not None:
+            node.kill_node()
+            log.ok(f"Finished running node {node_cls.__name__}")
+        else:
+            log.warning(f"Node {node_cls.__name__} failed during initialization")
