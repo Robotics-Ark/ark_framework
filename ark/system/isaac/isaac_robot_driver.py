@@ -94,7 +94,14 @@ class IsaacSimRobotDriver(SimRobotDriver):
             import_config.merge_fixed_joints = False
             import_config.convex_decomp = False
             import_config.import_inertia_tensor = True
-            import_config.fix_base = True
+            fix_base = self.config.get("use_fixed_base")
+            if fix_base is None:
+                floating = self.config.get("floating")
+                if floating is not None:
+                    fix_base = not bool(floating)
+            if fix_base is None:
+                fix_base = True
+            import_config.fix_base = bool(fix_base)
 
             status, self.prim_path = lazy.omni.kit.commands.execute(
                 "URDFParseAndImportFile",
@@ -247,10 +254,13 @@ class IsaacSimRobotDriver(SimRobotDriver):
             positions=np.array([self.base_position]),
             orientations=np.array([self.base_orientation]),
         )
-        if len(self.initial_configuration) > 9:
-            q_init = self.initial_configuration[:9]
+        dof_count = len(self._articulation.joint_names)
+        if len(self.initial_configuration) >= dof_count:
+            q_init = self.initial_configuration[:dof_count]
         else:
-            q_init = self.initial_configuration
+            q_init = list(self.initial_configuration) + [0.0] * (
+                dof_count - len(self.initial_configuration)
+            )
 
         self._articulation.set_joint_positions([q_init])
         self._articulation.set_joint_velocities(

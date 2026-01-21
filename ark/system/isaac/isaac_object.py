@@ -78,15 +78,35 @@ class IsaacSimObject(SimComponent):
             )
 
         elif source_type == SourceType.PRIMITIVE:
+            size = self.config.get("size", [1.0, 1.0, 1.0])
+            visual = self.config.get("visual", {})
+            visual_shape = visual.get("visual_shape", {}) if isinstance(visual, dict) else {}
+            half_extents = visual_shape.get("halfExtents")
+            if half_extents is not None:
+                scale = np.array(half_extents)
+            else:
+                scale = np.array(size)
+            color = visual_shape.get("rgbaColor", [0.6, 0.6, 0.6, 1.0])
             object = lazy.isaacsim.core.api.objects.DynamicCuboid(
                 name=name,
                 position=np.array(self.config["base_position"]),
                 prim_path=self._prim_path,
-                scale=np.array(self.config["visual"]["visual_shape"]["halfExtents"]),
+                scale=scale,
                 size=1.0,
-                color=np.array(self.config["visual"]["visual_shape"]["rgbaColor"][:3]),
+                color=np.array(color[:3]),
             )
-            if self.config["multi_body"]["baseMass"] == 0:
+            base_orientation = self.config.get("base_orientation")
+            if base_orientation is not None:
+                object.set_world_pose(
+                    position=np.array(self.config["base_position"]),
+                    orientation=np.array(base_orientation),
+                )
+            mass = self.config.get("mass")
+            if mass is None:
+                multi_body = self.config.get("multi_body", {})
+                if isinstance(multi_body, dict):
+                    mass = multi_body.get("baseMass")
+            if mass == 0:
                 object.disable_rigid_body_physics()
 
             self.world.scene.add(object)
