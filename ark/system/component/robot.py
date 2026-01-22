@@ -175,91 +175,65 @@ class Robot(SimToRealComponent):
         print(
             f"Robot '{self.name}' has the following elements (Total: {len(elements)}):"
         )
-
+        actuated_index = 0
+        # Iterate over all joints and collect relevant info
         for i, joint in enumerate(elements):
             name = joint.get("name")
-            print(name)
             joint_info = {}
             joint_info["index"] = i
             joint_info["type"] = joint.get("type")
-            if not joint_info["type"] == "fixed":
+            if joint_info["type"] != "fixed":
                 self._all_actuated_joints.append(name)
                 joint_info["actuated"] = True
+                joint_info["actuated_index"] = actuated_index
+                actuated_index += 1
             else:
                 joint_info["actuated"] = False
 
-        try:
-            # Iterate over all joints and collect relevant info
-            for i, joint in enumerate(elements):
-                name = joint.get("name")
-                print(name)
-                joint_info = {}
-                joint_info["index"] = i
-                joint_info["type"] = joint.get("type")
-                if not joint_info["type"] == "fixed":
-                    self._all_actuated_joints.append(name)
-                    joint_info["actuated"] = True
+            # Get the parent and child link names (URDF and MJCF have different structures here)
+            if self.robot_config.get("urdf_path", None):  # URDF case
+                parent = joint.find("parent")
+                child = joint.find("child")
+                joint_info["parent Link"] = parent.get("link") if parent is not None else None
+                joint_info["child Link"] = child.get("link") if child is not None else None
+            elif self.robot_config.get("mjcf_path", None):  # MJCF case
+                parent_map = {child: parent for parent in root.iter() for child in parent}
+
+                body_el = joint
+                while body_el is not None and body_el.tag != "body":
+                    body_el = parent_map.get(body_el)
+
+                child_link = body_el.get("name") if body_el is not None else None
+
+                parent_el = parent_map.get(body_el) if body_el is not None else None
+                if parent_el is not None and parent_el.tag == "body":
+                    parent_link = parent_el.get("name")
                 else:
-                    joint_info["actuated"] = False
+                    parent_link = "__WORLD__"
 
-                # Get the parent and child link names (URDF and MJCF have different structures here)
-                if self.robot_config.get("urdf_path", None):  # URDF case
-                    joint_info["parent Link"] = joint.find("parent").get("link")
-                    joint_info["child Link"] = joint.find("child").get("link")
-                elif self.robot_config.get("mjcf_path", None):  # MJCF case
-                    # Build a parent map once (ideally outside your joint loop for efficiency)
-                    parent_map = {
-                        child: parent for parent in root.iter() for child in parent
-                    }
+                joint_info["parent Link"] = parent_link
+                joint_info["child Link"] = child_link
 
-                    # Find the owning <body> of this joint (walk up until we hit a body)
-                    body_el = joint
-                    while body_el is not None and body_el.tag != "body":
-                        body_el = parent_map.get(body_el)
-
-                    child_link = body_el.get("name") if body_el is not None else None
-
-                    # The parent link is the parent <body> of the owning body.
-                    parent_el = parent_map.get(body_el) if body_el is not None else None
-                    if parent_el is not None and parent_el.tag == "body":
-                        parent_link = parent_el.get("name")
-                    else:
-                        # owning body is directly under <worldbody> (i.e., world is the parent)
-                        parent_link = "__WORLD__"
-
-                    joint_info["parent Link"] = parent_link
-                    joint_info["child Link"] = child_link
-
-                # If joint has limits (revolute or prismatic joints), get the limits
-                if joint_info["type"] in ["revolute", "prismatic"]:
-                    limit = joint.find("limit")
-                    if limit is not None:
-                        joint_info["lower_limit"] = limit.get("lower", None)
-                        joint_info["upper_limit"] = limit.get("upper", None)
-                        joint_info["effort_limit"] = limit.get("effort", None)
-                        joint_info["velocity_limit"] = limit.get("velocity", None)
-                    else:
-                        joint_info["limits"] = "No limits defined"
-                self.joint_infos[joint.get("name")] = joint_info
-                # save dict of iniital cofngiruation of joints
-                self.initial_configuration[joint.get("name")] = self.robot_config[
-                    "initial_configuration"
-                ][i]
-                # print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
-                # Print the joint summary
-                print(f"{i:<8} {name:<20} {joint_info['type']:<10}")
-                print(f"   Parent Link: {joint_info['parent Link']}")
-                print(f"   Child Link: {joint_info['child Link']}")
-                if "lower_limit" in joint_info:
-                    print(
-                        f"   Limits: {joint_info['lower_limit']} to {joint_info['upper_limit']}, "
-                        f"Effort: {joint_info['effort_limit']}, Velocity: {joint_info['velocity_limit']}"
-                    )
+            # If joint has limits (revolute or prismatic joints), get the limits
+            if joint_info["type"] in ["revolute", "prismatic"]:
+                limit = joint.find("limit")
+                if limit is not None:
+                    joint_info["lower_limit"] = limit.get("lower", None)
+                    joint_info["upper_limit"] = limit.get("upper", None)
+                    joint_info["effort_limit"] = limit.get("effort", None)
+                    joint_info["velocity_limit"] = limit.get("velocity", None)
                 else:
-                    print(f"   Limits: {joint_info.get('limits', 'None')}")
-                print("-" * 40)  # Divider for each joint summary
-        except:
-            log.error("Error prasing MJCF/URDF file: Using fallback joint_info")
+                    joint_info["limits"] = "No limits defined"
+            self.joint_infos[joint.get("name")] = joint_info
+            init_cfg = self.robot_config.get("initial_configuration", [])
+            if isinstance(init_cfg, dict):
+                self.initial_configuration[joint.get("name")] = init_cfg.get(
+                    joint.get("name"), 0.0
+                )
+            elif i < len(init_cfg):
+                self.initial_configuration[joint.get("name")] = init_cfg[i]
+            else:
+                self.initial_configuration[joint.get("name")] = 0.0
 
         # check if joint group is defined:
         if "joint_groups" in self.robot_config:
@@ -286,7 +260,9 @@ class Robot(SimToRealComponent):
                     joint_idx = self.joint_infos[joint]["index"]
                     joints[joint] = joint_idx  # {"joint name": joint index}
                     if self.joint_infos[joint]["actuated"]:
-                        actuated_joints[joint] = joint_idx
+                        actuated_joints[joint] = self.joint_infos[joint][
+                            "actuated_index"
+                        ]
                 group_config["joints"] = joints
                 group_config["actuated_joints"] = actuated_joints
 
@@ -314,7 +290,7 @@ class Robot(SimToRealComponent):
                 joint_idx = self.joint_infos[joint]["index"]
                 joints[joint] = joint_idx
                 if self.joint_infos[joint]["actuated"]:
-                    actuated_joints[joint] = joint_idx
+                    actuated_joints[joint] = self.joint_infos[joint]["actuated_index"]
             group_config["joints"] = joints
             group_config["actuated_joints"] = actuated_joints
             self.joint_groups["all"] = group_config
@@ -462,8 +438,12 @@ class Robot(SimToRealComponent):
                 log.panda("if this appears big issue")
                 raise NotImplementedError("TODO - how to reset a real robot ?")
         elif self.sim:
+            if isinstance(q_init, dict):
+                q_init_out = q_init
+            else:
+                q_init_out = list(q_init)
             self._driver.sim_reset(
-                base_pos=new_pos, base_orn=new_orn, q_init=list(q_init)
+                base_pos=new_pos, base_orn=new_orn, q_init=q_init_out
             )
         self.resume_communications(services=False)
         self._is_suspended = False

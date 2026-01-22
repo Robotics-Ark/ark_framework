@@ -368,6 +368,32 @@ class NewtonBackend(SimulatorBackend):
 
         self._bind_runtime_handles()
 
+        # Apply initial configurations once runtime handles exist so state gets
+        # a proper standing pose before initializing joint targets.
+        for robot in self.robot_ref.values():
+            driver = getattr(robot, "_driver", None)
+            if isinstance(driver, NewtonRobotDriver):
+                cfg = getattr(robot, "robot_config", {})
+                base_pos = cfg.get("base_position", [0.0, 0.0, 0.0])
+                base_orn = cfg.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
+                q_init = cfg.get("initial_configuration", [])
+                try:
+                    driver.sim_reset(
+                        base_pos=base_pos,
+                        base_orn=base_orn,
+                        init_pos=q_init,
+                    )
+                    log.ok(
+                        "Newton backend: Applied initial configuration for '%s'",
+                        robot.name,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "Newton backend: Failed to apply initial configuration for '%s': %s",
+                        robot.name,
+                        exc,
+                    )
+
         # NOTE: No state sync needed here - both state_current and state_next were already
         # initialized with eval_fk using model.joint_q above. Since drivers no longer call
         # _apply_initial_configuration() during bind_runtime, there's no state modification
@@ -383,20 +409,20 @@ class NewtonBackend(SimulatorBackend):
             if target_len != state_len:
                 log.warning(
                     "Newton backend: joint_target_pos length (%d) != joint_q length (%d); "
-                    "copying overlapping range only.",
+                    "skipping global init to avoid DOF misalignment (driver handles joint targets).",
                     target_len,
                     state_len,
                 )
-            copy_len = min(target_len, state_len)
-            target_np = self.control.joint_target_pos.numpy().copy()
-            state_np = self.state_current.joint_q.numpy()
-            target_np[:copy_len] = state_np[:copy_len]
-            self.control.joint_target_pos.assign(target_np)
-            target_sample = self.control.joint_target_pos.numpy()[: min(7, target_len)]
-            log.ok(
-                "Newton backend: Initialized control.joint_target_pos from state: %s",
-                target_sample,
-            )
+            else:
+                target_np = self.control.joint_target_pos.numpy().copy()
+                state_np = self.state_current.joint_q.numpy()
+                target_np[:] = state_np
+                self.control.joint_target_pos.assign(target_np)
+                target_sample = self.control.joint_target_pos.numpy()[: min(7, target_len)]
+                log.ok(
+                    "Newton backend: Initialized control.joint_target_pos from state: %s",
+                    target_sample,
+                )
         else:
             log.error("Newton backend: FAILED to initialize control.joint_target_pos - array is None!")
 

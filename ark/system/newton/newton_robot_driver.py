@@ -56,6 +56,9 @@ class NewtonRobotDriver(SimRobotDriver):
         # ArticulationView for proper Newton control API (UR10 pattern)
         self._articulation_view: ArticulationView | None = None
         self._control_handle: wp.array | None = None
+        self._articulation_joint_index_map: dict[str, int] = {}
+        self._warned_missing_articulation_joints: set[str] = set()
+        self._warned_missing_model_joints: set[str] = set()
 
         self._last_commanded_torque: dict[str, float] = {}
         self._torque_groups = {
@@ -66,7 +69,7 @@ class NewtonRobotDriver(SimRobotDriver):
 
         self.base_position = self.config.get("base_position", [0.0, 0.0, 0.0])
         self.base_orientation = self.config.get("base_orientation", [0.0, 0.0, 0.0, 1.0])
-        self.initial_configuration = list(self.config.get("initial_configuration", []))
+        self.initial_configuration = self.config.get("initial_configuration", [])
 
         self._load_into_builder()
 
@@ -135,9 +138,34 @@ class NewtonRobotDriver(SimRobotDriver):
             # the "explosion on load" problem where robot tries to jump from zero to config
             new_joint_count = self.builder.joint_count - pre_joint_count
             if self.initial_configuration:
+                new_joint_names = list(
+                    self.builder.joint_key[pre_joint_count : self.builder.joint_count]
+                )
+                log.info(
+                    "Newton robot driver '%s': URDF joint order=%s",
+                    self.component_name,
+                    new_joint_names,
+                )
+                if isinstance(self.initial_configuration, dict):
+                    cfg_keys = list(self.initial_configuration.keys())
+                    missing_in_urdf = [k for k in cfg_keys if k not in new_joint_names]
+                    missing_in_cfg = [k for k in new_joint_names if k not in self.initial_configuration]
+                    log.info(
+                        "Newton robot driver '%s': initial_configuration dict keys=%d, "
+                        "missing_in_urdf=%s, missing_in_cfg=%s",
+                        self.component_name,
+                        len(cfg_keys),
+                        missing_in_urdf,
+                        missing_in_cfg,
+                    )
+                else:
+                    log.info(
+                        "Newton robot driver '%s': initial_configuration list length=%d",
+                        self.component_name,
+                        len(self.initial_configuration),
+                    )
+                cfg_idx = 0
                 for j_idx in range(new_joint_count):
-                    if j_idx >= len(self.initial_configuration):
-                        break
                     # Get DOF range for this joint
                     joint_idx = pre_joint_count + j_idx
                     q_start = int(self.builder.joint_q_start[joint_idx])
@@ -145,13 +173,29 @@ class NewtonRobotDriver(SimRobotDriver):
                     width = q_end - q_start
                     if width <= 0:
                         continue
-                    target = self.initial_configuration[j_idx]
+                    # Skip multi-DOF joints (e.g., floating base); use base pose instead.
+                    if width > 1:
+                        continue
+                    if isinstance(self.initial_configuration, dict):
+                        joint_name = new_joint_names[j_idx] if j_idx < len(new_joint_names) else None
+                        if joint_name is None:
+                            continue
+                        if joint_name not in self.initial_configuration:
+                            continue
+                        target = self.initial_configuration[joint_name]
+                    else:
+                        if cfg_idx >= len(self.initial_configuration):
+                            break
+                        target = self.initial_configuration[cfg_idx]
+                        cfg_idx += 1
                     values = target if isinstance(target, Sequence) else [target] * width
                     for offset in range(min(width, len(values))):
                         self.builder.joint_q[q_start + offset] = float(values[offset])
                 log.info(
-                    f"Newton robot driver: Applied initial_configuration to builder.joint_q "
-                    f"({len(self.initial_configuration)} values)"
+                    "Newton robot driver '%s': Applied initial_configuration to builder.joint_q "
+                    "(%s values)",
+                    self.component_name,
+                    cfg_idx if not isinstance(self.initial_configuration, dict) else "dict",
                 )
 
             # Apply to all newly loaded joint DOFs
@@ -222,8 +266,10 @@ class NewtonRobotDriver(SimRobotDriver):
         # Create ArticulationView for proper Newton control API (UR10 example pattern)
         # This is CRITICAL for joint target position control to work correctly
         try:
-            # Use component name as pattern (e.g., "panda" matches bodies with "panda" in name)
-            pattern = f"*{self.component_name}*"
+            # Allow config override for articulation matching; default to component name
+            pattern = self.config.get("articulation_pattern")
+            if not pattern:
+                pattern = f"*{self.component_name}*"
             self._articulation_view = ArticulationView(
                 model,
                 pattern,
@@ -238,6 +284,18 @@ class NewtonRobotDriver(SimRobotDriver):
                 f"Created ArticulationView (pattern='{pattern}', count={self._articulation_view.count}, "
                 f"dofs={self._control_handle.shape if self._control_handle is not None else 'N/A'})"
             )
+            # Build articulation joint index mapping if names are available.
+            art_joint_names = getattr(self._articulation_view, "joint_names", None)
+            if art_joint_names is not None:
+                self._articulation_joint_index_map = {
+                    str(name): idx for idx, name in enumerate(art_joint_names)
+                }
+                log.info(
+                    "Newton robot driver '%s': Articulation joints=%d mapped=%d",
+                    self.component_name,
+                    len(art_joint_names),
+                    len(self._articulation_joint_index_map),
+                )
             # Log body names for debugging EE index configuration
             if hasattr(self._articulation_view, "body_names"):
                 log.info(
@@ -280,7 +338,9 @@ class NewtonRobotDriver(SimRobotDriver):
             return
 
         # Validate configuration length
-        if len(self.initial_configuration) != len(self._joint_names):
+        if isinstance(self.initial_configuration, dict):
+            pass
+        elif len(self.initial_configuration) != len(self._joint_names):
             log.warning(
                 f"Newton robot driver '{self.component_name}': "
                 f"initial_configuration length ({len(self.initial_configuration)}) != "
@@ -292,8 +352,10 @@ class NewtonRobotDriver(SimRobotDriver):
         joint_qd_np = state.joint_qd.numpy().copy()
 
         # Apply initial positions to STATE (not model!)
-        for idx, joint_name in enumerate(self._joint_names):
-            if idx >= len(self.initial_configuration):
+        cfg_idx = 0
+        applied_count = 0
+        for joint_name in self._joint_names:
+            if not isinstance(self.initial_configuration, dict) and cfg_idx >= len(self.initial_configuration):
                 break
 
             model_idx = self._joint_index_map.get(joint_name)
@@ -308,8 +370,16 @@ class NewtonRobotDriver(SimRobotDriver):
             width = end - start
             if width <= 0:
                 continue
+            if width > 1:
+                continue
 
-            target = self.initial_configuration[idx]
+            if isinstance(self.initial_configuration, dict):
+                if joint_name not in self.initial_configuration:
+                    continue
+                target = self.initial_configuration[joint_name]
+            else:
+                target = self.initial_configuration[cfg_idx]
+                cfg_idx += 1
             values = target if isinstance(target, Sequence) else [target] * width
 
             # Write to state.joint_q
@@ -325,6 +395,7 @@ class NewtonRobotDriver(SimRobotDriver):
 
             # Set control target
             self._write_joint_target(joint_name, target)
+            applied_count += 1
 
         # Write modified arrays back to state
         state.joint_q.assign(joint_q_np)
@@ -342,6 +413,11 @@ class NewtonRobotDriver(SimRobotDriver):
                 f"Newton robot driver '{self.component_name}': "
                 f"Applied initial configuration to runtime state and updated FK"
             )
+            log.info(
+                "Newton robot driver '%s': Applied initial config to %d joint(s)",
+                self.component_name,
+                applied_count,
+            )
         except Exception as exc:  # noqa: BLE001
             log.error(
                 f"Newton robot driver '{self.component_name}': "
@@ -357,8 +433,39 @@ class NewtonRobotDriver(SimRobotDriver):
         if self._control is None or self._control.joint_target_pos is None:
             log.warning(f"Newton robot driver: Cannot write joint target, control not initialized")
             return
+        if self._articulation_view is not None and self._control_handle is not None:
+            art_idx = self._articulation_joint_index_map.get(joint_name)
+            if art_idx is not None:
+                values = value if isinstance(value, Sequence) else [value]
+                handle_np = self._control_handle.numpy().copy()
+                env_idx = 0
+                if art_idx < handle_np.shape[1]:
+                    handle_np[env_idx, art_idx] = float(values[0])
+                    handle = wp.array(
+                        handle_np,
+                        dtype=self._control_handle.dtype,
+                        device=self._control_handle.device,
+                    )
+                    self._articulation_view.set_attribute(
+                        "joint_target_pos", self._control, handle
+                    )
+                    return
+            if joint_name not in self._warned_missing_articulation_joints:
+                log.warning(
+                    "Newton robot driver '%s': joint '%s' not found in articulation map",
+                    self.component_name,
+                    joint_name,
+                )
+                self._warned_missing_articulation_joints.add(joint_name)
         idx = self._joint_index_map.get(joint_name)
         if idx is None:
+            if joint_name not in self._warned_missing_model_joints:
+                log.warning(
+                    "Newton robot driver '%s': joint '%s' not found in model map",
+                    self.component_name,
+                    joint_name,
+                )
+                self._warned_missing_model_joints.add(joint_name)
             return  # Joint not mapped, already warned in bind_runtime
         # CRITICAL: Use joint_q_start (position indices) not joint_qd_start (velocity indices)
         # Joint targets are POSITION targets, so they must use position DOF indices
@@ -383,9 +490,18 @@ class NewtonRobotDriver(SimRobotDriver):
 
         # Direct assignment to control.joint_target_pos
         joint_target_np = self._control.joint_target_pos.numpy().copy()
+        target_size = joint_target_np.shape[0]
         for offset in range(width):
-            if offset < len(values):
-                joint_target_np[start + offset] = float(values[offset])
+            if offset >= len(values):
+                break
+            idx = start + offset
+            if idx >= target_size:
+                log.warning(
+                    f"Newton robot driver '{self.component_name}': "
+                    f"Skipping joint target write idx={idx} >= target_size={target_size}"
+                )
+                break
+            joint_target_np[idx] = float(values[offset])
         self._control.joint_target_pos.assign(joint_target_np)
 
     def _write_joint_target_velocity(self, joint_name: str, value: float | Sequence[float]) -> None:
@@ -544,10 +660,13 @@ class NewtonRobotDriver(SimRobotDriver):
         self,
         base_pos: list[float],
         base_orn: list[float],
-        init_pos: list[float],
+        init_pos: list[float] | dict[str, float],
     ) -> None:
         self.base_position = base_pos
         self.base_orientation = base_orn
         if init_pos:
-            self.initial_configuration = list(init_pos)
+            if isinstance(init_pos, dict):
+                self.initial_configuration = init_pos
+            else:
+                self.initial_configuration = list(init_pos)
         self._apply_initial_configuration()
