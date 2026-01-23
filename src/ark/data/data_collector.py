@@ -19,12 +19,14 @@ class DataCollector(Registerable):
         self._file_path = self._path / f"data_{stamp}.bin"
 
         self._queue: Queue[object] = Queue(maxsize=queue_maxsize)
-        self.append = self._queue.put
 
         self.core_registration()
 
         self._thread = Thread(target=self._save_data, daemon=True)
         self._thread.start()
+
+    def append(self, data: bytes):
+        self._queue.put(data)
 
     def core_registration(self):
         print(".. todo: register data collector with ark core..")
