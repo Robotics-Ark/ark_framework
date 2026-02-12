@@ -84,6 +84,7 @@ class BaseNode(Registerable):
         )
         querier.core_registration()
         self._queriers[channel] = querier
+        # print session and channelinfo for debugging
         return querier
 
     def create_queryable(self, channel, handler) -> Queryable:

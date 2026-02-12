@@ -48,14 +48,17 @@ class LinePublisherNode(BaseNode):
             "c_x": 0.0,
             "c_y": 0.0,
         }
-        self.create_queryable("grad/v/x", self._on_grad_v_x)
-        self.create_queryable("grad/v/y", self._on_grad_v_y)
-        self.create_queryable("grad/m/x", self._on_grad_m_x)
-        self.create_queryable("grad/m/y", self._on_grad_m_y)
-        self.create_queryable("grad/c/x", self._on_grad_c_x)
-        self.create_queryable("grad/c/y", self._on_grad_c_y)
+        # declare and store all the queryables for gradients
+        self.grad_v_x_q = self.create_queryable("grad/v/x", self._on_grad_v_x)
+        self.grad_v_y_q = self.create_queryable("grad/v/y", self._on_grad_v_y)
+        self.grad_m_x_q = self.create_queryable("grad/m/x", self._on_grad_m_x)
+        self.grad_m_y_q = self.create_queryable("grad/m/y", self._on_grad_m_y)
+        self.grad_c_x_q = self.create_queryable("grad/c/x", self._on_grad_c_x)
+        self.grad_c_y_q = self.create_queryable("grad/c/y", self._on_grad_c_y)
+
 
     def _on_grad_v_x(self, _req):
+        print(f"Received query for grad_v_x, latest")
         return Value(val=self.latest["x"], grad=self.latest["v_x"])
 
     def _on_grad_v_y(self, _req):
@@ -65,6 +68,7 @@ class LinePublisherNode(BaseNode):
         return Value(val=self.latest["x"], grad=self.latest["m_x"])
 
     def _on_grad_m_y(self, _req):
+        print(f"Received query for grad_v_x, latest")
         return Value(val=self.latest["y"], grad=self.latest["m_y"])
 
     def _on_grad_c_x(self, _req):
@@ -89,12 +93,15 @@ class LinePublisherNode(BaseNode):
                 self.c.grad.zero_()
             x.backward(retain_graph=True)
             self.latest["v_x"] = float(self.v.grad)
+            # print(f"v grad {self.v.grad.item()}")
             # self.latest["m_x"] = float(self.m.grad)
             # self.latest["c_x"] = float(self.c.grad)
             self.v.grad.zero_()
             y.backward()
             self.latest["v_y"] = float(self.v.grad)
+            # print(f"v grad {self.v.grad.item()}")
             self.latest["m_y"] = float(self.m.grad)
+            # print(f"m grad {self.m.grad}")
             self.latest["c_y"] = float(self.c.grad)
             self.latest["x"] = float(x.detach())
             self.latest["y"] = float(y.detach())

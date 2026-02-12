@@ -20,6 +20,7 @@ class AutodiffPlotterNode(BaseNode):
         req = Translation(x=0.0, y=0.0, z=0.0)
         try:
             resp_vx = self.grad_vx_querier.query(req)
+            print(f"Queried grad_vx: {resp_vx.grad}")
             if isinstance(resp_vx, Value):
                 self.grad_vx.append(resp_vx.grad)
         except Exception:

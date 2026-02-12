@@ -22,18 +22,22 @@ class Queryable(EndPoint):
         super().__init__(node_name, session, clock, channel, data_collector)
         self._handler = handler
         self._queryable = self._session.declare_queryable(self._channel, self._on_query)
+        print(f"Declared queryable on channel: {self._channel}")
 
     def core_registration(self):
         print("..todo: register with ark core..")
 
     def _on_query(self, query: zenoh.Query) -> None:
         # If we were closed, ignore queries
+        print("Received query, processing...")
         if not self._active:
+            print("Received query on closed Queryable, ignoring")
             return
 
         try:
             # Zenoh query may or may not include a payload.
             # For your use-case, the request is always in query.value (bytes)
+            print("Parsing query")
             raw = bytes(query.value) if query.value is not None else b""
             if not raw:
                 return  # nothing to do
@@ -42,7 +46,8 @@ class Queryable(EndPoint):
             req_env.ParseFromString(raw)
 
             # Decode request protobuf
-            req_type = msgs.get(req_env.payload_msg_type)
+            # req_type = msgs.get(req_env.payload_msg_type)
+            req_type = msgs.get(req_env.msg_type)
             if req_type is None:
                 # Unknown message type: ignore (or reply error later)
                 return
@@ -73,4 +78,5 @@ class Queryable(EndPoint):
         except Exception:
             # Keep it minimal: don't kill the zenoh callback thread
             # You can add logging here if desired
+            print("Error processing query:")
             return
