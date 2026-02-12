@@ -79,7 +79,8 @@ class LinePublisherNode(BaseNode):
             t_val = torch.tensor(t, requires_grad=False)
             x = self.v * t_val
             y = self.m * x + self.c
-            self.pos_pub.publish(Translation(x=float(x), y=float(y), z=0.0))
+            self.pos_pub.publish(Translation(x=float(x.detach()),
+                                             y=float(y.detach()), z=0.0))
             if self.v.grad is not None:
                 self.v.grad.zero_()
             if self.m.grad is not None:
@@ -88,17 +89,15 @@ class LinePublisherNode(BaseNode):
                 self.c.grad.zero_()
             x.backward(retain_graph=True)
             self.latest["v_x"] = float(self.v.grad)
-            self.latest["m_x"] = float(self.m.grad)
-            self.latest["c_x"] = float(self.c.grad)
+            # self.latest["m_x"] = float(self.m.grad)
+            # self.latest["c_x"] = float(self.c.grad)
             self.v.grad.zero_()
-            self.m.grad.zero_()
-            self.c.grad.zero_()
             y.backward()
             self.latest["v_y"] = float(self.v.grad)
             self.latest["m_y"] = float(self.m.grad)
             self.latest["c_y"] = float(self.c.grad)
-            self.latest["x"] = float(x)
-            self.latest["y"] = float(y)
+            self.latest["x"] = float(x.detach())
+            self.latest["y"] = float(y.detach())
             t += DT
             self.rate.sleep()
 
