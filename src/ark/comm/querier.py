@@ -11,12 +11,16 @@ class Querier(EndPoint):
         self,
         node_name: str,
         session: zenoh.Session,
+        query_target,
         clock,
         channel: str,
         data_collector: DataCollector | None,
     ):
         super().__init__(node_name, session, clock, channel, data_collector)
-        self._querier = self._session.declare_querier(self._channel)
+        self._querier = self._session.declare_querier(self._channel,
+                                                      target=query_target)
+        print(f"Declared querier on channel: {self._channel}")
+        self._query_selector = zenoh.Selector(self._channel)
 
     def core_registration(self):
         print("..todo: register with ark core..")
@@ -48,7 +52,9 @@ class Querier(EndPoint):
         else:
             raise TypeError("req must be a protobuf Message or bytes")
 
-        replies = self._querier.get(value=req_env.SerializeToString(), timeout=timeout)
+        print(f"Sending query on channel '{self._channel}' with timeout {timeout}s")
+        replies = self._querier.get(parameters=self._query_selector.parameters, payload=req_env.SerializeToString(), timeout=timeout)
+        print(f"Received {len(replies)} replies for query on channel '{self._channel}'")
 
         for reply in replies:
             if reply.ok is None:

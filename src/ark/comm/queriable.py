@@ -69,7 +69,7 @@ class Queryable(EndPoint):
             self._seq_index += 1
 
             resp_env = Envelope.pack(self._node_name, self._clock, resp_msg)
-            query.reply(resp_env.SerializeToString())
+            query.reply(self._channel, resp_env.SerializeToString())
 
             if self._data_collector:
                 self._data_collector.append(req_env.SerializeToString())

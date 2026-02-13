@@ -2,7 +2,9 @@ import math
 import time
 from ark.node import BaseNode
 from ark_msgs import Translation, Value
-from common import z_cfg
+import argparse
+# from common import listen_cfg, z_cfg
+import common_example as common
 import torch
 
 # Lissajous parameters
@@ -13,7 +15,7 @@ HZ = 50
 DT = 1.0 / HZ
 class LissajousPublisherNode(BaseNode):
     def __init__(self):
-        super().__init__("env", "diff_pub", z_cfg, sim=True)
+        super().__init__("env", "diff_pub", listen_cfg, sim=True)
         self.pos_pub = self.create_publisher("position")
         self.vel_pub = self.create_publisher("velocity")
         self.rate = self.create_rate(HZ)
@@ -31,8 +33,8 @@ class LissajousPublisherNode(BaseNode):
 
 class LinePublisherNode(BaseNode):
 
-    def __init__(self):
-        super().__init__("env", "line_pub", z_cfg, sim=True)
+    def __init__(self, cfg):
+        super().__init__("env", "line_pub", cfg, sim=True)
         self.pos_pub = self.create_publisher("position")
         self.rate = self.create_rate(HZ)
         self.v = torch.tensor(1.0, requires_grad=True)
@@ -49,17 +51,29 @@ class LinePublisherNode(BaseNode):
             "c_y": 0.0,
         }
         # declare and store all the queryables for gradients
-        self.grad_v_x_q = self.create_queryable("grad/v/x", self._on_grad_v_x)
-        self.grad_v_y_q = self.create_queryable("grad/v/y", self._on_grad_v_y)
-        self.grad_m_x_q = self.create_queryable("grad/m/x", self._on_grad_m_x)
-        self.grad_m_y_q = self.create_queryable("grad/m/y", self._on_grad_m_y)
-        self.grad_c_x_q = self.create_queryable("grad/c/x", self._on_grad_c_x)
-        self.grad_c_y_q = self.create_queryable("grad/c/y", self._on_grad_c_y)
+        # self.grad_v_x_q = self.create_queryable("grad/v/x", self._on_grad_v_x)
+        # self.grad_v_y_q = self.create_queryable("grad/v/y", self._on_grad_v_y)
+        # self.grad_m_x_q = self.create_queryable("grad/m/x", self._on_grad_m_x)
+        # self.grad_m_y_q = self.create_queryable("grad/m/y", self._on_grad_m_y)
+        # self.grad_c_x_q = self.create_queryable("grad/c/x", self._on_grad_c_x)
+        # self.grad_c_y_q = self.create_queryable("grad/c/y", self._on_grad_c_y)
+        self.grad_v_queryable = self._session.declare_queryable("grad/v/x",
+                                                                self._on_grad_v_x,
+                                                                complete=False)
+        self.grad_m_queryable = self._session.declare_queryable("grad/m/y",
+                                                                self._on_grad_m_y,
+                                                                complete=False)
 
+    # def _on_grad_v_x(self, _req):
+    #     print(f"Received query for grad_v_x, latest")
+    #     return Value(val=self.latest["x"], grad=self.latest["v_x"])
 
     def _on_grad_v_x(self, _req):
-        print(f"Received query for grad_v_x, latest")
-        return Value(val=self.latest["x"], grad=self.latest["v_x"])
+        v_value = self.latest["v_x"]
+        v_value_str = str(v_value)
+        payload = v_value_str.encode("utf-8")
+        _req.reply("grad/v/x", payload)
+        pass
 
     def _on_grad_v_y(self, _req):
         return Value(val=self.latest["y"], grad=self.latest["v_y"])
@@ -68,8 +82,11 @@ class LinePublisherNode(BaseNode):
         return Value(val=self.latest["x"], grad=self.latest["m_x"])
 
     def _on_grad_m_y(self, _req):
-        print(f"Received query for grad_v_x, latest")
-        return Value(val=self.latest["y"], grad=self.latest["m_y"])
+        m_value = self.latest["m_y"]
+        m_value_str = str(m_value)
+        payload = m_value_str.encode("utf-8")
+        _req.reply("grad/m/y", payload)
+        pass
 
     def _on_grad_c_x(self, _req):
         return Value(val=self.latest["x"], grad=self.latest["c_x"])
@@ -93,25 +110,37 @@ class LinePublisherNode(BaseNode):
                 self.c.grad.zero_()
             x.backward(retain_graph=True)
             self.latest["v_x"] = float(self.v.grad)
-            # print(f"v grad {self.v.grad.item()}")
-            # self.latest["m_x"] = float(self.m.grad)
-            # self.latest["c_x"] = float(self.c.grad)
+            print(f"v grad {self.v.grad.item()}")
             self.v.grad.zero_()
             y.backward()
             self.latest["v_y"] = float(self.v.grad)
-            # print(f"v grad {self.v.grad.item()}")
             self.latest["m_y"] = float(self.m.grad)
-            # print(f"m grad {self.m.grad}")
+            print(f"m grad {self.m.grad}")
             self.latest["c_y"] = float(self.c.grad)
             self.latest["x"] = float(x.detach())
             self.latest["y"] = float(y.detach())
+            # with self.grad_v_queryable.recv() as query:
+            #     print(f"Received query for grad_v_x, latest")
             t += DT
             self.rate.sleep()
 
 if __name__ == "__main__":
     try:
-        # node = LissajousPublisherNode()
-        node = LinePublisherNode()
+        parser = argparse.ArgumentParser(
+            prog="z_queryable", description="zenoh queryable example"
+        )
+        common.add_config_arguments(parser)
+        parser.add_argument(
+            "--complete",
+            dest="complete",
+            default=False,
+            action="store_true",
+            help="Declare the queryable as complete w.r.t. the key expression.",
+        )
+        args = parser.parse_args()
+        conf = common.get_config_from_args(args)
+
+        node = LinePublisherNode(conf)
         node.spin()
     except KeyboardInterrupt:
         print("Shutting down diff publisher.")

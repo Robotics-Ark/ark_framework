@@ -22,7 +22,8 @@ class BaseNode(Registerable):
         sim: bool = False,
         collect_data: bool = False,
     ):
-        self._z_cfg = zenoh.Config.from_json5(json.dumps(z_cfg))
+        # self._z_cfg = zenoh.Config.from_json5(json.dumps(z_cfg))
+        self._z_cfg = z_cfg
         self._session = zenoh.open(self._z_cfg)
         self._env_name = env_name
         self._node_name = node_name
@@ -73,10 +74,11 @@ class BaseNode(Registerable):
         self._subs[channel] = sub
         return sub
 
-    def create_querier(self, channel, timeout=10.0) -> Querier:
+    def create_querier(self, channel, target, timeout=10.0) -> Querier:
         querier = Querier(
             self._node_name,
             self._session,
+            target,
             self._clock,
             channel,
             self._data_collector,
