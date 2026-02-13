@@ -86,11 +86,18 @@ class LinePublisherNode(BaseNode):
         t = 0.0
         while True:
             t_val = torch.tensor(t, requires_grad=False)
+
+            # Computation graph
+            # line equation: y = m * x + c, where x = v * t
             x = self.v * t_val
             y = self.m * x + self.c
+
+            # publish position
             self.pos_pub.publish(
                 Translation(x=float(x.detach()), y=float(y.detach()), z=0.0)
             )
+
+            # compute gradients
             if self.v.grad is not None:
                 self.v.grad.zero_()
             if self.m.grad is not None:
