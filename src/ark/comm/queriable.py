@@ -21,7 +21,9 @@ class Queryable(EndPoint):
     ):
         super().__init__(node_name, session, clock, channel, data_collector)
         self._handler = handler
-        self._queryable = self._session.declare_queryable(self._channel, self._on_query)
+        self._queryable = self._session.declare_queryable(self._channel,
+                                                          self._on_query,
+                                                          complete=False)
         print(f"Declared queryable on channel: {self._channel}")
 
     def core_registration(self):
@@ -29,7 +31,6 @@ class Queryable(EndPoint):
 
     def _on_query(self, query: zenoh.Query) -> None:
         # If we were closed, ignore queries
-        print("Received query, processing...")
         if not self._active:
             print("Received query on closed Queryable, ignoring")
             return
@@ -37,9 +38,9 @@ class Queryable(EndPoint):
         try:
             # Zenoh query may or may not include a payload.
             # For your use-case, the request is always in query.value (bytes)
-            print("Parsing query")
-            raw = bytes(query.value) if query.value is not None else b""
+            raw = bytes(query.payload) if query.payload is not None else b""
             if not raw:
+                print("Received query with no payload, ignoring")
                 return  # nothing to do
 
             req_env = Envelope()
@@ -50,6 +51,7 @@ class Queryable(EndPoint):
             req_type = msgs.get(req_env.msg_type)
             if req_type is None:
                 # Unknown message type: ignore (or reply error later)
+                print(f"Unknown message type '{req_env.msg_type}' in query, ignoring")
                 return
 
             req_msg = req_type()
@@ -65,11 +67,13 @@ class Queryable(EndPoint):
             resp_env.sent_seq_index = self._seq_index
             resp_env.src_node_name = self._node_name
             resp_env.channel = self._channel
+            resp_env.msg_type = resp_msg.DESCRIPTOR.full_name
+            resp_env.payload = resp_msg.SerializeToString()
 
             self._seq_index += 1
 
-            resp_env = Envelope.pack(self._node_name, self._clock, resp_msg)
-            query.reply(self._channel, resp_env.SerializeToString())
+            with query: 
+                query.reply(query.key_expr, resp_env.SerializeToString())
 
             if self._data_collector:
                 self._data_collector.append(req_env.SerializeToString())
@@ -79,4 +83,8 @@ class Queryable(EndPoint):
             # Keep it minimal: don't kill the zenoh callback thread
             # You can add logging here if desired
             print("Error processing query:")
+            # write the traceback to stdout for debugging
+            import traceback
+            traceback.print_exc()
+
             return

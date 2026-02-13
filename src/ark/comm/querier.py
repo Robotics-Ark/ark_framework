@@ -3,6 +3,7 @@ from ark_msgs import Envelope
 from google.protobuf.message import Message
 from ark.data.data_collector import DataCollector
 from ark.comm.end_point import EndPoint
+from ark_msgs.registry import msgs
 
 
 class Querier(EndPoint):
@@ -52,20 +53,21 @@ class Querier(EndPoint):
         else:
             raise TypeError("req must be a protobuf Message or bytes")
 
-        print(f"Sending query on channel '{self._channel}' with timeout {timeout}s")
-        replies = self._querier.get(parameters=self._query_selector.parameters, payload=req_env.SerializeToString(), timeout=timeout)
-        print(f"Received {len(replies)} replies for query on channel '{self._channel}'")
+        replies = self._querier.get(payload=req_env.SerializeToString())
 
         for reply in replies:
             if reply.ok is None:
                 continue
 
             resp_env = Envelope()
-            resp_env.ParseFromString(bytes(reply.ok))
+            resp_env.ParseFromString(bytes(reply.ok.payload))
             resp_env.dst_node_name = self._node_name
             resp_env.recv_timestamp = self._clock.now()
 
-            resp = resp_env.extract_message()
+            try:
+                resp = resp_env.extract_message()
+            except Exception as e:
+                continue
 
             self._seq_index += 1
 
@@ -74,11 +76,6 @@ class Querier(EndPoint):
                 self._data_collector.append(resp_env.SerializeToString())
 
             return resp
-
-        else:
-            raise TimeoutError(
-                f"No OK reply received for query on '{self._channel}' within {timeout}s"
-            )
 
     def close(self):
         super().close()
