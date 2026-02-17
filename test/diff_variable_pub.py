@@ -37,29 +37,10 @@ class LineVariableNode(BaseNode):
                 Translation(x=float(x.detach()), y=float(y.detach()), z=0.0)
             )
 
-            # Backward: compute gradients
-            if self.v.tensor.grad is not None:
-                self.v.tensor.grad.zero_()
-            if self.m.tensor.grad is not None:
-                self.m.tensor.grad.zero_()
-            if self.c.tensor.grad is not None:
-                self.c.tensor.grad.zero_()
-
-            x.backward(retain_graph=True)
-            v_x = float(self.v.tensor.grad)
-            self.v.tensor.grad.zero_()
-
-            y.backward()
-            v_y = float(self.v.tensor.grad)
-            m_y = float(self.m.tensor.grad)
-            c_y = float(self.c.tensor.grad)
-
-            # Update variable gradients — served automatically by queryables
-            self.v.update_gradients({"x": v_x, "y": v_y})
-            self.m.update_gradients({"x": 0.0, "y": m_y})
-            self.c.update_gradients({"x": 0.0, "y": c_y})
-
-            print(f"t={t:.2f}  dx/dv={v_x:.3f}  dy/dm={m_y:.3f}")
+            # Register outputs — gradients computed lazily on query
+            self.v.set_outputs({"x": x, "y": y})
+            self.m.set_outputs({"x": x, "y": y})
+            self.c.set_outputs({"x": x, "y": y})
 
             t += DT
             self.rate.sleep()

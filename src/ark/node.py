@@ -1,5 +1,6 @@
 import json
 import time
+import threading
 import torch
 import zenoh
 from ark.time.clock import Clock
@@ -13,6 +14,8 @@ from ark.data.data_collector import DataCollector
 from ark.core.registerable import Registerable
 from ark_msgs import Value
 
+_BACKWARD_LOCK = threading.Lock()
+
 
 class Variable:
 
@@ -21,11 +24,27 @@ class Variable:
         self.mode = mode
         self.out_fields = out_fields or []
         self.tensor = torch.tensor(value, requires_grad=True)
-        self.gradients = {f: 0.0 for f in self.out_fields}
-        self.values = {f: 0.0 for f in self.out_fields}
+        self._outputs = {}
 
-    def update_gradients(self, grad_dict):
-        self.gradients.update(grad_dict)
+    def set_output(self, field, tensor):
+        with _BACKWARD_LOCK:
+            self._outputs[field] = tensor
+
+    def set_outputs(self, mapping):
+        with _BACKWARD_LOCK:
+            self._outputs.update(mapping)
+
+    def compute_grad(self, field):
+        with _BACKWARD_LOCK:
+            out_tensor = self._outputs.get(field)
+            if out_tensor is None:
+                return 0.0, 0.0
+            val = float(out_tensor.detach())
+            if self.tensor.grad is not None:
+                self.tensor.grad.zero_()
+            out_tensor.backward(retain_graph=True)
+            grad = float(self.tensor.grad) if self.tensor.grad is not None else 0.0
+            return val, grad
 
 
 class BaseNode(Registerable):
@@ -120,25 +139,44 @@ class BaseNode(Registerable):
         return queryable
 
     def create_variable(self, name, value, mode="input", out_fields=None):
+        """Create a differentiable variable with automatic gradient queryables.
+
+        For "input" mode variables with out_fields, this sets up:
+          - A queryable on "grad/{name}/{field}" for each field in out_fields.
+            Gradients are computed lazily via backward() when queried, using
+            output tensors registered by the user via Variable.set_outputs().
+          - A subscriber on "param/{name}" that updates the variable's tensor
+            value when a new parameter is published.
+
+        Args:
+            name: Variable identifier, used in channel names.
+            value: Initial scalar value for the underlying tensor.
+            mode: "input" creates queryables and a param subscriber.
+            out_fields: Output field names (e.g. ["x", "y"]) that this
+                variable contributes to. Each gets a gradient queryable.
+        """
         var = Variable(name, value, mode, out_fields)
         self._variables[name] = var
 
         if mode == "input":
+            # Create a gradient queryable for each output field.
+            # On query, compute_grad() runs backward() on the registered
+            # output tensor and returns the gradient w.r.t. this variable.
             if var.out_fields:
                 for field in var.out_fields:
                     grad_channel = f"grad/{name}/{field}"
 
                     def _make_handler(v, fld):
                         def handler(_req):
-                            return Value(
-                                val=v.values.get(fld, 0.0),
-                                grad=v.gradients.get(fld, 0.0),
-                            )
+                            val, grad = v.compute_grad(fld)
+                            return Value(val=val, grad=grad)
 
                         return handler
 
                     self.create_queryable(grad_channel, _make_handler(var, field))
 
+            # Subscribe to parameter updates so external nodes can set
+            # this variable's value at runtime.
             def _make_sub_callback(v):
                 def callback(msg):
                     v.tensor.data = torch.tensor(msg.val)
