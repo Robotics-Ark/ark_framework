@@ -9,10 +9,12 @@ def main():
     with zenoh.open(z_config) as z:
         sim_time = SimTime(z, "clock", 1000)
         sim_time.reset()
+        start_time = time.time()
         while True:
-            current_time = time.time()
-            print(f"Simulated Time: {current_time:.2f} seconds")
             sim_time.tick()
+            elapsed = time.time() - start_time
+            sim_elapsed = sim_time._sim_time_ns / 1e9
+            print(f"Real: {elapsed:.2f} s | Sim: {sim_elapsed:.3f} s")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,6 @@
 import json
 import time
+import torch
 import zenoh
 from ark.time.clock import Clock
 from ark.time.rate import Rate
@@ -10,6 +11,7 @@ from ark.comm.querier import Querier
 from ark.comm.queriable import Queryable
 from ark.data.data_collector import DataCollector
 from ark.core.registerable import Registerable
+from ark_msgs import Value
 
 
 class BaseNode(Registerable):
@@ -37,6 +39,7 @@ class BaseNode(Registerable):
         self._subs = {}
         self._queriers = {}
         self._queriables = {}
+        self._variables = {}
 
         self._session.declare_subscriber(f"{env_name}/reset", self._on_reset)
 
@@ -101,6 +104,46 @@ class BaseNode(Registerable):
         queryable.core_registration()
         self._queriables[channel] = queryable
         return queryable
+
+    def create_variable(self, name, value, mode="input", fields=None):
+        tensor = torch.tensor(value, requires_grad=True)
+        var_entry = {
+            "tensor": tensor,
+            "mode": mode,
+            "fields": fields or [],
+            "gradients": {f: 0.0 for f in (fields or [])},
+            "values": {f: 0.0 for f in (fields or [])},
+        }
+        self._variables[name] = var_entry
+
+        if mode == "input":
+            if fields:
+                for field in fields:
+                    grad_channel = f"grad/{name}/{field}"
+
+                    def _make_handler(var_name, fld):
+                        def handler(_req):
+                            v = self._variables[var_name]
+                            return Value(
+                                val=v["values"].get(fld, 0.0),
+                                grad=v["gradients"].get(fld, 0.0),
+                            )
+                        return handler
+
+                    self.create_queryable(grad_channel, _make_handler(name, field))
+
+            def _make_sub_callback(var_name):
+                def callback(msg):
+                    v = self._variables[var_name]
+                    v["tensor"].data = torch.tensor(msg.val)
+                return callback
+
+            self.create_subscriber(f"param/{name}", _make_sub_callback(name))
+
+        return tensor
+
+    def update_variable(self, name, grad_dict):
+        self._variables[name]["gradients"].update(grad_dict)
 
     def create_rate(self, hz: float):
         rate = Rate(self._clock, hz)

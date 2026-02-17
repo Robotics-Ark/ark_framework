@@ -15,6 +15,7 @@ class AutodiffPlotterNode(BaseNode):
         super().__init__("env", "autodiff_plotter", cfg, sim=True)
         self.pos_x, self.pos_y = [], []
         self.grad_vx, self.grad_my = [], []
+        self.grad_times = []
         self.create_subscriber("position", self.on_position)
         self.grad_vx_querier = self.create_querier("grad/v/x", target=target)
         self.grad_my_querier = self.create_querier("grad/m/y", target=target)
@@ -25,6 +26,7 @@ class AutodiffPlotterNode(BaseNode):
 
     def fetch_grads(self):
         req = Value()
+        sim_t = self._clock.now() / 1e9
         try:
             resp_vx = self.grad_vx_querier.query(req)
             if isinstance(resp_vx, Value):
@@ -39,6 +41,7 @@ class AutodiffPlotterNode(BaseNode):
                 self.grad_my.append(resp_my.grad)
         except Exception:
             pass
+        self.grad_times.append(sim_t)
 
 
 def main():
@@ -94,15 +97,11 @@ def main():
     ax_pos.set_title("Position (Translation)")
     ax_pos.set_xlabel("x")
     ax_pos.set_ylabel("y")
-    ax_pos.set_xlim(-5, 5)
-    ax_pos.set_ylim(-5, 5)
     ax_pos.set_aspect("equal")
     (line_pos,) = ax_pos.plot([], [], "b-")
     ax_grad.set_title("Gradients")
-    ax_grad.set_xlabel("t")
+    ax_grad.set_xlabel("sim time (s)")
     ax_grad.set_ylabel("grad")
-    ax_grad.set_xlim(-5, 5)
-    ax_grad.set_ylim(-5, 5)
     (line_grad_vx,) = ax_grad.plot([], [], "g-", label="dx/dv")
     (line_grad_my,) = ax_grad.plot([], [], "m-", label="dy/dm")
     ax_grad.legend()
@@ -110,11 +109,16 @@ def main():
     def update(frame):
         node.fetch_grads()
         line_pos.set_data(node.pos_x, node.pos_y)
-        line_grad_vx.set_data(range(len(node.grad_vx)), node.grad_vx)
-        line_grad_my.set_data(range(len(node.grad_my)), node.grad_my)
+        ax_pos.relim()
+        ax_pos.autoscale_view()
+        times = node.grad_times
+        line_grad_vx.set_data(times[:len(node.grad_vx)], node.grad_vx)
+        line_grad_my.set_data(times[:len(node.grad_my)], node.grad_my)
+        ax_grad.relim()
+        ax_grad.autoscale_view()
         return line_pos, line_grad_vx, line_grad_my
 
-    ani = animation.FuncAnimation(fig, update, interval=50, blit=True)
+    ani = animation.FuncAnimation(fig, update, interval=50, blit=False)
     plt.tight_layout()
     plt.show()
     node.close()
