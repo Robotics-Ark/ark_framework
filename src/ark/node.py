@@ -14,6 +14,20 @@ from ark.core.registerable import Registerable
 from ark_msgs import Value
 
 
+class Variable:
+
+    def __init__(self, name, value, mode="input", out_fields=None):
+        self.name = name
+        self.mode = mode
+        self.out_fields = out_fields or []
+        self.tensor = torch.tensor(value, requires_grad=True)
+        self.gradients = {f: 0.0 for f in self.out_fields}
+        self.values = {f: 0.0 for f in self.out_fields}
+
+    def update_gradients(self, grad_dict):
+        self.gradients.update(grad_dict)
+
+
 class BaseNode(Registerable):
 
     def __init__(
@@ -105,47 +119,35 @@ class BaseNode(Registerable):
         self._queriables[channel] = queryable
         return queryable
 
-    def create_variable(self, name, value, mode="input", fields=None):
-        tensor = torch.tensor(value, requires_grad=True)
-        var_entry = {
-            "tensor": tensor,
-            "mode": mode,
-            "fields": fields or [],
-            "gradients": {f: 0.0 for f in (fields or [])},
-            "values": {f: 0.0 for f in (fields or [])},
-        }
-        self._variables[name] = var_entry
+    def create_variable(self, name, value, mode="input", out_fields=None):
+        var = Variable(name, value, mode, out_fields)
+        self._variables[name] = var
 
         if mode == "input":
-            if fields:
-                for field in fields:
+            if var.out_fields:
+                for field in var.out_fields:
                     grad_channel = f"grad/{name}/{field}"
 
-                    def _make_handler(var_name, fld):
+                    def _make_handler(v, fld):
                         def handler(_req):
-                            v = self._variables[var_name]
                             return Value(
-                                val=v["values"].get(fld, 0.0),
-                                grad=v["gradients"].get(fld, 0.0),
+                                val=v.values.get(fld, 0.0),
+                                grad=v.gradients.get(fld, 0.0),
                             )
 
                         return handler
 
-                    self.create_queryable(grad_channel, _make_handler(name, field))
+                    self.create_queryable(grad_channel, _make_handler(var, field))
 
-            def _make_sub_callback(var_name):
+            def _make_sub_callback(v):
                 def callback(msg):
-                    v = self._variables[var_name]
-                    v["tensor"].data = torch.tensor(msg.val)
+                    v.tensor.data = torch.tensor(msg.val)
 
                 return callback
 
-            self.create_subscriber(f"param/{name}", _make_sub_callback(name))
+            self.create_subscriber(f"param/{name}", _make_sub_callback(var))
 
-        return tensor
-
-    def update_variable(self, name, grad_dict):
-        self._variables[name]["gradients"].update(grad_dict)
+        return var
 
     def create_rate(self, hz: float):
         rate = Rate(self._clock, hz)
