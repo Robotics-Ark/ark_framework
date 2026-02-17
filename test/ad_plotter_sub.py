@@ -112,8 +112,8 @@ def main():
         ax_pos.relim()
         ax_pos.autoscale_view()
         times = node.grad_times
-        line_grad_vx.set_data(times[:len(node.grad_vx)], node.grad_vx)
-        line_grad_my.set_data(times[:len(node.grad_my)], node.grad_my)
+        line_grad_vx.set_data(times[: len(node.grad_vx)], node.grad_vx)
+        line_grad_my.set_data(times[: len(node.grad_my)], node.grad_my)
         ax_grad.relim()
         ax_grad.autoscale_view()
         return line_pos, line_grad_vx, line_grad_my

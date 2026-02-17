@@ -128,6 +128,7 @@ class BaseNode(Registerable):
                                 val=v["values"].get(fld, 0.0),
                                 grad=v["gradients"].get(fld, 0.0),
                             )
+
                         return handler
 
                     self.create_queryable(grad_channel, _make_handler(name, field))
@@ -136,6 +137,7 @@ class BaseNode(Registerable):
                 def callback(msg):
                     v = self._variables[var_name]
                     v["tensor"].data = torch.tensor(msg.val)
+
                 return callback
 
             self.create_subscriber(f"param/{name}", _make_sub_callback(name))
