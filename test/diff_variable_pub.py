@@ -19,9 +19,9 @@ class LineVariableNode(BaseNode):
 
         # Create differentiable input variables — auto-creates grad queryables
         # grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y
-        self.v = self.create_variable("v", 0.0, mode="input", fields=["x", "y"])
-        self.m = self.create_variable("m", 0.0, mode="input", fields=["x", "y"])
-        self.c = self.create_variable("c", 0.0, mode="input", fields=["x", "y"])
+        self.v = self.create_variable("v", 0.0, mode="input", out_fields=["x", "y"])
+        self.m = self.create_variable("m", 0.0, mode="input", out_fields=["x", "y"])
+        self.c = self.create_variable("c", 0.0, mode="input", out_fields=["x", "y"])
 
     def spin(self):
         t = 0.0
@@ -29,8 +29,8 @@ class LineVariableNode(BaseNode):
             t_val = torch.tensor(t, requires_grad=False)
 
             # Forward: y = m * x + c, where x = v * t
-            x = self.v * t_val
-            y = self.m * x + self.c
+            x = self.v.tensor * t_val
+            y = self.m.tensor * x + self.c.tensor
 
             # Publish position
             self.pos_pub.publish(
@@ -38,26 +38,26 @@ class LineVariableNode(BaseNode):
             )
 
             # Backward: compute gradients
-            if self.v.grad is not None:
-                self.v.grad.zero_()
-            if self.m.grad is not None:
-                self.m.grad.zero_()
-            if self.c.grad is not None:
-                self.c.grad.zero_()
+            if self.v.tensor.grad is not None:
+                self.v.tensor.grad.zero_()
+            if self.m.tensor.grad is not None:
+                self.m.tensor.grad.zero_()
+            if self.c.tensor.grad is not None:
+                self.c.tensor.grad.zero_()
 
             x.backward(retain_graph=True)
-            v_x = float(self.v.grad)
-            self.v.grad.zero_()
+            v_x = float(self.v.tensor.grad)
+            self.v.tensor.grad.zero_()
 
             y.backward()
-            v_y = float(self.v.grad)
-            m_y = float(self.m.grad)
-            c_y = float(self.c.grad)
+            v_y = float(self.v.tensor.grad)
+            m_y = float(self.m.tensor.grad)
+            c_y = float(self.c.tensor.grad)
 
             # Update variable gradients — served automatically by queryables
-            self.update_variable("v", {"x": v_x, "y": v_y})
-            self.update_variable("m", {"x": 0.0, "y": m_y})
-            self.update_variable("c", {"x": 0.0, "y": c_y})
+            self.v.update_gradients({"x": v_x, "y": v_y})
+            self.m.update_gradients({"x": 0.0, "y": m_y})
+            self.c.update_gradients({"x": 0.0, "y": c_y})
 
             print(f"t={t:.2f}  dx/dv={v_x:.3f}  dy/dm={m_y:.3f}")
 
