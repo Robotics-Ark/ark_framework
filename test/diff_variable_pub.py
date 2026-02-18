@@ -15,13 +15,17 @@ class LineVariableNode(BaseNode):
         self.pos_pub = self.create_publisher("position")
         self.rate = self.create_rate(HZ)
 
-        # Input variables get param subscribers; output variables auto-create
-        # grad queryables (grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y)
+        # Output variables auto-create grad queryables:
+        # grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y
         self.v = self.create_variable("v", 0.0, mode="input")
         self.m = self.create_variable("m", 0.0, mode="input")
         self.c = self.create_variable("c", 0.0, mode="input")
         self.x = self.create_variable("x", 0.0, mode="output")
         self.y = self.create_variable("y", 0.0, mode="output")
+
+        self.create_subscriber("param/v", lambda msg: self.v.tensor.data.fill_(msg.val))
+        self.create_subscriber("param/m", lambda msg: self.m.tensor.data.fill_(msg.val))
+        self.create_subscriber("param/c", lambda msg: self.c.tensor.data.fill_(msg.val))
 
     def spin(self):
         t = 0.0

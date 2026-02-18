@@ -1,7 +1,6 @@
 import json
 import time
 import threading
-import torch
 import zenoh
 from ark.time.clock import Clock
 from ark.time.rate import Rate
@@ -12,61 +11,7 @@ from ark.comm.querier import Querier
 from ark.comm.queriable import Queryable
 from ark.data.data_collector import DataCollector
 from ark.core.registerable import Registerable
-from ark_msgs import Value
-
-_BACKWARD_LOCK = threading.Lock()
-
-
-class Variable:
-
-    def __init__(self, name, value, mode, variables_registry, create_queryable_fn):
-        self.name = name
-        self.mode = mode
-        self._variables_registry = variables_registry
-        self._grads = {}  # input vars: {output_name: grad_value}
-
-        if mode == "input":
-            self._tensor = torch.tensor(value, requires_grad=True)
-        else:
-            self._tensor = None
-            for inp_name, inp_var in variables_registry.items():
-                if inp_var.mode == "input":
-                    grad_channel = f"grad/{inp_name}/{name}"
-
-                    def _make_handler(iv, ov_name, reg):
-                        def handler(_req):
-                            out_var = reg.get(ov_name)
-                            val = float(out_var._tensor.detach()) if out_var and out_var._tensor is not None else 0.0
-                            grad = iv._grads.get(ov_name, 0.0)
-                            return Value(val=val, grad=grad)
-                        return handler
-
-                    create_queryable_fn(grad_channel, _make_handler(inp_var, name, variables_registry))
-
-    @property
-    def tensor(self):
-        return self._tensor
-
-    @tensor.setter
-    def tensor(self, value):
-        if self.mode == "output":
-            self._tensor = value
-            self._compute_and_store_grads()
-        else:
-            self._tensor.data = value.data if isinstance(value, torch.Tensor) else torch.tensor(value)
-
-    def _compute_and_store_grads(self):
-        if self._tensor is None or not self._tensor.requires_grad:
-            return
-        with _BACKWARD_LOCK:
-            for var in self._variables_registry.values():
-                if var.mode == "input" and var._tensor.grad is not None:
-                    var._tensor.grad.zero_()
-            self._tensor.backward(retain_graph=True)
-            for var in self._variables_registry.values():
-                if var.mode == "input":
-                    grad = float(var._tensor.grad) if var._tensor.grad is not None else 0.0
-                    var._grads[self.name] = grad
+from ark.diff.variable import Variable
 
 
 class BaseNode(Registerable):
@@ -95,6 +40,7 @@ class BaseNode(Registerable):
         self._queriers = {}
         self._queriables = {}
         self._variables = {}
+        self._grad_lock = threading.Lock()
 
         self._session.declare_subscriber(f"{env_name}/reset", self._on_reset)
 
@@ -163,9 +109,6 @@ class BaseNode(Registerable):
     def create_variable(self, name, value, mode="input"):
         """Create a differentiable variable.
 
-        For "input" mode, a subscriber on "param/{name}" is created so that
-        external nodes can update the tensor value at runtime.
-
         For "output" mode, queryables are created on "grad/{input_name}/{name}"
         for each existing input variable. Setting the tensor triggers an eager
         backward pass that caches gradients into each input variable.
@@ -175,18 +118,8 @@ class BaseNode(Registerable):
             value: Initial scalar value for the underlying tensor.
             mode: "input" or "output".
         """
-        var = Variable(name, value, mode, self._variables, self.create_queryable)
+        var = Variable(name, value, mode, self._variables, self._grad_lock, self.create_queryable)
         self._variables[name] = var
-
-        if mode == "input":
-            def _make_sub_callback(v):
-                def callback(msg):
-                    v.tensor.data = torch.tensor(msg.val)
-
-                return callback
-
-            self.create_subscriber(f"param/{name}", _make_sub_callback(var))
-
         return var
 
     def create_rate(self, hz: float):
