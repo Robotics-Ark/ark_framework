@@ -12,6 +12,7 @@ from ark.comm.queriable import Queryable
 from ark.data.data_collector import DataCollector
 from ark.core.registerable import Registerable
 from ark.diff.variable import Variable
+from ark_msgs import VariableInfo
 
 
 class BaseNode(Registerable):
@@ -41,6 +42,7 @@ class BaseNode(Registerable):
         self._queriables = {}
         self._variables = {}
         self._grad_lock = threading.Lock()
+        self._registry_pub = self.create_publisher("ark/vars/register")
 
         self._session.declare_subscriber(f"{env_name}/reset", self._on_reset)
 
@@ -120,6 +122,19 @@ class BaseNode(Registerable):
         """
         var = Variable(name, value, mode, self._variables, self._grad_lock, self.create_queryable)
         self._variables[name] = var
+
+        if mode == "output":
+            grad_channels = [
+                f"grad/{inp_name}/{name}"
+                for inp_name, v in self._variables.items()
+                if v.mode == "input"
+            ]
+            self._registry_pub.publish(VariableInfo(
+                output_name=name,
+                node_name=self._node_name,
+                grad_channels=grad_channels,
+            ))
+
         return var
 
     def create_rate(self, hz: float):

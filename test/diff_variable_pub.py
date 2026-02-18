@@ -1,5 +1,5 @@
 from ark.node import BaseNode
-from ark_msgs import Translation
+from ark_msgs import Value
 import argparse
 import common_example as common
 import torch
@@ -12,7 +12,8 @@ class LineVariableNode(BaseNode):
 
     def __init__(self, cfg):
         super().__init__("env", "line_var_pub", cfg, sim=True)
-        self.pos_pub = self.create_publisher("position")
+        self.x_pub = self.create_publisher("x")
+        self.y_pub = self.create_publisher("y")
         self.rate = self.create_rate(HZ)
 
         # Output variables auto-create grad queryables:
@@ -37,9 +38,8 @@ class LineVariableNode(BaseNode):
             self.x.tensor = self.v.tensor * t_val
             self.y.tensor = self.m.tensor * self.x.tensor + self.c.tensor
 
-            self.pos_pub.publish(
-                Translation(x=float(self.x.tensor.detach()), y=float(self.y.tensor.detach()), z=0.0)
-            )
+            self.x_pub.publish(Value(val=float(self.x.tensor.detach())))
+            self.y_pub.publish(Value(val=float(self.y.tensor.detach())))
 
             t += DT
             self.rate.sleep()
