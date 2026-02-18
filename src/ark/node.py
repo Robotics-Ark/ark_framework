@@ -19,32 +19,54 @@ _BACKWARD_LOCK = threading.Lock()
 
 class Variable:
 
-    def __init__(self, name, value, mode="input", out_fields=None):
+    def __init__(self, name, value, mode, variables_registry, create_queryable_fn):
         self.name = name
         self.mode = mode
-        self.out_fields = out_fields or []
-        self.tensor = torch.tensor(value, requires_grad=True)
-        self._outputs = {}
+        self._variables_registry = variables_registry
+        self._grads = {}  # input vars: {output_name: grad_value}
 
-    def set_output(self, field, tensor):
-        with _BACKWARD_LOCK:
-            self._outputs[field] = tensor
+        if mode == "input":
+            self._tensor = torch.tensor(value, requires_grad=True)
+        else:
+            self._tensor = None
+            for inp_name, inp_var in variables_registry.items():
+                if inp_var.mode == "input":
+                    grad_channel = f"grad/{inp_name}/{name}"
 
-    def set_outputs(self, mapping):
-        with _BACKWARD_LOCK:
-            self._outputs.update(mapping)
+                    def _make_handler(iv, ov_name, reg):
+                        def handler(_req):
+                            out_var = reg.get(ov_name)
+                            val = float(out_var._tensor.detach()) if out_var and out_var._tensor is not None else 0.0
+                            grad = iv._grads.get(ov_name, 0.0)
+                            return Value(val=val, grad=grad)
+                        return handler
 
-    def compute_grad(self, field):
+                    create_queryable_fn(grad_channel, _make_handler(inp_var, name, variables_registry))
+
+    @property
+    def tensor(self):
+        return self._tensor
+
+    @tensor.setter
+    def tensor(self, value):
+        if self.mode == "output":
+            self._tensor = value
+            self._compute_and_store_grads()
+        else:
+            self._tensor.data = value.data if isinstance(value, torch.Tensor) else torch.tensor(value)
+
+    def _compute_and_store_grads(self):
+        if self._tensor is None or not self._tensor.requires_grad:
+            return
         with _BACKWARD_LOCK:
-            out_tensor = self._outputs.get(field)
-            if out_tensor is None:
-                return 0.0, 0.0
-            val = float(out_tensor.detach())
-            if self.tensor.grad is not None:
-                self.tensor.grad.zero_()
-            out_tensor.backward(retain_graph=True)
-            grad = float(self.tensor.grad) if self.tensor.grad is not None else 0.0
-            return val, grad
+            for var in self._variables_registry.values():
+                if var.mode == "input" and var._tensor.grad is not None:
+                    var._tensor.grad.zero_()
+            self._tensor.backward(retain_graph=True)
+            for var in self._variables_registry.values():
+                if var.mode == "input":
+                    grad = float(var._tensor.grad) if var._tensor.grad is not None else 0.0
+                    var._grads[self.name] = grad
 
 
 class BaseNode(Registerable):
@@ -138,45 +160,25 @@ class BaseNode(Registerable):
         self._queriables[channel] = queryable
         return queryable
 
-    def create_variable(self, name, value, mode="input", out_fields=None):
-        """Create a differentiable variable with automatic gradient queryables.
+    def create_variable(self, name, value, mode="input"):
+        """Create a differentiable variable.
 
-        For "input" mode variables with out_fields, this sets up:
-          - A queryable on "grad/{name}/{field}" for each field in out_fields.
-            Gradients are computed lazily via backward() when queried, using
-            output tensors registered by the user via Variable.set_outputs().
-          - A subscriber on "param/{name}" that updates the variable's tensor
-            value when a new parameter is published.
+        For "input" mode, a subscriber on "param/{name}" is created so that
+        external nodes can update the tensor value at runtime.
+
+        For "output" mode, queryables are created on "grad/{input_name}/{name}"
+        for each existing input variable. Setting the tensor triggers an eager
+        backward pass that caches gradients into each input variable.
 
         Args:
             name: Variable identifier, used in channel names.
             value: Initial scalar value for the underlying tensor.
-            mode: "input" creates queryables and a param subscriber.
-            out_fields: Output field names (e.g. ["x", "y"]) that this
-                variable contributes to. Each gets a gradient queryable.
+            mode: "input" or "output".
         """
-        var = Variable(name, value, mode, out_fields)
+        var = Variable(name, value, mode, self._variables, self.create_queryable)
         self._variables[name] = var
 
         if mode == "input":
-            # Create a gradient queryable for each output field.
-            # On query, compute_grad() runs backward() on the registered
-            # output tensor and returns the gradient w.r.t. this variable.
-            if var.out_fields:
-                for field in var.out_fields:
-                    grad_channel = f"grad/{name}/{field}"
-
-                    def _make_handler(v, fld):
-                        def handler(_req):
-                            val, grad = v.compute_grad(fld)
-                            return Value(val=val, grad=grad)
-
-                        return handler
-
-                    self.create_queryable(grad_channel, _make_handler(var, field))
-
-            # Subscribe to parameter updates so external nodes can set
-            # this variable's value at runtime.
             def _make_sub_callback(v):
                 def callback(msg):
                     v.tensor.data = torch.tensor(msg.val)

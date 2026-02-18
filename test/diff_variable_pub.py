@@ -1,7 +1,5 @@
-import math
-import time
 from ark.node import BaseNode
-from ark_msgs import Translation, Value
+from ark_msgs import Translation
 import argparse
 import common_example as common
 import torch
@@ -17,30 +15,27 @@ class LineVariableNode(BaseNode):
         self.pos_pub = self.create_publisher("position")
         self.rate = self.create_rate(HZ)
 
-        # Create differentiable input variables — auto-creates grad queryables
-        # grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y
-        self.v = self.create_variable("v", 0.0, mode="input", out_fields=["x", "y"])
-        self.m = self.create_variable("m", 0.0, mode="input", out_fields=["x", "y"])
-        self.c = self.create_variable("c", 0.0, mode="input", out_fields=["x", "y"])
+        # Input variables get param subscribers; output variables auto-create
+        # grad queryables (grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y)
+        self.v = self.create_variable("v", 0.0, mode="input")
+        self.m = self.create_variable("m", 0.0, mode="input")
+        self.c = self.create_variable("c", 0.0, mode="input")
+        self.x = self.create_variable("x", 0.0, mode="output")
+        self.y = self.create_variable("y", 0.0, mode="output")
 
     def spin(self):
         t = 0.0
         while True:
             t_val = torch.tensor(t, requires_grad=False)
 
-            # Forward: y = m * x + c, where x = v * t
-            x = self.v.tensor * t_val
-            y = self.m.tensor * x + self.c.tensor
+            # Forward: x = v * t, y = m * x + c
+            # Setting output tensors triggers eager backward and caches gradients
+            self.x.tensor = self.v.tensor * t_val
+            self.y.tensor = self.m.tensor * self.x.tensor + self.c.tensor
 
-            # Publish position
             self.pos_pub.publish(
-                Translation(x=float(x.detach()), y=float(y.detach()), z=0.0)
+                Translation(x=float(self.x.tensor.detach()), y=float(self.y.tensor.detach()), z=0.0)
             )
-
-            # Register outputs — gradients computed lazily on query
-            self.v.set_outputs({"x": x, "y": y})
-            self.m.set_outputs({"x": x, "y": y})
-            self.c.set_outputs({"x": x, "y": y})
 
             t += DT
             self.rate.sleep()
