@@ -4,17 +4,19 @@ from ark_msgs import Value
 
 class Variable:
 
-    def __init__(self, name, value, mode, variables_registry, lock, create_queryable_fn):
+    def __init__(self, name, value, mode, variables_registry, lock, clock, create_queryable_fn):
         self.name = name
         self.mode = mode
         self._variables_registry = variables_registry
         self._lock = lock
+        self._clock = clock
         self._grads = {}  # input vars: {output_name: grad_value}
 
         if mode == "input":
             self._tensor = torch.tensor(value, requires_grad=True)
         else:
             self._tensor = None
+            self._computation_ts = clock.now()
             for inp_name, inp_var in variables_registry.items():
                 if inp_var.mode == "input":
                     grad_channel = f"grad/{inp_name}/{name}"
@@ -25,7 +27,8 @@ class Variable:
                             with lk:
                                 val = float(out_var._tensor.detach()) if out_var and out_var._tensor is not None else 0.0
                                 grad = iv._grads.get(ov_name, 0.0)
-                            return Value(val=val, grad=grad)
+                                ts = out_var._computation_ts if out_var else 0
+                            return Value(val=val, grad=grad, timestamp=ts)
                         return handler
 
                     create_queryable_fn(grad_channel, _make_handler(inp_var, name, variables_registry, self._lock))
@@ -58,3 +61,4 @@ class Variable:
                 if var.mode == "input":
                     grad = float(var._tensor.grad) if var._tensor.grad is not None else 0.0
                     var._grads[self.name] = grad
+            self._computation_ts = self._clock.now()

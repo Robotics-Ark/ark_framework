@@ -120,7 +120,7 @@ class BaseNode(Registerable):
             value: Initial scalar value for the underlying tensor.
             mode: "input" or "output".
         """
-        var = Variable(name, value, mode, self._variables, self._grad_lock, self.create_queryable)
+        var = Variable(name, value, mode, self._variables, self._grad_lock, self._clock, self.create_queryable)
         self._variables[name] = var
 
         if mode == "output":

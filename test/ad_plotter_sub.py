@@ -14,9 +14,10 @@ class AutodiffPlotterNode(BaseNode):
     def __init__(self, cfg, target):
         super().__init__("env", "autodiff_plotter", cfg, sim=True)
         self.pos_x, self.pos_y = [], []
+        self.pos_x_ts, self.pos_y_ts = [], []
         self._grad_queriers = {}  # channel -> Querier
         self._grad_data = {}      # channel -> [float]
-        self._grad_times = []
+        self._grad_ts = {}        # channel -> [int]
         self.create_subscriber("x", self.on_x)
         self.create_subscriber("y", self.on_y)
         self._discover_grad_channels(["x", "y"], target)
@@ -27,32 +28,34 @@ class AutodiffPlotterNode(BaseNode):
             deadline = time.time() + timeout
             while time.time() < deadline:
                 try:
-                    resp = disc.query(Value())
+                    resp = disc.query(VariableInfo())
                     if isinstance(resp, VariableInfo):
                         for ch in resp.grad_channels:
                             self._grad_queriers[ch] = self.create_querier(ch, target=target)
                             self._grad_data[ch] = []
+                            self._grad_ts[ch] = []
                         break
                 except Exception:
                     time.sleep(0.2)
 
     def on_x(self, msg: Value):
         self.pos_x.append(msg.val)
+        self.pos_x_ts.append(msg.timestamp)
 
     def on_y(self, msg: Value):
         self.pos_y.append(msg.val)
+        self.pos_y_ts.append(msg.timestamp)
 
     def fetch_grads(self):
         req = Value()
-        sim_t = self._clock.now() / 1e9
         for ch, querier in self._grad_queriers.items():
             try:
                 resp = querier.query(req)
                 if isinstance(resp, Value):
                     self._grad_data[ch].append(resp.grad)
+                    self._grad_ts[ch].append(resp.timestamp)
             except Exception:
                 pass
-        self._grad_times.append(sim_t)
 
 
 def main():
@@ -111,9 +114,9 @@ def main():
         line_pos.set_data(node.pos_x[:n], node.pos_y[:n])
         ax_pos.relim()
         ax_pos.autoscale_view()
-        times = node._grad_times
         for ch, line in grad_lines.items():
             data = node._grad_data[ch]
+            times = [t / 1e9 for t in node._grad_ts[ch]]
             line.set_data(times[: len(data)], data)
         ax_grad.relim()
         ax_grad.autoscale_view()

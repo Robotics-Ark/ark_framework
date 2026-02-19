@@ -38,8 +38,9 @@ class LineVariableNode(BaseNode):
             self.x.tensor = self.v.tensor * t_val
             self.y.tensor = self.m.tensor * self.x.tensor + self.c.tensor
 
-            self.x_pub.publish(Value(val=float(self.x.tensor.detach())))
-            self.y_pub.publish(Value(val=float(self.y.tensor.detach())))
+            ts = self._clock.now()
+            self.x_pub.publish(Value(val=float(self.x.tensor.detach()), timestamp=ts))
+            self.y_pub.publish(Value(val=float(self.y.tensor.detach()), timestamp=ts))
 
             t += DT
             self.rate.sleep()
