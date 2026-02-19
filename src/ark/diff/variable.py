@@ -14,9 +14,12 @@ class Variable:
 
         if mode == "input":
             self._tensor = torch.tensor(value, requires_grad=True)
+            self._history = {}
+            self._replay_tensor = None
         else:
             self._tensor = None
             self._computation_ts = clock.now()
+            self._replay_fn = None
             for inp_name, inp_var in variables_registry.items():
                 if inp_var.mode == "input":
                     grad_channel = f"grad/{inp_name}/{name}"
@@ -24,6 +27,9 @@ class Variable:
                     def _make_handler(iv, ov_name, reg, lk):
                         def handler(_req):
                             out_var = reg.get(ov_name)
+                            if _req.timestamp != 0 and out_var._replay_fn:
+                                val, grad = out_var._replay_fn(_req.timestamp, iv.name, ov_name)
+                                return Value(val=val, grad=grad, timestamp=_req.timestamp)
                             with lk:
                                 val = float(out_var._tensor.detach()) if out_var and out_var._tensor is not None else 0.0
                                 grad = iv._grads.get(ov_name, 0.0)
@@ -32,6 +38,16 @@ class Variable:
                         return handler
 
                     create_queryable_fn(grad_channel, _make_handler(inp_var, name, variables_registry, self._lock))
+
+    def snapshot(self, ts):
+        """Record current tensor value at clock timestamp ts."""
+        self._history[ts] = float(self._tensor.detach())
+
+    def at(self, ts):
+        """Return a fresh requires_grad tensor from history at ts."""
+        val = self._history[ts]
+        self._replay_tensor = torch.tensor(val, requires_grad=True)
+        return self._replay_tensor
 
     @property
     def tensor(self):

@@ -14,7 +14,6 @@ class LineVariableNode(BaseNode):
         super().__init__("env", "line_var_pub", cfg, sim=True)
         self.x_pub = self.create_publisher("x")
         self.y_pub = self.create_publisher("y")
-        self.rate = self.create_rate(HZ)
 
         # Output variables auto-create grad queryables:
         # grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y
@@ -28,22 +27,49 @@ class LineVariableNode(BaseNode):
         self.create_subscriber("param/m", lambda msg: self.m.tensor.data.fill_(msg.val))
         self.create_subscriber("param/c", lambda msg: self.c.tensor.data.fill_(msg.val))
 
-    def spin(self):
-        t = 0.0
-        while True:
-            t_val = torch.tensor(t, requires_grad=False)
+        self.x._replay_fn = self._replay_grad
+        self.y._replay_fn = self._replay_grad
 
-            # Forward: x = v * t, y = m * x + c
-            # Setting output tensors triggers eager backward and caches gradients
-            self.x.tensor = self.v.tensor * t_val
-            self.y.tensor = self.m.tensor * self.x.tensor + self.c.tensor
+        self.create_stepper(HZ, self.step)
 
-            ts = self._clock.now()
-            self.x_pub.publish(Value(val=float(self.x.tensor.detach()), timestamp=ts))
-            self.y_pub.publish(Value(val=float(self.y.tensor.detach()), timestamp=ts))
+    def forward(self, ts, replay=False):
+        """Compute outputs from inputs at a given timestamp.
 
-            t += DT
-            self.rate.sleep()
+        Builds the computation graph parameterised by ts so that
+        gradients can later be evaluated at arbitrary times.
+        When replay=True, uses historical input values at ts.
+        """
+        if replay:
+            v, m, c = self.v.at(ts), self.m.at(ts), self.c.at(ts)
+        else:
+            v, m, c = self.v.tensor, self.m.tensor, self.c.tensor
+
+        t_val = torch.tensor(ts / 1e9, requires_grad=False)
+        x = v * t_val
+        y = m * x + c
+        return x, y
+
+    def _replay_grad(self, ts, input_name, output_name):
+        x, y = self.forward(ts, replay=True)
+        outputs = {'x': x, 'y': y}
+        inp_var = self._variables[input_name]
+        (grad,) = torch.autograd.grad(outputs[output_name], inp_var._replay_tensor, retain_graph=True, allow_unused=True)
+        return float(outputs[output_name].detach()), float(grad) if grad is not None else 0.0
+
+    def step(self, ts):
+        x, y = self.forward(ts)
+
+        # Setting output tensors triggers eager backward and caches gradients
+        self.x.tensor = x
+        self.y.tensor = y
+
+        # Snapshot input values at this timestamp
+        self.v.snapshot(ts)
+        self.m.snapshot(ts)
+        self.c.snapshot(ts)
+
+        self.x_pub.publish(Value(val=float(self.x.tensor.detach()), timestamp=ts))
+        self.y_pub.publish(Value(val=float(self.y.tensor.detach()), timestamp=ts))
 
 
 if __name__ == "__main__":

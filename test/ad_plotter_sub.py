@@ -57,6 +57,18 @@ class AutodiffPlotterNode(BaseNode):
             except Exception:
                 pass
 
+    def fetch_grads_at(self, ts):
+        req = Value(timestamp=ts)
+        results = {}
+        for ch, querier in self._grad_queriers.items():
+            try:
+                resp = querier.query(req)
+                if isinstance(resp, Value):
+                    results[ch] = (resp.val, resp.grad)
+            except Exception:
+                pass
+        return results
+
 
 def main():
     parser = argparse.ArgumentParser(description="Autodiff Plotter Node")
@@ -91,13 +103,13 @@ def main():
     node = AutodiffPlotterNode(conf, target)
     threading.Thread(target=node.spin, daemon=True).start()
 
-    fig, (ax_pos, ax_grad) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax_pos, ax_grad, ax_replay) = plt.subplots(1, 3, figsize=(18, 5))
     ax_pos.set_title("Position")
     ax_pos.set_xlabel("x")
     ax_pos.set_ylabel("y")
     ax_pos.set_aspect("equal")
     (line_pos,) = ax_pos.plot([], [], "b-")
-    ax_grad.set_title("Gradients")
+    ax_grad.set_title("Gradients (live)")
     ax_grad.set_xlabel("sim time (s)")
     ax_grad.set_ylabel("grad")
 
@@ -108,8 +120,28 @@ def main():
         grad_lines[ch] = line
     ax_grad.legend()
 
+    ax_replay.set_title("Gradients (replay)")
+    ax_replay.set_xlabel("sim time (s)")
+    ax_replay.set_ylabel("grad")
+    replay_data = {ch: [] for ch in node._grad_queriers}
+    replay_ts = {ch: [] for ch in node._grad_queriers}
+    replay_lines = {}
+    for i, ch in enumerate(node._grad_queriers):
+        (line,) = ax_replay.plot([], [], color=colors[i % 10], label=ch)
+        replay_lines[ch] = line
+    ax_replay.legend()
+
     def update(frame):
         node.fetch_grads()
+
+        # Replay: query gradient at a historical timestamp
+        if len(node.pos_x_ts) > 10:
+            historical_ts = node.pos_x_ts[-10]
+            results = node.fetch_grads_at(historical_ts)
+            for ch, (val, grad) in results.items():
+                replay_data[ch].append(grad)
+                replay_ts[ch].append(historical_ts)
+
         n = min(len(node.pos_x), len(node.pos_y))
         line_pos.set_data(node.pos_x[:n], node.pos_y[:n])
         ax_pos.relim()
@@ -120,7 +152,13 @@ def main():
             line.set_data(times[: len(data)], data)
         ax_grad.relim()
         ax_grad.autoscale_view()
-        return line_pos, *grad_lines.values()
+        for ch, line in replay_lines.items():
+            data = replay_data[ch]
+            times = [t / 1e9 for t in replay_ts[ch]]
+            line.set_data(times[: len(data)], data)
+        ax_replay.relim()
+        ax_replay.autoscale_view()
+        return line_pos, *grad_lines.values(), *replay_lines.values()
 
     ani = animation.FuncAnimation(fig, update, interval=50, blit=False)
     plt.tight_layout()
