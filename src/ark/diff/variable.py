@@ -24,12 +24,21 @@ class Variable:
                 if inp_var.mode == "input":
                     grad_channel = f"grad/{inp_name}/{name}"
 
+                    # create queryable and handler for this input-output
+                    # gradient
                     def _make_handler(iv, ov_name, reg, lk):
                         def handler(_req):
+
+                            # retrieve the output variable
                             out_var = reg.get(ov_name)
+
+                            # check if replay is required
                             if _req.timestamp != 0 and out_var._replay_fn:
                                 val, grad = out_var._replay_fn(_req.timestamp, iv.name, ov_name)
                                 return Value(val=val, grad=grad, timestamp=_req.timestamp)
+
+                            # if not replay, return the latest computed value
+                            # and grad
                             with lk:
                                 val = float(out_var._tensor.detach()) if out_var and out_var._tensor is not None else 0.0
                                 grad = iv._grads.get(ov_name, 0.0)
@@ -57,22 +66,37 @@ class Variable:
     def tensor(self, value):
         if self.mode == "output":
             self._tensor = value
-            self._compute_and_store_grads()
         else:
             self._tensor.data = value.data if isinstance(value, torch.Tensor) else torch.tensor(value)
+
+    def backward(self):
+        """Compute and store gradients for this output variable."""
+        self._compute_and_store_grads()
 
     def _is_last_output(self):
         output_names = [k for k, v in self._variables_registry.items() if v.mode == "output"]
         return output_names and output_names[-1] == self.name
 
     def _compute_and_store_grads(self):
+        """
+        Compute gradients for all input variables with respect to this output
+        variable
+        """
         if self._tensor is None or not self._tensor.requires_grad:
             return
         with self._lock:
+
+            # zero existing grads for all input variables to ensure correct
+            # backward
             for var in self._variables_registry.values():
                 if var.mode == "input" and var._tensor.grad is not None:
                     var._tensor.grad.zero_()
+
+            # backward on the output tensor to compute gradients for all input
+            # variables
             self._tensor.backward(retain_graph=not self._is_last_output())
+
+            # store computed grads for each input variable in the registry
             for var in self._variables_registry.values():
                 if var.mode == "input":
                     grad = float(var._tensor.grad) if var._tensor.grad is not None else 0.0

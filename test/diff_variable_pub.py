@@ -23,10 +23,6 @@ class LineVariableNode(BaseNode):
         self.x = self.create_variable("x", 0.0, mode="output")
         self.y = self.create_variable("y", 0.0, mode="output")
 
-        self.create_subscriber("param/v", lambda msg: self.v.tensor.data.fill_(msg.val))
-        self.create_subscriber("param/m", lambda msg: self.m.tensor.data.fill_(msg.val))
-        self.create_subscriber("param/c", lambda msg: self.c.tensor.data.fill_(msg.val))
-
         self.x._replay_fn = self._replay_grad
         self.y._replay_fn = self._replay_grad
 
@@ -59,9 +55,10 @@ class LineVariableNode(BaseNode):
     def step(self, ts):
         x, y = self.forward(ts)
 
-        # Setting output tensors triggers eager backward and caches gradients
         self.x.tensor = x
         self.y.tensor = y
+        self.x.backward()
+        self.y.backward()
 
         # Snapshot input values at this timestamp
         self.v.snapshot(ts)

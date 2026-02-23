@@ -109,8 +109,12 @@ class BaseNode(Registerable):
         self._queriables[channel] = queryable
         return queryable
 
-    def create_variable(self, name, value, mode="input"):
+    def create_variable(self, name, value, mode="input", subscribe=True):
         """Create a differentiable variable.
+
+        For "input" mode (leaf nodes), a subscriber is automatically created on
+        "param/{name}" to receive parameter updates from the network. Set
+        subscribe=False to disable this.
 
         For "output" mode, queryables are created on "grad/{input_name}/{name}"
         for each existing input variable. Setting the tensor triggers an eager
@@ -120,9 +124,13 @@ class BaseNode(Registerable):
             name: Variable identifier, used in channel names.
             value: Initial scalar value for the underlying tensor.
             mode: "input" or "output".
+            subscribe: If True and mode is "input", auto-subscribe to param/{name}.
         """
         var = Variable(name, value, mode, self._variables, self._grad_lock, self._clock, self.create_queryable)
         self._variables[name] = var
+
+        if mode == "input" and subscribe:
+            self.create_subscriber(f"param/{name}", lambda msg, v=var: v.tensor.data.fill_(msg.val))
 
         if mode == "output":
             grad_channels = [
