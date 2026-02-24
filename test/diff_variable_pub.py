@@ -17,6 +17,7 @@ class LineVariableNode(BaseNode):
 
         # Output variables auto-create grad queryables:
         # grad/v/x, grad/v/y, grad/m/x, grad/m/y, grad/c/x, grad/c/y
+        # x = v^3 * t^2,  y = m * x + c
         self.v = self.create_variable("v", 0.0, mode="input")
         self.m = self.create_variable("m", 0.0, mode="input")
         self.c = self.create_variable("c", 0.0, mode="input")
@@ -41,7 +42,7 @@ class LineVariableNode(BaseNode):
             v, m, c = self.v.tensor, self.m.tensor, self.c.tensor
 
         t_val = torch.tensor(ts / 1e9, requires_grad=False)
-        x = v * t_val
+        x = v ** 3 * t_val ** 2
         y = m * x + c
         return x, y
 
