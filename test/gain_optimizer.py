@@ -112,7 +112,7 @@ if __name__ == "__main__":
         parser.add_argument(
             "--inertia", "-I",
             dest="inertia",
-            default=0.083,
+            default=3.333,
             type=float,
             help="Joint inertia for critical damping (match pendulum URDF).",
         )

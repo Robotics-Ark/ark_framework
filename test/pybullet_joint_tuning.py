@@ -47,6 +47,8 @@ class PDBulletNode(BaseNode):
         self.I = dyn_info[2][0]
         print(f"Joint inertia (about rotation axis): {self.I:.4f}")
 
+        ############## Bullet setup complete, now define control variables and publishers ##############################
+
         # Target state
         self.q_target = 1.5708 # 90 degrees
         self.qd_target = 0.0
@@ -81,6 +83,8 @@ class PDBulletNode(BaseNode):
         qd = torch.tensor(qd_val)
         q_t = torch.tensor(self.q_target)
         qd_t = torch.tensor(self.qd_target)
+
+        ## Retrieved robot state from simulator ##
 
         # Get Kp (differentiable)
         if replay:
