@@ -48,11 +48,11 @@ class PDBulletNode(BaseNode):
         print(f"Joint inertia (about rotation axis): {self.I:.4f}")
 
         # Target state
-        self.q_target = 0.5236
+        self.q_target = 1.5708 # 90 degrees
         self.qd_target = 0.0
 
         # Input variable: only Kp (Kd derived from critical damping)
-        self.kp = self.create_variable("kp", 0.0, mode="input")
+        self.kp = self.create_variable("kp", 20.0, mode="input")
 
         # Output variable
         self.loss_var = self.create_variable("loss", 0.0, mode="output")
@@ -64,7 +64,6 @@ class PDBulletNode(BaseNode):
         # Publishers for visualization
         self.q_pub = self.create_publisher("q")
         self.torque_pub = self.create_publisher("torque_val")
-        self.loss_pub = self.create_publisher("loss_val")
 
         self.create_stepper(HZ, self.step)
 
@@ -88,6 +87,7 @@ class PDBulletNode(BaseNode):
             kp = self.kp.at(ts)
         else:
             kp = self.kp.tensor
+        print(f"Current Kp: {float(kp.detach()):.4f}")
 
         # Critical damping: Kd = 2 * sqrt(Kp * I)
         kd = 2.0 * torch.sqrt(kp * self.I)
@@ -151,7 +151,6 @@ class PDBulletNode(BaseNode):
         # Publish for visualization
         self.q_pub.publish(Value(val=q_val, timestamp=ts))
         self.torque_pub.publish(Value(val=torque_scalar, timestamp=ts))
-        self.loss_pub.publish(Value(val=float(loss.detach()), timestamp=ts))
 
     def reset(self):
         p.resetJointState(

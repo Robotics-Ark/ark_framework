@@ -4,13 +4,14 @@ from ark_msgs import Value
 
 class Variable:
 
-    def __init__(self, name, value, mode, variables_registry, lock, clock, create_queryable_fn):
+    def __init__(self, name, value, mode, variables_registry, lock, clock, create_queryable_fn, publisher=None):
         self.name = name
         self.mode = mode
         self._variables_registry = variables_registry
         self._lock = lock
         self._clock = clock
         self._grads = {}  # input vars: {output_name: grad_value}
+        self._publisher = publisher
 
         if mode == "input":
             self._tensor = torch.tensor(value, requires_grad=True)
@@ -66,6 +67,9 @@ class Variable:
     def tensor(self, value):
         if self.mode == "output":
             self._tensor = value
+            if self._publisher is not None:
+                val = float(self._tensor.detach())
+                self._publisher.publish(Value(val=val, timestamp=self._clock.now()))
         else:
             self._tensor.data = value.data if isinstance(value, torch.Tensor) else torch.tensor(value)
 

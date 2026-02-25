@@ -126,7 +126,8 @@ class BaseNode(Registerable):
             mode: "input" or "output".
             subscribe: If True and mode is "input", auto-subscribe to param/{name}.
         """
-        var = Variable(name, value, mode, self._variables, self._grad_lock, self._clock, self.create_queryable)
+        pub = self.create_publisher(f"output/{name}") if mode == "output" else None
+        var = Variable(name, value, mode, self._variables, self._grad_lock, self._clock, self.create_queryable, publisher=pub)
         self._variables[name] = var
 
         if mode == "input" and subscribe:

@@ -18,7 +18,7 @@ class GainOptimizerNode(BaseNode):
     def __init__(self, cfg, target, inertia):
         super().__init__("env", "gain_optimizer", cfg, sim=True)
 
-        self.kp_val = 0.0
+        self.log_kp = math.log(30)
         self.lr = 0.01
         self.I = inertia
 
@@ -33,7 +33,7 @@ class GainOptimizerNode(BaseNode):
         self.pub_kp = self.create_publisher("param/kp")
 
         # Subscribe to loss for plotting
-        self.create_subscriber("loss_val", self.on_loss)
+        self.create_subscriber("output/loss", self.on_loss)
         self._latest_loss = 0.0
 
         # Discover gradient channels for loss output
@@ -73,26 +73,26 @@ class GainOptimizerNode(BaseNode):
             except Exception:
                 pass
 
-        # Gradient descent
-        self.kp_val -= self.lr * grad_kp
+        # Current Kp from log-space
+        kp_val = math.exp(self.log_kp)
 
-        # Clamp to reasonable range
-        self.kp_val = max(0.1, min(1000.0, self.kp_val))
+        # Gradient descent in log-space: d(loss)/d(log_kp) = d(loss)/d(kp) * kp
+        self.log_kp -= self.lr * grad_kp * kp_val
 
         # Derive Kd for display
-        kd_val = 2.0 * math.sqrt(self.kp_val * self.I)
+        kd_val = 2.0 * math.sqrt(kp_val * self.I)
 
         # Publish updated gain
-        self.pub_kp.publish(Value(val=self.kp_val))
+        self.pub_kp.publish(Value(val=kp_val))
 
         # Record history for plotting
-        self.kp_history.append(self.kp_val)
+        self.kp_history.append(kp_val)
         self.kd_history.append(kd_val)
         self.loss_history.append(self._latest_loss)
         self.grad_kp_history.append(grad_kp)
         self.time_history.append(ts / 1e9)
 
-        print(f"Kp={self.kp_val:.3f}  Kd={kd_val:.3f}  grad_kp={grad_kp:.6f}")
+        print(f"Kp={kp_val:.3f}  Kd={kd_val:.3f}  grad_kp={grad_kp:.6f}")
 
 
 if __name__ == "__main__":

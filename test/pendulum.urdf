@@ -10,8 +10,8 @@
   <link name="rod">
     <inertial>
       <origin xyz="0 0 -0.5"/>
-      <mass value="1.0"/>
-      <inertia ixx="0.083" ixy="0" ixz="0" iyy="0.083" iyz="0" izz="0.001"/>
+      <mass value="10.0"/>
+      <inertia ixx="3.333" ixy="0" ixz="0" iyy="3.333" iyz="0" izz="0.01"/>
     </inertial>
     <visual>
       <origin xyz="0 0 -0.5"/>
