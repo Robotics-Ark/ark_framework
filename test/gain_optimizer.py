@@ -18,7 +18,7 @@ class GainOptimizerNode(BaseNode):
     def __init__(self, cfg, target, inertia):
         super().__init__("env", "gain_optimizer", cfg, sim=True)
 
-        self.log_kp = math.log(30)
+        self.log_kp = math.log(20.0)
         self.lr = 0.01
         self.I = inertia
 
@@ -63,6 +63,8 @@ class GainOptimizerNode(BaseNode):
     def step(self, ts):
         # Query gradient of loss w.r.t. kp
         grad_kp = 0.0
+        # Current Kp from log-space
+        kp_val = math.exp(self.log_kp)
         for ch, querier in self._grad_queriers.items():
             if "kp" not in ch:
                 continue
@@ -73,11 +75,13 @@ class GainOptimizerNode(BaseNode):
             except Exception:
                 pass
 
-        # Current Kp from log-space
-        kp_val = math.exp(self.log_kp)
 
         # Gradient descent in log-space: d(loss)/d(log_kp) = d(loss)/d(kp) * kp
-        self.log_kp -= self.lr * grad_kp * kp_val
+        self.log_kp -= self.lr * grad_kp * kp_val + 1e-6  # add small term to prevent zero update
+        print(f"log_kp={self.log_kp:.4f}")
+
+        # Current Kp from log-space
+        kp_val = math.exp(self.log_kp)
 
         # Derive Kd for display
         kd_val = 2.0 * math.sqrt(kp_val * self.I)
