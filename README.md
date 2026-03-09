@@ -70,15 +70,3 @@ Think of it as the PyTorch + Gym for robotics — simple, modular, and built for
    - Installation instructions are found [here](https://github.com/eclipse-zenoh/zenoh-python#how-to-install-it).
    - It is recommended to [enable zenoh features](https://github.com/eclipse-zenoh/zenoh-python#enable-zenoh-features).
 4. Install: `pip install -e .`
-
-## Cite
-
-```bibtex
-@misc{robotark2025,
-  title = {An Open-source Python-based Framework for Embodied AI},
-  author = {Magnus Dierking, Christopher E. Mower, Refinath S N, Abhineet Kumar, Huang Helong, Jiacheng Qiu, Wei Chen, Huidong Liang, Huang Guowei, Jan Peters, Quan Xingyue, Jun Wang, Haitham Bou-Ammar},
-  year = {2025},
-  howpublished = {\url{https://robotics-ark.github.io/ark_robotics.github.io/}},
-  note = {Technical report}
-}
-```
