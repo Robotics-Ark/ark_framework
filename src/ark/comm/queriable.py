@@ -53,22 +53,9 @@ class Queryable(EndPoint):
             # Call user handler
             resp_msg: Message = self._handler(req_msg)
 
-            # Pack envelope for response
-            resp_env = Envelope()
-            resp_env.endpoint_type = Envelope.EndpointType.RESPONSE
-            resp_env.sent_timestamp = self._clock.now()
-            resp_env.sent_seq_index = self._seq_index
-            resp_env.src_node_name = self._node_name
-            resp_env.channel = self._channel
-
-            self._seq_index += 1
-
             resp_env = Envelope.pack(self._node_name, self._clock, resp_msg)
             query.reply(resp_env.SerializeToString())
-
-            if self._data_collector:
-                self._data_collector.append(req_env.SerializeToString())
-                self._data_collector.append(resp_env.SerializeToString())
+            self._seq_index += 1
 
         except Exception:
             # Keep it minimal: don't kill the zenoh callback thread

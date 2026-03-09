@@ -63,10 +63,6 @@ class Querier(EndPoint):
 
             self._seq_index += 1
 
-            if self._data_collector:
-                self._data_collector.append(req_env.SerializeToString())
-                self._data_collector.append(resp_env.SerializeToString())
-
             return resp
 
         else:

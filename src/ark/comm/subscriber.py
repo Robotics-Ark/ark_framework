@@ -36,10 +36,6 @@ class Subscriber(EndPoint):
             env.recv_timestamp = self._clock.now()
             env.recv_seq_index = self._seq_index
 
-            # Collect data if enabled
-            if self._data_collector:
-                self._data_collector.append(env.SerializeToString())
-
             # Invoke user callback
             self._callback(env.extract_message())
 

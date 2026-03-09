@@ -46,10 +46,6 @@ class Publisher(EndPoint):
             # Publish envelope
             self._pub.put(env_bytes)
 
-            # Collect data if enabled
-            if self._data_collector is not None:
-                self._data_collector.append(env_bytes)
-
             # Increment sequence index
             self._seq_index += 1
 

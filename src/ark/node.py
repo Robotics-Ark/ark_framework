@@ -8,7 +8,6 @@ from ark.comm.publisher import Publisher
 from ark.comm.subscriber import Subscriber
 from ark.comm.querier import Querier
 from ark.comm.queriable import Queryable
-from ark.data.data_collector import DataCollector
 from ark.core.registerable import Registerable
 
 
@@ -26,8 +25,7 @@ class BaseNode(Registerable):
         self._session = zenoh.open(self._z_cfg)
         self._env_name = env_name
         self._node_name = node_name
-        self._collect_data = collect_data
-        self._data_collector = DataCollector(node_name) if collect_data else None
+        self._data_collector = None
         self._clock = Clock(self._session, sim, "clock")
         self.core_registration()
         self._rates = []
@@ -80,7 +78,6 @@ class BaseNode(Registerable):
             self._clock,
             channel,
             self._data_collector,
-            timeout,
         )
         querier.core_registration()
         self._queriers[channel] = querier
