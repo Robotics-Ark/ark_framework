@@ -2,7 +2,7 @@
   <img src="docs/logo.png" alt="Ark Framework Logo" width="1500">
 </p>
 
-<h1 align="center">A Python framework for robotics research and development.</h1>
+<h1 align="center">A python framework for robotics research and development.</h1>
 
 <p align="center">
   <em>Lightweight, flexible, and designed for researchers and developers in robot learning.</em>
