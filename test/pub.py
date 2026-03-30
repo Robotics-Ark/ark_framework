@@ -1,19 +1,20 @@
-from ark.node import BaseNode
+from ark.node import Node
+from ark_msgs import String
 from itertools import count
 from common import z_cfg
 
 
-class PublisherNode(BaseNode):
+class PublisherNode(Node):
 
     def __init__(self):
-        super().__init__("env", "pub", z_cfg, sim=True)
+        super().__init__("pub", z_cfg)
         self.pub = self.create_publisher("chatter")
         self.rate = self.create_rate(1)  # 1 Hz
 
     def spin(self):
         for c in count():
-            msg = f"Hello World {c}"
-            self.pub.publish(msg.encode("utf-8"))
+            msg = String(data=f"Hello World {c}")
+            self.pub.publish(msg)
             print(f"Published: {msg}")
             self.rate.sleep()
 

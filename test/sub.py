@@ -1,14 +1,18 @@
 from common import z_cfg
-from ark.node import BaseNode
+from ark.node import Node
 
 
-class SubscriberNode(BaseNode):
+class SubscriberNode(Node):
     def __init__(self):
-        super().__init__("env", "sub", z_cfg, sim=True, collect_data=True)
+        super().__init__("sub", z_cfg)
         self.sub = self.create_subscriber("chatter", self.callback)
 
-    def callback(self, msg: bytes):
-        print(f"Received: {msg.decode('utf-8')}")
+    def callback(self, msg):
+        print(f"Recieved: {msg.data}")
+
+    def spin(self):
+        while True:
+            pass
 
 
 if __name__ == "__main__":
