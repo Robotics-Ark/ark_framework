@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from importlib import import_module
 
 
@@ -46,3 +48,26 @@ def load_type(spec: str):
             ) from e
 
     return obj
+
+
+class CondaUtils:
+
+    @classmethod
+    def conda_root(cls) -> Path:
+        """Return the configured Conda root path."""
+        cr = os.environ.get("_CONDA_ROOT")
+        if cr is None:
+            raise EnvironmentError(
+                "Environment variable _CONDA_ROOT is not set. Cannot determine conda environments."
+            )
+        return Path(cr)
+
+    @classmethod
+    def get_python_executable(cls, env_name: str) -> str:
+        """Return the path to the Python executable for the given Conda environment."""
+        return str(cls.conda_root() / "envs" / env_name / "bin" / "python")
+
+    @classmethod
+    def get_active_conda_env(cls) -> str | None:
+        """Return the name of the currently active Conda environment. Returns None if no environment is active."""
+        return os.environ.get("CONDA_DEFAULT_ENV")
