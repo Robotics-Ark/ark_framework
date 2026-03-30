@@ -21,7 +21,10 @@ maintainers = [
 dependencies = [
   "protobuf>=4.21",
   "numpy",
-  "ark_msgs @ git+https://github.com/Robotics-Ark/ark_msgs.git"
+  "PyYAML>=6.0",
+  "ark_msgs @ git+https://github.com/Robotics-Ark/ark_msgs.git",
+  "scipy",
+  "gymnasium",
 ]
 
 [tool.setuptools]
