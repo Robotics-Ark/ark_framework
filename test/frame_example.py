@@ -67,10 +67,10 @@ def build_forest() -> FrameForest:
 
     # Another fully disconnected tree.
     forest.register_static_transform(
-        "calibration_rig", "checkerboard", tf_xyz_rpy(0.0, 0.0, 1.0, 0.0, 0.0, 90.0)
+        "calibr_rig", "checkerboard", tf_xyz_rpy(0.0, 0.0, 1.0, 0.0, 0.0, 90.0)
     )
     forest.register_static_transform(
-        "calibration_rig",
+        "calibr_rig",
         "reference_camera",
         tf_xyz_rpy(0.4, -0.2, 1.3, -25.0, 0.0, 120.0),
     )
