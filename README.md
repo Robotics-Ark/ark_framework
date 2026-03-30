@@ -69,5 +69,7 @@ Think of it as the PyTorch + Gym for robotics — simple, modular, and built for
 3. Install [zenoh-python](https://github.com/eclipse-zenoh/zenoh-python)
    - Installation instructions are found [here](https://github.com/eclipse-zenoh/zenoh-python#how-to-install-it).
    - It is recommended to [enable zenoh features](https://github.com/eclipse-zenoh/zenoh-python#enable-zenoh-features).
-4. Install [Graphviz](https://graphviz.org/)
+4. Install [Graphviz](https://graphviz.org/), see [here](https://graphviz.org/download/)
+   - This is an optional dependancy, it used to generate graph images in several modules. 
+   - If you are using Ubuntu, you should be able to install using `sudo apt install graphviz`
 5. Install: `pip install -e .`
