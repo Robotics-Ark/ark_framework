@@ -1,3 +1,5 @@
+import ast
+import sys
 import json
 import zenoh
 from collections.abc import Callable
@@ -8,8 +10,12 @@ from ark.comm import Publisher, Subscriber, Querier, Queryable, Channel, Listene
 
 class Node:
 
-    def __init__(self, node_name: str, z_cfg: dict):
-        self._node_name = node_name
+    def __init__(self, z_cfg: dict):
+        self._params = {}
+        self._remaps = {}
+        self._parse_cli_args()
+        self._env_namespace = Channel(self.get_param("__env_namespace"))
+        self._node_name = self.get_param("__node_name", type(self).__name__)
         self._session = self._init_zenoh_sesssion(z_cfg)
 
         # Setup the clock
@@ -25,13 +31,46 @@ class Node:
         self._rates = []
         self._steppers = []
 
+    def _parse_cli_args(self):
+        for arg in sys.argv[1:]:
+            if ":=" in arg:
+                param_name, param_value = arg.split(":=", 1)
+                self._params[param_name] = self._parse_param_value(param_value)
+            elif "--" in arg:
+                from_channel, to_channel = arg.split("--", 1)
+                self._remaps[from_channel] = to_channel
+            else:
+                raise ValueError(f"Invalid argument format: {arg}")
+
+    def _parse_param_value(self, value: str) -> str | bool | int | float:
+        try:
+            return ast.literal_eval(value)
+        except (ValueError, SyntaxError):
+            return value  # If it cannot be parsed as a Python literal, return the string itself
+
+    def get_param(
+        self, param_name: str, default: str | bool | int | float | None = None
+    ) -> str | bool | int | float | None:
+        return self._params.get(param_name, default)
+
+    def _remap_channel(self, channel: str | Channel) -> Channel:
+        channel_str = str(channel)
+        if channel_str in self._remaps:
+            channel = Channel(self._remaps[channel_str])
+        else:
+            channel = Channel(channel)
+        return self._env_namespace / channel
+
     def _init_zenoh_sesssion(self, z_cfg: dict):
         _z_cfg = zenoh.Config.from_json5(json.dumps(z_cfg))
         return zenoh.open(_z_cfg)
 
     def create_publisher(
-        self, channel: Channel, apply_noise: Callable[[Message], Message] | None = None
+        self,
+        channel: str | Channel,
+        apply_noise: Callable[[Message], Message] | None = None,
     ) -> Publisher:
+        channel = self._remap_channel(channel)
         pub = Publisher(
             self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
         )
@@ -39,22 +78,27 @@ class Node:
         return pub
 
     def create_subscriber(
-        self, channel: Channel, callback: Callable[[Message], None]
+        self, channel: str | Channel, callback: Callable[[Message], None]
     ) -> Subscriber:
+        channel = self._remap_channel(channel)
         sub = Subscriber(self._node_name, self._session, channel, callback)
         self._subscribers[channel] = sub
         return sub
 
     def create_listener(
-        self, channel: Channel, n_buffer: int = 1, ready_when: str = "full"
+        self, channel: str | Channel, n_buffer: int = 1, ready_when: str = "full"
     ) -> Listener:
+        channel = self._remap_channel(channel)
         lr = Listener(self._node_name, self._session, channel, n_buffer, ready_when)
         self._subscribers[channel] = lr
         return lr
 
     def create_querier(
-        self, channel: Channel, apply_noise: Callable[[Message], Message] | None = None
+        self,
+        channel: str | Channel,
+        apply_noise: Callable[[Message], Message] | None = None,
     ) -> Querier:
+        channel = self._remap_channel(channel)
         querier = Querier(
             self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
         )
@@ -63,10 +107,11 @@ class Node:
 
     def create_queryable(
         self,
-        channel: Channel,
+        channel: str | Channel,
         callback,
         apply_noise: Callable[[Message], Message] | None = None,
     ) -> Queryable:
+        channel = self._remap_channel(channel)
         queryable = Queryable(
             self._node_name,
             self._session,
