@@ -1,17 +1,23 @@
-from copy import deepcopy
 from typing import Any
 
 
 class Registry:
 
-    def __init__(self):
+    def __init__(self, sub_cls: type = None):
+        """A simple registry class to store and retrieve items by name.
+
+        Parameters
+        ----------
+        sub_cls : type, optional
+            If provided, all items registered must be subclasses of this type."""
         self._registry: dict[str, Any] = {}
-        self._counter = 0
+        self._sub_cls = sub_cls
 
     def register_item(self, name: str, item: Any) -> None:
-        index = deepcopy(self._counter)
-        self._registry[name] = (index, item)
-        self._counter += 1
+        """Register a new item in the registry."""
+        if self._sub_cls is not None and not issubclass(item, self._sub_cls):
+            raise TypeError(f"Item must be a subclass of {self._sub_cls.__name__}")
+        self._registry[name] = item
 
     def register(self, name: str):
         """Register a new item in the registry using decorator syntax."""
@@ -23,16 +29,5 @@ class Registry:
         return register_item
 
     def get(self, name: str) -> Any:
-        _, item = self._registry[name]
-        return item
-
-    def get_index(self, name: str) -> int:
-        index, _ = self._registry[name]
-        return index
-
-    def get_name(self, index: int) -> str:
-        for name, (idx, _) in self._registry.items():
-            if idx == index:
-                return name
-        else:
-            raise KeyError(f"Index {index} not found in registry.")
+        """Get an item from the registry by name."""
+        return self._registry[name]
