@@ -4,8 +4,16 @@ import json
 import zenoh
 from collections.abc import Callable
 from google.protobuf.message import Message
-from ark.time import Clock, Rate, Stepper
-from ark.comm import Publisher, Subscriber, Querier, Queryable, Channel, Listener
+from ark.time import Clock, Rate, Stepper, Time
+from ark.comm import (
+    Publisher,
+    Subscriber,
+    Querier,
+    Queryable,
+    Channel,
+    Listener,
+    PeriodicPublisher,
+)
 
 
 class Node:
@@ -73,6 +81,26 @@ class Node:
         channel = self._remap_channel(channel)
         pub = Publisher(
             self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
+        )
+        self._publishers[channel] = pub
+        return pub
+
+    def create_periodic_publisher(
+        self,
+        channel: str | Channel,
+        hz: float,
+        message_factory: Callable[[Time], Message],
+        apply_noise: Callable[[Message], Message] | None = None,
+    ) -> PeriodicPublisher:
+        channel = self._remap_channel(channel)
+        pub = PeriodicPublisher(
+            message_factory,
+            hz,
+            self._node_name,
+            self._session,
+            channel,
+            self.clock,
+            apply_noise,
         )
         self._publishers[channel] = pub
         return pub
