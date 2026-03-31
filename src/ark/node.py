@@ -25,6 +25,7 @@ class Node:
         self._env_namespace = Channel(self.get_param("__env_namespace"))
         self._node_name = self.get_param("__node_name", type(self).__name__)
         self._session = self._init_zenoh_sesssion(z_cfg)
+        self._sim = bool(self.get_param("__sim"))
 
         # Setup the clock
         self.clock = Clock(self._sim, self._session)
