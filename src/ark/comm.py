@@ -195,7 +195,7 @@ class PeriodicPublisher(Publisher):
 
     def __init__(
         self,
-        callback: Callable[[Time], Message],
+        message_factory: Callable[[Time], Message],
         hz: float,
         node_name: str,
         session: zenoh.Session,
@@ -203,13 +203,13 @@ class PeriodicPublisher(Publisher):
         clock: Clock,
         apply_noise: Callable[[Message], Message] | None = None,
     ):
-        """A Publisher that can publish messages at a fixed rate using a callback that generates the messages."""
+        """A Publisher that can publish messages at a fixed rate using a function that builds each message."""
         super().__init__(node_name, session, channel, clock, apply_noise=apply_noise)
-        self._callback = callback
+        self._message_factory = message_factory
         self._stepper = Stepper(clock, hz, self._step)
 
     def _step(self, t: Time):
-        msg = self._callback(t)
+        msg = self._message_factory(t)
         self.publish(msg)
 
 
