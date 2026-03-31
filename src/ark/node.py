@@ -61,7 +61,7 @@ class Node:
     ) -> str | bool | int | float | None:
         return self._params.get(param_name, default)
 
-    def _remap_channel(self, channel: str | Channel) -> Channel:
+    def _resolve_channel(self, channel: str | Channel) -> Channel:
         channel_str = str(channel)
         return self._env_namespace / Channel(self._remaps.get(channel_str, channel_str))
 
@@ -74,7 +74,7 @@ class Node:
         channel: str | Channel,
         apply_noise: Callable[[Message], Message] | None = None,
     ) -> Publisher:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         pub = Publisher(
             self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
         )
@@ -88,7 +88,7 @@ class Node:
         message_factory: Callable[[Time], Message],
         apply_noise: Callable[[Message], Message] | None = None,
     ) -> PeriodicPublisher:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         pub = PeriodicPublisher(
             message_factory,
             hz,
@@ -104,7 +104,7 @@ class Node:
     def create_subscriber(
         self, channel: str | Channel, callback: Callable[[Message], None]
     ) -> Subscriber:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         sub = Subscriber(self._node_name, self._session, channel, callback)
         self._subscribers[channel] = sub
         return sub
@@ -112,7 +112,7 @@ class Node:
     def create_listener(
         self, channel: str | Channel, n_buffer: int = 1, ready_when: str = "full"
     ) -> Listener:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         lr = Listener(self._node_name, self._session, channel, n_buffer, ready_when)
         self._subscribers[channel] = lr
         return lr
@@ -122,7 +122,7 @@ class Node:
         channel: str | Channel,
         apply_noise: Callable[[Message], Message] | None = None,
     ) -> Querier:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         querier = Querier(
             self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
         )
@@ -135,7 +135,7 @@ class Node:
         callback,
         apply_noise: Callable[[Message], Message] | None = None,
     ) -> Queryable:
-        channel = self._remap_channel(channel)
+        channel = self._resolve_channel(channel)
         queryable = Queryable(
             self._node_name,
             self._session,
