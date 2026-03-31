@@ -63,11 +63,7 @@ class Node:
 
     def _remap_channel(self, channel: str | Channel) -> Channel:
         channel_str = str(channel)
-        if channel_str in self._remaps:
-            channel = Channel(self._remaps[channel_str])
-        else:
-            channel = Channel(channel)
-        return self._env_namespace / channel
+        return self._env_namespace / Channel(self._remaps.get(channel_str, channel_str))
 
     def _init_zenoh_sesssion(self, z_cfg: dict):
         _z_cfg = zenoh.Config.from_json5(json.dumps(z_cfg))
