@@ -11,7 +11,8 @@ from ark.comm import (
     Querier,
     Queryable,
     Channel,
-    Listener,
+    SampleWindowListener,
+    TimeWindowListener,
     PeriodicPublisher,
 )
 
@@ -103,18 +104,38 @@ class Node:
         return pub
 
     def create_subscriber(
-        self, channel: str | Channel, callback: Callable[[Message], None]
+        self, channel: str | Channel, callback: Callable[[Time, Message], None]
     ) -> Subscriber:
         channel = self._resolve_channel(channel)
-        sub = Subscriber(self._node_name, self._session, channel, callback)
+        sub = Subscriber(
+            self._node_name, self._session, channel, self.clock, callback
+        )
         self._subscribers[channel] = sub
         return sub
 
-    def create_listener(
-        self, channel: str | Channel, n_buffer: int = 1, ready_when: str = "full"
-    ) -> Listener:
+    def create_sample_window_listener(
+        self, channel: str | Channel, n_buffer: int = 1, ready_when: str = "always"
+    ) -> SampleWindowListener:
         channel = self._resolve_channel(channel)
-        lr = Listener(self._node_name, self._session, channel, n_buffer, ready_when)
+        lr = SampleWindowListener(
+            self._node_name, self._session, channel, self.clock, n_buffer, ready_when
+        )
+        self._subscribers[channel] = lr
+        return lr
+
+    def create_time_window_listener(
+        self,
+        channel: str | Channel,
+        window_sec: float,
+    ) -> TimeWindowListener:
+        channel = self._resolve_channel(channel)
+        lr = TimeWindowListener(
+            self._node_name,
+            self._session,
+            channel,
+            self.clock,
+            window_sec,
+        )
         self._subscribers[channel] = lr
         return lr
 
