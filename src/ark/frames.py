@@ -132,9 +132,7 @@ class FrameForest:
         if not child:
             raise ValueError("Child frame name cannot be empty.")
         if child == WORLD_FRAME_NAME:
-            raise ValueError(
-                f"Cannot register '{WORLD_FRAME_NAME}' as a child frame."
-            )
+            raise ValueError(f"Cannot register '{WORLD_FRAME_NAME}' as a child frame.")
         if parent == child:
             raise ValueError(f"Frame '{child}' cannot have itself as a parent.")
         if child in self._edges:
@@ -219,23 +217,29 @@ class FrameForest:
                 edge = self._edges[frame]
                 attrs = [
                     'shape="box"',
-                    'fillcolor="palegreen3"' if frame in leaves else (
-                        'fillcolor="indianred1"'
-                        if edge.is_static
-                        else 'fillcolor="lightskyblue"'
+                    (
+                        'fillcolor="palegreen3"'
+                        if frame in leaves
+                        else (
+                            'fillcolor="indianred1"'
+                            if edge.is_static
+                            else 'fillcolor="lightskyblue"'
+                        )
                     ),
-                    'color="darkgreen"' if frame in leaves else (
-                        'color="firebrick3"'
-                        if edge.is_static
-                        else 'color="royalblue3"'
+                    (
+                        'color="darkgreen"'
+                        if frame in leaves
+                        else (
+                            'color="firebrick3"'
+                            if edge.is_static
+                            else 'color="royalblue3"'
+                        )
                     ),
                 ]
                 if not edge.is_static:
                     attrs.append('style="filled,rounded"')
 
-            lines.append(
-                f'  "{self._escape_label(frame)}" [{", ".join(attrs)}];'
-            )
+            lines.append(f'  "{self._escape_label(frame)}" [{", ".join(attrs)}];')
 
         for child in sorted(self._edges):
             edge = self._edges[child]
