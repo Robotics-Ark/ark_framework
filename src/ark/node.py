@@ -227,6 +227,10 @@ class Node:
         stepper.start()
         return stepper
 
+    def spin(self):
+        while True:
+            pass
+
     def close(self):
         for pub in self._publishers.values():
             pub.close()
@@ -239,3 +243,14 @@ class Node:
         for stepper in self._steppers:
             stepper.close()
         self._session.close()
+
+
+def main(node_cls: type[Node]):
+    cli_parser = NodeCliParser()
+    node = node_cls(cli_parser)
+    try:
+        node.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.close()
