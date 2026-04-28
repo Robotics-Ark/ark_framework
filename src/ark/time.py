@@ -3,11 +3,17 @@ import zenoh
 import struct
 import threading
 from typing import Callable
+from ark.comm import Channel
 from dataclasses import dataclass
+from ark.reset import ResetableObject
 
-TIME_CHANNEL = "time"  # Channel name for publishing simulated time updates
 TIME_FMT = "<q"  # little-endian 64-bit signed integer (nanoseconds)
 TIME_BYTES_SIZE = 8  # Size of the time data in bytes
+
+
+def init_time_channel(env_name: str) -> Channel:
+    """Helper function to construct the time channel for a given environment name."""
+    return Channel.internal(env_name, "time")
 
 
 @dataclass
@@ -30,97 +36,82 @@ class Time:
         nanosec = struct.unpack(TIME_FMT, data)[0]
         return cls(nanosec=nanosec)
 
+    @classmethod
+    def from_sec(cls, sec: float) -> "Time":
+        return cls(nanosec=round(sec * 1e9))
+
     def __add__(self, other: object) -> "Time":
-        if not isinstance(other, Time):
-            return NotImplemented
         return Time(nanosec=self.nanosec + other.nanosec)
 
     def __sub__(self, other: object) -> "Time":
-        if not isinstance(other, Time):
-            return NotImplemented
         return Time(nanosec=self.nanosec - other.nanosec)
 
     def __iadd__(self, other: object) -> "Time":
-        if not isinstance(other, Time):
-            return NotImplemented
         self.nanosec += other.nanosec
         return self
 
     def __isub__(self, other: object) -> "Time":
-        if not isinstance(other, Time):
-            return NotImplemented
         self.nanosec -= other.nanosec
         return self
 
     def __lt__(self, other: object) -> bool:
-        if not isinstance(other, Time):
-            return NotImplemented
         return self.nanosec < other.nanosec
 
     def __le__(self, other: object) -> bool:
-        if not isinstance(other, Time):
-            return NotImplemented
         return self.nanosec <= other.nanosec
 
     def __gt__(self, other: object) -> bool:
-        if not isinstance(other, Time):
-            return NotImplemented
         return self.nanosec > other.nanosec
 
     def __ge__(self, other: object) -> bool:
-        if not isinstance(other, Time):
-            return NotImplemented
         return self.nanosec >= other.nanosec
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Time):
-            return NotImplemented
         return self.nanosec == other.nanosec
 
 
-class SimulatedTime:
+class SimulatedTime(ResetableObject):
 
-    def __init__(self, session: zenoh.Session, time_step: float):
+    def __init__(self, env_name: str, session: zenoh.Session, time_step: float):
         """Initialize the SimulatedTime.
 
         Parameters:
         -----------
+        env_name: str
+            The name of the environment.
         session: zenoh.Session
             The zenoh session to use for publishing time updates.
         time_step: float
             The time step in seconds for each tick of the simulated time.
         """
-        self._time_pub = session.declare_publisher(TIME_CHANNEL)
+        super().__init__(env_name, session)
+        self._time_pub = session.declare_publisher(init_time_channel(env_name))
         self._sim_time: Time | None = None
-        self._time_step = Time(nanosec=round(time_step * 1e9))
+        self._time_step = Time.from_sec(time_step)
 
-    @property
-    def time_step(self) -> Time:
-        """Get the time step as a Time object."""
-        return self._time_step
-
-    def _publish_time(self):
+    def _publish_current_time(self):
         """Publish the current simulated time in nanoseconds."""
-        if self._sim_time is None:
-            raise RuntimeError("Simulated time not initialized.")
         self._time_pub.put(self._sim_time.as_bytes())
 
     def reset(self):
         """Reset the simulated time to zero and publish the update."""
         self._sim_time = Time(nanosec=0)
-        self._publish_time()
+        self._publish_current_time()
 
     def tick(self):
         """Advance the simulated time by one time step and publish the update."""
-        if self._sim_time is None:
-            raise RuntimeError("SimulatedTime not initialized. Call reset() first.")
-        self._sim_time += self._time_step
-        self._publish_time()
+        try:
+            self._sim_time += self._time_step
+        except TypeError:
+            raise RuntimeError(
+                "Simulated time not initialized. You must call SimulatedTime.reset first."
+            )
+        self._publish_current_time()
 
 
 class Clock:
 
-    def __init__(self, sim: bool, session: zenoh.Session):
+    def __init__(self, sim: bool, env_name: str, session: zenoh.Session):
         """Initialize the Clock.
 
         Parameters:
@@ -137,7 +128,7 @@ class Clock:
             self._sim_time_cv = threading.Condition()
             self.now = self._sim_now
             self._time_sub = session.declare_subscriber(
-                TIME_CHANNEL, self._on_time_sample
+                init_time_channel(env_name), self._on_time_sample
             )
         else:
             self._time_sub = None
