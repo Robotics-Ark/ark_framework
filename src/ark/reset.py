@@ -64,8 +64,6 @@ class ResetableContainer:
         # Reply to the query with the assigned name so the member can use it for acknowledgements
         query.reply(self._reg_channel, name.encode())
 
-        print("Registered member: %s" % name)
-
     def _initiate_reset(self) -> None:
         """Initiate a reset by clearing acknowledgements and publishing a reset message."""
 
@@ -75,8 +73,6 @@ class ResetableContainer:
 
         # Publish an empty message on the reset channel to signal all members to reset themselves
         self._pub.put(b"")
-
-        print("Initiated reset")
 
     def _on_ack(self, sample: zenoh.Sample):
         """Handle a reset completion acknowledgement from a member."""
@@ -96,8 +92,6 @@ class ResetableContainer:
         with self._mutex:
             self._acks.add(name)
 
-        print("Received reset completion acknowledgement from member: %s" % name)
-
     def reset(self, timeout: float = None):
         """Send reset and block until all current members have acknowledged completion."""
 
@@ -115,8 +109,6 @@ class ResetableContainer:
                     "Timeout waiting for reset completion "
                     f"acknowledgements from:\n{', '.join(sorted(missing))}"
                 )
-
-        print("All members acknowledged reset completion")
 
     def close(self):
         """Clean up zenoh resources used by this container."""
@@ -138,7 +130,6 @@ class ResetableObject(ABC):
         self._reg_channel = init_register_channel(self._ns)
         self._name = self._register_resetable()
         self._name_enc = self._name.encode()
-        print("Registered resetable object with name: %s" % self._name)
 
         # Subscribe to reset initiation messages
         self._reset_channel = init_initiate_channel(self._ns)
@@ -172,7 +163,6 @@ class ResetableObject(ABC):
         """Handle a reset initiation message by resetting internal state and sending an acknowledgement."""
         self.reset()
         self._pub.put(self._name_enc)
-        print("I reset and acknowledged with name: %s" % self._name)
 
     @abstractmethod
     def reset(self):
@@ -193,4 +183,3 @@ class TestResetableObject(ResetableObject):
     def reset(self):
         """Reset internal state by incrementing the reset count."""
         self._reset_count += 1
-        print(f"Reset count for {self._name}: {self._reset_count}")
