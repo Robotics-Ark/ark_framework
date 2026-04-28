@@ -3,6 +3,7 @@ import sys
 import zenoh
 from pathlib import Path
 from ark.comm import Channel
+from ark.cli import BaseCliParser
 from collections.abc import Callable
 from ark.comm.channel_noise import ChannelNoise
 from google.protobuf.message import Message
@@ -20,12 +21,8 @@ from ark.comm.subscriber import (
 )
 
 
-class NodeCliParser:
+class NodeCliParser(BaseCliParser):
     """Utility class to parse command line arguments for a Node, extracting parameters and channel remappings."""
-
-    def __init__(self):
-        self._params = {}
-        self._remaps = {}
 
     def parse(self, args):
         for arg in args:
@@ -39,19 +36,17 @@ class NodeCliParser:
                 raise ValueError(f"Invalid argument format: {arg}")
         return self._params, self._remaps
 
-    def _parse_param(self, arg: str) -> tuple[str]:
+    def _parse_param(self, arg: str) -> tuple[str, object]:
         param_name, param_value = arg.split(":=", 1)
         try:
-            return ast.literal_eval(param_value)
+            param_value = ast.literal_eval(param_value)
         except (ValueError, SyntaxError):
             pass  # If it cannot be parsed as a Python literal, use the string itself
         return param_name, param_value
 
     def _parse_remap(self, arg: str) -> tuple[str, str]:
         from_channel, to_channel = arg.split("--", 1)
-        from_channel = str(self._public_channel(from_channel))
-        to_channel = str(self._public_channel(to_channel))
-        return from_channel, to_channel
+        return str(from_channel), str(to_channel)
 
 
 class Node:
