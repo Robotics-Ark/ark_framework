@@ -58,8 +58,8 @@ class Node:
         self._params, self._remaps = cli_parser.parse(sys.argv[1:])
 
         # Extract basic parameters
-        self._env_name = self.get_param("__env_name")
-        self._channel_ns = Channel.public(self._env_name)
+        self._world_name = self.get_param("__world_name")
+        self._channel_ns = Channel.public(self._world_name)
         self._node_name = self.get_param("__node_name", type(self).__name__)
         self._sim = bool(self.get_param("__sim"))
         z_cfg_path = self.get_param("__z_cfg_path")
@@ -72,7 +72,7 @@ class Node:
             self._session = default_session()
 
         # Setup the clock
-        self.clock = Clock(self._sim, self._session)
+        self.clock = Clock(self._sim, self._world_name, self._session)
 
         # Setup publisher, subscriber, querier and queryable dictionaries
         self._publishers = {}
@@ -101,7 +101,7 @@ class Node:
     ) -> Publisher:
         channel = self._resolve_channel(channel)
         pub = Publisher(
-            self._env_name, self._node_name, self._session, channel, self.clock, noise
+            self._world_name, self._node_name, self._session, channel, self.clock, noise
         )
         self._publishers[channel] = pub
         return pub
@@ -115,7 +115,7 @@ class Node:
     ) -> PeriodicPublisher:
         channel = self._resolve_channel(channel)
         pub = PeriodicPublisher(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -132,7 +132,7 @@ class Node:
     ) -> Subscriber:
         channel = self._resolve_channel(channel)
         sub = Subscriber(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -150,7 +150,7 @@ class Node:
     ) -> SampleWindowListener:
         channel = self._resolve_channel(channel)
         lr = SampleWindowListener(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -168,7 +168,7 @@ class Node:
     ) -> TimeWindowListener:
         channel = self._resolve_channel(channel)
         lr = TimeWindowListener(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -186,7 +186,7 @@ class Node:
     ) -> Querier:
         channel = self._resolve_channel(channel)
         querier = Querier(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -205,7 +205,7 @@ class Node:
     ) -> Queryable:
         channel = self._resolve_channel(channel)
         queryable = Queryable(
-            self._env_name,
+            self._world_name,
             self._node_name,
             self._session,
             channel,
@@ -224,7 +224,6 @@ class Node:
     def create_stepper(self, hz: float, callback) -> Stepper:
         stepper = Stepper(self.clock, hz, callback)
         self._steppers.append(stepper)
-        stepper.start()
         return stepper
 
     def spin(self):

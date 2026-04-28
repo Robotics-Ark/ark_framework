@@ -14,7 +14,7 @@ class Querier(SourceEndPoint):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -23,7 +23,7 @@ class Querier(SourceEndPoint):
         timeout: float,
     ):
         src_type = Envelope.SourceType.QUERY
-        super().__init__(src_type, env_name, node_name, session, channel, clock, noise)
+        super().__init__(src_type, world_name, node_name, session, channel, clock, noise)
         self._timeout = timeout
 
     def post_init(self):

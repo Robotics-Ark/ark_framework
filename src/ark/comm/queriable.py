@@ -15,7 +15,7 @@ class Queryable(SourceEndPoint):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -24,7 +24,7 @@ class Queryable(SourceEndPoint):
         noise: ChannelNoise | None = None,
     ):
         src_type = Envelope.SourceType.REPLY
-        super().__init__(src_type, env_name, node_name, session, channel, clock, noise)
+        super().__init__(src_type, world_name, node_name, session, channel, clock, noise)
         self._callback = callback
         self._queryable = self._session.declare_queryable(self._channel, self._on_query)
 

@@ -10,9 +10,9 @@ if TYPE_CHECKING:
     from ark.time import Clock
 
 
-def init_namespace(env_name: str) -> Channel:
-    """Helper function to construct the base reset channel for a given environment name."""
-    return Channel.internal(env_name, "reset")
+def init_namespace(world_name: str) -> Channel:
+    """Helper function to construct the base reset channel for a given world name."""
+    return Channel.internal(world_name, "reset")
 
 
 def init_register_channel(ns: Channel) -> Channel:
@@ -33,11 +33,11 @@ def init_completed_channel(ns: Channel) -> Channel:
 class ResetableContainer:
     """A container for managing resetable members, allowing them to register themselves and receive reset initiation messages and provide completion acknowledgements."""
 
-    def __init__(self, env_name: str, session: zenoh.Session, clock: Clock):
+    def __init__(self, world_name: str, session: zenoh.Session, clock: Clock):
         self._session = session
         self._clock = clock
-        self._env_name = env_name
-        self._ns = init_namespace(self._env_name)
+        self._world_name = world_name
+        self._ns = init_namespace(self._world_name)
         self._members: set[str] = set()
         self._acks: set[str] = set()
         self._mutex = threading.Lock()
@@ -128,10 +128,10 @@ class ResetableObject(ABC):
 
     _REG_TIMEOUT = 5.0  # seconds
 
-    def __init__(self, env_name: str, session: zenoh.Session):
-        self._env_name = env_name
+    def __init__(self, world_name: str, session: zenoh.Session):
+        self._world_name = world_name
         self._session = session
-        self._ns = init_namespace(self._env_name)
+        self._ns = init_namespace(self._world_name)
 
         # Register resetable object and get assigned name for acknowledgements
         self._reg_channel = init_register_channel(self._ns)
@@ -183,8 +183,8 @@ class ResetableObject(ABC):
 
 class TestResetableObject(ResetableObject):
 
-    def __init__(self, env_name: str, session: zenoh.Session):
-        super().__init__(env_name, session)
+    def __init__(self, world_name: str, session: zenoh.Session):
+        super().__init__(world_name, session)
         self._reset_count = 0
 
     def reset(self):

@@ -14,14 +14,14 @@ class Subscriber(EndPoint):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
         callback: Callable[[StampedMessage], None],
     ):
-        super().__init__(env_name, node_name, session, channel, clock)
+        super().__init__(world_name, node_name, session, channel, clock)
         self._callback = callback
         self._sub = self._session.declare_subscriber(self._channel, self._on_sample)
 
@@ -51,7 +51,7 @@ class SampleWindowListener(Subscriber):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -63,7 +63,7 @@ class SampleWindowListener(Subscriber):
         self._ready_when = ReadyWhen(ready_when)
         self._is_ready = self.is_ready_func[self._ready_when]
         super().__init__(
-            env_name, node_name, session, channel, clock, self._buffer.append
+            world_name, node_name, session, channel, clock, self._buffer.append
         )
 
     def is_ready(self) -> bool:
@@ -81,7 +81,7 @@ class TimeWindowListener(Subscriber):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -90,7 +90,7 @@ class TimeWindowListener(Subscriber):
     ):
         self._buffer: deque[StampedMessage] = deque()
         self._window_nanosec = round(float(window_sec) * 1e9)
-        super().__init__(env_name, node_name, session, channel, clock, self._append)
+        super().__init__(world_name, node_name, session, channel, clock, self._append)
 
     def _append(self, stamped_message: StampedMessage) -> None:
         self._buffer.append(stamped_message)

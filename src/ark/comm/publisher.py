@@ -13,16 +13,16 @@ class Publisher(SourceEndPoint):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
         noise: ChannelNoise | None,
     ):
-        """Initialize the Publisher with the given environment name, node name, zenoh session, channel, clock and optional noise function."""
+        """Initialize the Publisher with the given world name, node name, zenoh session, channel, clock and optional noise function."""
         src_type = Envelope.SourceType.PUBLISH
-        super().__init__(src_type, env_name, node_name, session, channel, clock, noise)
+        super().__init__(src_type, world_name, node_name, session, channel, clock, noise)
 
     def post_init(self):
         """Declare the zenoh publisher for this end point after the base initialization."""
@@ -43,7 +43,7 @@ class PeriodicPublisher(Publisher):
 
     def __init__(
         self,
-        env_name: str,
+        world_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -53,5 +53,5 @@ class PeriodicPublisher(Publisher):
         noise: ChannelNoise | None,
     ):
         """A Publisher that can publish messages at a fixed rate using a function that builds each message based on the current time."""
-        super().__init__(env_name, node_name, session, channel, clock, noise)
+        super().__init__(world_name, node_name, session, channel, clock, noise)
         self._stepper = Stepper(clock, hz, lambda t: self.publish(message_factory(t)))

@@ -11,9 +11,9 @@ TIME_FMT = "<q"  # little-endian 64-bit signed integer (nanoseconds)
 TIME_BYTES_SIZE = 8  # Size of the time data in bytes
 
 
-def init_time_channel(env_name: str) -> Channel:
-    """Helper function to construct the time channel for a given environment name."""
-    return Channel.internal(env_name, "time")
+def init_time_channel(world_name: str) -> Channel:
+    """Helper function to construct the time channel for a given world name."""
+    return Channel.internal(world_name, "time")
 
 
 @dataclass
@@ -72,20 +72,20 @@ class Time:
 
 class SimulatedTime(ResetableObject):
 
-    def __init__(self, env_name: str, session: zenoh.Session, time_step: float):
+    def __init__(self, world_name: str, session: zenoh.Session, time_step: float):
         """Initialize the SimulatedTime.
 
         Parameters:
         -----------
-        env_name: str
-            The name of the environment.
+        world_name: str
+            The name of the world.
         session: zenoh.Session
             The zenoh session to use for publishing time updates.
         time_step: float
             The time step in seconds for each tick of the simulated time.
         """
-        super().__init__(env_name, session)
-        self._time_pub = session.declare_publisher(init_time_channel(env_name))
+        super().__init__(world_name, session)
+        self._time_pub = session.declare_publisher(init_time_channel(world_name))
         self._sim_time: Time | None = None
         self._time_step = Time.from_sec(time_step)
 
@@ -111,13 +111,15 @@ class SimulatedTime(ResetableObject):
 
 class Clock:
 
-    def __init__(self, sim: bool, env_name: str, session: zenoh.Session):
+    def __init__(self, sim: bool, world_name: str, session: zenoh.Session):
         """Initialize the Clock.
 
         Parameters:
         -----------
         sim: bool
             Whether to use simulated time.
+        world_name: str
+            The name of the world.
         session: zenoh.Session
             The zenoh session to use for subscribing to time updates.
         """
@@ -128,7 +130,7 @@ class Clock:
             self._sim_time_cv = threading.Condition()
             self.now = self._sim_now
             self._time_sub = session.declare_subscriber(
-                init_time_channel(env_name), self._on_time_sample
+                init_time_channel(world_name), self._on_time_sample
             )
         else:
             self._time_sub = None
