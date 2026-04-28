@@ -1,32 +1,80 @@
 import ast
 import sys
-import json
 import zenoh
+from pathlib import Path
+from ark.comm import Channel
 from collections.abc import Callable
+from ark.comm.channel_noise import ChannelNoise
 from google.protobuf.message import Message
+from ark.comm.querier import Querier
+from ark.comm.queriable import Queryable
 from ark.time import Clock, Rate, Stepper, Time
-from ark.comm import (
-    Publisher,
+from ark.comm.stamped_message import StampedMessage
+from ark.comm.default_z_session import default_session
+from ark.comm.publisher import Publisher, PeriodicPublisher
+from ark.comm.subscriber import (
     Subscriber,
-    Querier,
-    Queryable,
-    Channel,
-    SampleWindowListener,
     TimeWindowListener,
-    PeriodicPublisher,
+    SampleWindowListener,
+    ReadyWhen,
 )
+
+
+class NodeCliParser:
+    """Utility class to parse command line arguments for a Node, extracting parameters and channel remappings."""
+
+    def __init__(self):
+        self._params = {}
+        self._remaps = {}
+
+    def parse(self, args):
+        for arg in args:
+            if ":=" in arg:
+                pname, pvalue = self._parse_param(arg)
+                self._params[pname] = pvalue
+            elif "--" in arg:
+                from_channel, to_channel = self._parse_remap(arg)
+                self._remaps[from_channel] = to_channel
+            else:
+                raise ValueError(f"Invalid argument format: {arg}")
+        return self._params, self._remaps
+
+    def _parse_param(self, arg: str) -> tuple[str]:
+        param_name, param_value = arg.split(":=", 1)
+        try:
+            return ast.literal_eval(param_value)
+        except (ValueError, SyntaxError):
+            pass  # If it cannot be parsed as a Python literal, use the string itself
+        return param_name, param_value
+
+    def _parse_remap(self, arg: str) -> tuple[str, str]:
+        from_channel, to_channel = arg.split("--", 1)
+        from_channel = str(self._public_channel(from_channel))
+        to_channel = str(self._public_channel(to_channel))
+        return from_channel, to_channel
 
 
 class Node:
 
-    def __init__(self, z_cfg: dict):
-        self._params = {}
-        self._remaps = {}
-        self._parse_cli_args()
-        self._env_namespace = Channel(self.get_param("__env_namespace"))
+    def __init__(self):
+
+        # Parse command line arguments and retrieve parameters and remappings
+        cli_parser = NodeCliParser()
+        self._params, self._remaps = cli_parser.parse(sys.argv[1:])
+
+        # Extract basic parameters
+        self._env_name = self.get_param("__env_name")
+        self._channel_ns = Channel.public(self._env_name)
         self._node_name = self.get_param("__node_name", type(self).__name__)
-        self._session = self._init_zenoh_sesssion(z_cfg)
         self._sim = bool(self.get_param("__sim"))
+        z_cfg_path = self.get_param("__z_cfg_path")
+
+        # Initialize the zenoh session
+        if z_cfg_path:
+            z_cfg = zenoh.Config.from_json5(Path(z_cfg_path).read_text())
+            self._session = zenoh.open(z_cfg)
+        else:
+            self._session = default_session()
 
         # Setup the clock
         self.clock = Clock(self._sim, self._session)
@@ -41,44 +89,24 @@ class Node:
         self._rates = []
         self._steppers = []
 
-    def _parse_cli_args(self):
-        for arg in sys.argv[1:]:
-            if ":=" in arg:
-                param_name, param_value = arg.split(":=", 1)
-                self._params[param_name] = self._parse_param_value(param_value)
-            elif "--" in arg:
-                from_channel, to_channel = arg.split("--", 1)
-                self._remaps[from_channel] = to_channel
-            else:
-                raise ValueError(f"Invalid argument format: {arg}")
-
-    def _parse_param_value(self, value: str) -> str | bool | int | float:
-        try:
-            return ast.literal_eval(value)
-        except (ValueError, SyntaxError):
-            return value  # If it cannot be parsed as a Python literal, return the string itself
-
     def get_param(
         self, param_name: str, default: str | bool | int | float | None = None
     ) -> str | bool | int | float | None:
+        """Get a parameter value by name, returning a default if the parameter is not set."""
         return self._params.get(param_name, default)
 
     def _resolve_channel(self, channel: str | Channel) -> Channel:
-        channel_str = str(channel)
-        return self._env_namespace / Channel(self._remaps.get(channel_str, channel_str))
-
-    def _init_zenoh_sesssion(self, z_cfg: dict):
-        _z_cfg = zenoh.Config.from_json5(json.dumps(z_cfg))
-        return zenoh.open(_z_cfg)
+        channel = self._remaps.get(str(channel), channel)  # Apply remapping if exists
+        return self._channel_ns / Channel.public(channel)  # Ensure channel namespace
 
     def create_publisher(
         self,
         channel: str | Channel,
-        apply_noise: Callable[[Message], Message] | None = None,
+        noise: Callable[[Message], Message] | None = None,
     ) -> Publisher:
         channel = self._resolve_channel(channel)
         pub = Publisher(
-            self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
+            self._env_name, self._node_name, self._session, channel, self.clock, noise
         )
         self._publishers[channel] = pub
         return pub
@@ -88,37 +116,52 @@ class Node:
         channel: str | Channel,
         hz: float,
         message_factory: Callable[[Time], Message],
-        apply_noise: Callable[[Message], Message] | None = None,
+        noise: Callable[[Message], Message] | None = None,
     ) -> PeriodicPublisher:
         channel = self._resolve_channel(channel)
         pub = PeriodicPublisher(
-            message_factory,
-            hz,
+            self._env_name,
             self._node_name,
             self._session,
             channel,
             self.clock,
-            apply_noise,
+            hz,
+            message_factory,
+            noise,
         )
         self._publishers[channel] = pub
         return pub
 
     def create_subscriber(
-        self, channel: str | Channel, callback: Callable[[Time, Message], None]
+        self, channel: str | Channel, callback: Callable[[StampedMessage], None]
     ) -> Subscriber:
         channel = self._resolve_channel(channel)
         sub = Subscriber(
-            self._node_name, self._session, channel, self.clock, callback
+            self._env_name,
+            self._node_name,
+            self._session,
+            channel,
+            self.clock,
+            callback,
         )
         self._subscribers[channel] = sub
         return sub
 
     def create_sample_window_listener(
-        self, channel: str | Channel, n_buffer: int = 1, ready_when: str = "always"
+        self,
+        channel: str | Channel,
+        n_buffer: int = 1,
+        ready_when: ReadyWhen | str = ReadyWhen.ALWAYS,
     ) -> SampleWindowListener:
         channel = self._resolve_channel(channel)
         lr = SampleWindowListener(
-            self._node_name, self._session, channel, self.clock, n_buffer, ready_when
+            self._env_name,
+            self._node_name,
+            self._session,
+            channel,
+            self.clock,
+            n_buffer,
+            ready_when,
         )
         self._subscribers[channel] = lr
         return lr
@@ -130,6 +173,7 @@ class Node:
     ) -> TimeWindowListener:
         channel = self._resolve_channel(channel)
         lr = TimeWindowListener(
+            self._env_name,
             self._node_name,
             self._session,
             channel,
@@ -142,11 +186,18 @@ class Node:
     def create_querier(
         self,
         channel: str | Channel,
-        apply_noise: Callable[[Message], Message] | None = None,
+        noise: ChannelNoise | None = None,
+        timeout: float = 10.0,
     ) -> Querier:
         channel = self._resolve_channel(channel)
         querier = Querier(
-            self._node_name, self._session, channel, self.clock, apply_noise=apply_noise
+            self._env_name,
+            self._node_name,
+            self._session,
+            channel,
+            self.clock,
+            noise,
+            timeout,
         )
         self._queriers[channel] = querier
         return querier
@@ -154,17 +205,18 @@ class Node:
     def create_queryable(
         self,
         channel: str | Channel,
-        callback,
-        apply_noise: Callable[[Message], Message] | None = None,
+        callback: Callable[[StampedMessage], Message | None],
+        noise: ChannelNoise | None = None,
     ) -> Queryable:
         channel = self._resolve_channel(channel)
         queryable = Queryable(
+            self._env_name,
             self._node_name,
             self._session,
-            self.clock,
             channel,
+            self.clock,
             callback,
-            apply_noise=apply_noise,
+            noise,
         )
         self._queryables[channel] = queryable
         return queryable
