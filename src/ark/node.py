@@ -24,6 +24,10 @@ from ark.comm.subscriber import (
 class NodeCliParser(BaseCliParser):
     """Utility class to parse command line arguments for a Node, extracting parameters and channel remappings."""
 
+    def __init__(self):
+        self._params = {}
+        self._remaps = {}
+
     def parse(self, args):
         for arg in args:
             if ":=" in arg:
@@ -245,8 +249,7 @@ class Node:
 
 
 def main(node_cls: type[Node]):
-    cli_parser = NodeCliParser()
-    node = node_cls(cli_parser)
+    node = node_cls()
     try:
         node.spin()
     except KeyboardInterrupt:
