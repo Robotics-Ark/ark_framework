@@ -3,7 +3,7 @@ import sys
 import zenoh
 from pathlib import Path
 from ark.comm import Channel
-from ark.cli import BaseCliParser
+from ark.args import BaseArgsParser
 from collections.abc import Callable
 from ark.comm.channel_noise import ChannelNoise
 from google.protobuf.message import Message
@@ -21,7 +21,7 @@ from ark.comm.subscriber import (
 )
 
 
-class NodeCliParser(BaseCliParser):
+class NodeArgsParser(BaseArgsParser):
     """Utility class to parse command line arguments for a Node, extracting parameters and channel remappings."""
 
     def __init__(self):
@@ -55,10 +55,10 @@ class NodeCliParser(BaseCliParser):
 
 class Node:
 
-    def __init__(self):
+    def __init__(self, arg_parser: NodeArgsParser):
 
         # Parse command line arguments and retrieve parameters and remappings
-        self._params, self._remaps = NodeCliParser().parse(sys.argv[1:])
+        self._params, self._remaps = arg_parser.parse(sys.argv[1:])
 
         # Extract basic parameters
         self._world_name = self.get_param("__world_name", required=True)
@@ -254,7 +254,8 @@ class Node:
 
 
 def main(node_cls: type[Node]):
-    node = node_cls()
+    parser = NodeArgsParser()
+    node = node_cls(parser)
     try:
         node.spin()
     except KeyboardInterrupt:
