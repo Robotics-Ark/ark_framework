@@ -61,10 +61,10 @@ class Node:
         self._params, self._remaps = NodeCliParser().parse(sys.argv[1:])
 
         # Extract basic parameters
-        self._world_name = self.get_param("__world_name")
+        self._world_name = self.get_param("__world_name", required=True)
         self._channel_ns = Channel.public(self._world_name)
-        self._node_name = self.get_param("__node_name", type(self).__name__)
-        self._sim = bool(self.get_param("__sim"))
+        self._node_name = self.get_param("__node_name", required=True)
+        self._sim = bool(self.get_param("__sim", required=True))
         z_cfg_path = self.get_param("__z_cfg_path")
 
         # Initialize the zenoh session
@@ -88,10 +88,16 @@ class Node:
         self._steppers = []
 
     def get_param(
-        self, param_name: str, default: str | bool | int | float | None = None
+        self,
+        param_name: str,
+        default: str | bool | int | float | None = None,
+        required: bool = False,
     ) -> str | bool | int | float | None:
         """Get a parameter value by name, returning a default if the parameter is not set."""
-        return self._params.get(param_name, default)
+        value = self._params.get(param_name, default)
+        if required and value is None:
+            raise ValueError(f"Missing required parameter: {param_name}")
+        return value
 
     def _resolve_channel(self, channel: str | Channel) -> Channel:
         channel = self._remaps.get(str(channel), channel)  # Apply remapping if exists
