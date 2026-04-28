@@ -58,8 +58,7 @@ class Node:
     def __init__(self):
 
         # Parse command line arguments and retrieve parameters and remappings
-        cli_parser = NodeCliParser()
-        self._params, self._remaps = cli_parser.parse(sys.argv[1:])
+        self._params, self._remaps = NodeCliParser().parse(sys.argv[1:])
 
         # Extract basic parameters
         self._world_name = self.get_param("__world_name")
