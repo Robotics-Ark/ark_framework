@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import zenoh
 import threading
 from ark.comm import Channel
-from ark.time import Clock, Time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ark.time import Clock
 
 
 def init_namespace(env_name: str) -> Channel:
@@ -100,6 +105,8 @@ class ResetableContainer:
 
         # Wait until all members have acknowledged the reset, or timeout if not all acks are received within the specified time limit
         if timeout:
+            from ark.time import Time
+
             deadline = self._clock.wall_now() + Time.from_sec(timeout)
         else:
             deadline = None
