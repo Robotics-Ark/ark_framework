@@ -1,13 +1,35 @@
 import zenoh
+from ark_msgs import Envelope
 from ark.comm import Channel
 from typing import Callable
 from ark.time import Clock, Time, Stepper
 from .end_point import SourceEndPoint
 from google.protobuf.message import Message
+from ark.comm.channel_noise import ChannelNoise
 
 
 class Publisher(SourceEndPoint):
     """A Publisher end point that can publish messages to a zenoh channel."""
+
+    def __init__(
+        self,
+        env_name: str,
+        node_name: str,
+        session: zenoh.Session,
+        channel: str | Channel,
+        clock: Clock,
+        noise: ChannelNoise | None = None,
+    ):
+        """Initialize the Publisher with the given environment name, node name, zenoh session, channel, clock and optional noise function."""
+        super().__init__(
+            Envelope.SourceType.PUBLISH,
+            env_name,
+            node_name,
+            session,
+            channel,
+            clock,
+            noise,
+        )
 
     def post_init(self):
         """Declare the zenoh publisher for this end point after the base initialization."""
@@ -30,6 +52,7 @@ class PeriodicPublisher(Publisher):
         self,
         message_factory: Callable[[Time], Message],
         hz: float,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -37,7 +60,15 @@ class PeriodicPublisher(Publisher):
         apply_noise: Callable[[Message], Message] | None = None,
     ):
         """A Publisher that can publish messages at a fixed rate using a function that builds each message based on the current time."""
-        super().__init__(node_name, session, channel, clock, apply_noise=apply_noise)
+        super().__init__(
+            Envelope.SourceType.PUBLISH,
+            env_name,
+            node_name,
+            session,
+            channel,
+            clock,
+            apply_noise=apply_noise,
+        )
         self._message_factory = message_factory
         self._stepper = Stepper(clock, hz, self._step)
 

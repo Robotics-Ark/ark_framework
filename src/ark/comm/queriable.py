@@ -2,6 +2,8 @@ import zenoh
 from typing import Callable
 from ark.comm import Channel
 from ark.time import Clock
+from ark_msgs import Envelope
+from ark.comm.channel_noise import ChannelNoise
 from ark.comm.end_point import SourceEndPoint
 from ark.comm.stamped_message import StampedMessage
 from ark.comm.utils import message_from_sample
@@ -13,14 +15,23 @@ class Queryable(SourceEndPoint):
 
     def __init__(
         self,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
         callback: Callable[[StampedMessage], Message | None],
-        noise: Callable[[Message], Message] | None = None,
+        noise: ChannelNoise | None = None,
     ):
-        super().__init__(node_name, session, channel, clock, noise)
+        super().__init__(
+            Envelope.SourceType.QUERY,
+            env_name,
+            node_name,
+            session,
+            channel,
+            clock,
+            noise,
+        )
         self._callback = callback
         self._queryable = self._session.declare_queryable(self._channel, self._on_query)
 

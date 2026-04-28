@@ -12,12 +12,14 @@ class EndPoint(ABC):
 
     def __init__(
         self,
+        env_name: str,  # the name of the environment this end point belongs to
         node_name: str,  # the name of the node that owns this end point
         session: zenoh.Session,  # the zenoh session that this end point uses to communicate
         channel: str | Channel,  # channel this end point uses to communicate
         clock: Clock,  # the clock to use for timestamps in trace meta information
     ):
-        """Initialize the end point with the given node name, zenoh session, channel and clock."""
+        """Initialize the end point with the given environment name, node name, zenoh session, channel and clock."""
+        self._env_name = env_name
         self._node_name = node_name
         self._session = session
         self._channel = Channel(channel)
@@ -44,14 +46,17 @@ class SourceEndPoint(EndPoint):
 
     def __init__(
         self,
+        src_type: Envelope.SourceType,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
         noise: ChannelNoise | None = None,
     ):
-        """Initialize the source end point with the given node name, zenoh session, channel, clock and optional noise function."""
-        super().__init__(node_name, session, channel, clock)
+        """Initialize the source end point with the given environment name, node name, zenoh session, channel, clock and optional noise function."""
+        super().__init__(env_name, node_name, session, channel, clock)
+        self._src_type = src_type
         self._seq_index = 0
         self._noise = noise or NoNoise()
 
@@ -63,7 +68,9 @@ class SourceEndPoint(EndPoint):
 
         # Create trace meta
         t = Envelope.TraceMeta(
+            env_name=self._env_name,
             src_node_name=self._node_name,
+            src_type=self._src_type,
             sent_seq_index=self._seq_index,
             sent_ark_time_ns=self._clock.now().nanosec,
             sent_wall_time_ns=self._clock.wall_now().nanosec,
