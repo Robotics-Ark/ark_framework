@@ -11,8 +11,6 @@ from google.protobuf.message import Message
 class Queryable(SourceEndPoint):
     """A Queryable end point that can receive queries and send replies on a zenoh channel."""
 
-    source_type_name = "REPLY"
-
     def __init__(
         self,
         node_name: str,

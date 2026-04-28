@@ -7,8 +7,6 @@ from ark.comm.utils import message_from_sample
 class Querier(SourceEndPoint):
     """A Querier end point that can send queries and receive replies from a zenoh channel."""
 
-    source_type_name = "QUERY"
-
     def post_init(self):
         self._querier = self._session.declare_querier(self._channel)
 

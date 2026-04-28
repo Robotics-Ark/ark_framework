@@ -42,8 +42,6 @@ class EndPoint(ABC):
 class SourceEndPoint(EndPoint):
     """Base class for communication end points that can be the source of a trace (Publisher, Querier, Queryable)."""
 
-    source_type_name: str | None = None
-
     def __init__(
         self,
         node_name: str,
@@ -56,27 +54,6 @@ class SourceEndPoint(EndPoint):
         super().__init__(node_name, session, channel, clock)
         self._seq_index = 0
         self._noise = noise or NoNoise()
-
-    @property
-    def type(self) -> int:
-        """The source type enum value for this end point."""
-        if self.source_type_name is None:
-            raise NotImplementedError(
-                "SourceEndPoint subclasses must define source_type_name"
-            )
-
-        enum_desc = Envelope.DESCRIPTOR.enum_types_by_name.get("SourceType")
-        if enum_desc is None:
-            raise AttributeError(
-                "Envelope.SourceType is not available in the generated protobuf"
-            )
-
-        try:
-            return enum_desc.values_by_name[self.source_type_name].number
-        except KeyError as exc:
-            raise AttributeError(
-                f"Envelope.SourceType has no value named {self.source_type_name!r}"
-            ) from exc
 
     def pack_envelope(self, msg: Message) -> Envelope:
         """Create an Envelope with the given message and appropriate trace meta information."""

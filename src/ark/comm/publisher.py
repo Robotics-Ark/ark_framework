@@ -9,8 +9,6 @@ from google.protobuf.message import Message
 class Publisher(SourceEndPoint):
     """A Publisher end point that can publish messages to a zenoh channel."""
 
-    source_type_name = "PUBLISH"
-
     def post_init(self):
         """Declare the zenoh publisher for this end point after the base initialization."""
         self._pub = self._session.declare_publisher(self._channel)
