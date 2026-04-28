@@ -14,19 +14,20 @@ class Subscriber(EndPoint):
 
     def __init__(
         self,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
         callback: Callable[[StampedMessage], None],
     ):
-        super().__init__(node_name, session, channel, clock)
+        super().__init__(env_name, node_name, session, channel, clock)
         self._callback = callback
         self._sub = self._session.declare_subscriber(self._channel, self._on_sample)
 
     def _on_sample(self, sample: zenoh.Sample):
-        trec = self._clock.now()
-        self._callback(StampedMessage(trec, message_from_sample(sample)))
+        t = self._clock.now()  # recieved time
+        self._callback(StampedMessage(t, message_from_sample(sample)))
 
     def get_z_obj(self):
         return self._sub
@@ -50,6 +51,7 @@ class SampleWindowListener(Subscriber):
 
     def __init__(
         self,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -60,7 +62,9 @@ class SampleWindowListener(Subscriber):
         self._buffer: deque[StampedMessage] = deque(maxlen=int(n_buffer))
         self._ready_when = ReadyWhen(ready_when)
         self._is_ready = self.is_ready_func[self._ready_when]
-        super().__init__(node_name, session, channel, clock, self._buffer.append)
+        super().__init__(
+            env_name, node_name, session, channel, clock, self._buffer.append
+        )
 
     def is_ready(self) -> bool:
         """Return whether this listener is ready according to its ready_when condition."""
@@ -77,6 +81,7 @@ class TimeWindowListener(Subscriber):
 
     def __init__(
         self,
+        env_name: str,
         node_name: str,
         session: zenoh.Session,
         channel: str | Channel,
@@ -85,7 +90,7 @@ class TimeWindowListener(Subscriber):
     ):
         self._buffer: deque[StampedMessage] = deque()
         self._window_nanosec = round(float(window_sec) * 1e9)
-        super().__init__(node_name, session, channel, clock, self._append)
+        super().__init__(env_name, node_name, session, channel, clock, self._append)
 
     def _append(self, stamped_message: StampedMessage) -> None:
         self._buffer.append(stamped_message)

@@ -47,6 +47,17 @@ class Channel(str):
                 )
         return cls(cls._internal_root, *parts)
 
+    @classmethod
+    def public(cls, *parts: str | "Channel") -> "Channel":
+        """Build a public channel that is not under the reserved `_ark` root."""
+        for part in parts:
+            if cls._normalize_part(part)[0] == cls._internal_root:
+                raise ValueError(
+                    f"Public channel parts cannot start with "
+                    f"{cls._internal_root!r}: {part!r}"
+                )
+        return cls(*parts)
+
     def __truediv__(self, other: str | "Channel") -> "Channel":
         """Join this channel with another part using the separator."""
         return type(self)(self, other)

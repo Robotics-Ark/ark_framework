@@ -19,45 +19,31 @@ class Querier(SourceEndPoint):
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
-        noise: ChannelNoise | None = None,
+        noise: ChannelNoise | None,
+        timeout: float,
     ):
-        super().__init__(
-            Envelope.SourceType.REPLY,
-            env_name,
-            node_name,
-            session,
-            channel,
-            clock,
-            noise,
-        )
+        src_type = Envelope.SourceType.QUERY
+        super().__init__(src_type, env_name, node_name, session, channel, clock, noise)
+        self._timeout = timeout
 
     def post_init(self):
-        self._querier = self._session.declare_querier(self._channel)
+        self._querier = self._session.declare_querier(
+            self._channel, timeout=self._timeout
+        )
 
-    def query(
-        self,
-        req: Message | None = None,
-        timeout: float = 10.0,
-    ) -> StampedMessage:
+    def query(self, req: Message | None = None) -> StampedMessage:
+        _req = {}
+        if req:
+            _req["payload"] = self.pack_envelope(req).SerializeToString()
 
-        trec = self._clock.now()
-
-        if req is None:
-            replies = self._querier.get(timeout=timeout)
-        else:
-            req_env = self.pack_envelope(req)
-            replies = self._querier.get(
-                value=req_env.SerializeToString(), timeout=timeout
-            )
-
-        for reply in replies:
+        for reply in self._querier.get(**_req):
             if reply.ok is None:
                 continue
-
+            trec = self._clock.now()
             return StampedMessage(trec, message_from_sample(reply.ok.sample))
         else:
             raise TimeoutError(
-                f"No OK reply received for query on '{self._channel}' within {timeout}s"
+                f"No OK reply received for query on '{self._channel}' within {self._timeout}s"
             )
 
     def get_z_obj(self):

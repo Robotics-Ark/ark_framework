@@ -23,15 +23,8 @@ class Queryable(SourceEndPoint):
         callback: Callable[[StampedMessage], Message | None],
         noise: ChannelNoise | None = None,
     ):
-        super().__init__(
-            Envelope.SourceType.QUERY,
-            env_name,
-            node_name,
-            session,
-            channel,
-            clock,
-            noise,
-        )
+        src_type = Envelope.SourceType.REPLY
+        super().__init__(src_type, env_name, node_name, session, channel, clock, noise)
         self._callback = callback
         self._queryable = self._session.declare_queryable(self._channel, self._on_query)
 
@@ -46,8 +39,7 @@ class Queryable(SourceEndPoint):
             if resp_msg is None:
                 return
 
-            resp_env = self.pack_envelope(resp_msg)
-            query.reply(resp_env.SerializeToString())
+            query.reply(self.pack_envelope(resp_msg).SerializeToString())
         except Exception:
             return
 

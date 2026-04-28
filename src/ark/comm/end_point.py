@@ -52,7 +52,7 @@ class SourceEndPoint(EndPoint):
         session: zenoh.Session,
         channel: str | Channel,
         clock: Clock,
-        noise: ChannelNoise | None = None,
+        noise: ChannelNoise | None,
     ):
         """Initialize the source end point with the given environment name, node name, zenoh session, channel, clock and optional noise function."""
         super().__init__(env_name, node_name, session, channel, clock)
