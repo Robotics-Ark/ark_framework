@@ -140,13 +140,15 @@ class ResetableObject(ABC):
 
         # Subscribe to reset initiation messages
         self._reset_channel = init_initiate_channel(self._ns)
-        self._sub = self._session.declare_subscriber(
+        self._initiate_reset_sub = self._session.declare_subscriber(
             self._reset_channel, self._on_reset_sample
         )
 
         # Declare a publisher for sending reset completion acknowledgements
         self._reset_completed_channel = init_completed_channel(self._ns)
-        self._pub = self._session.declare_publisher(self._reset_completed_channel)
+        self._reset_completed_pub = self._session.declare_publisher(
+            self._reset_completed_channel
+        )
 
     def _register_resetable(self) -> str:
         """Register this resetable object and return the assigned name for acknowledgements."""
@@ -169,7 +171,7 @@ class ResetableObject(ABC):
     def _on_reset_sample(self, sample: zenoh.Sample):
         """Handle a reset initiation message by resetting internal state and sending an acknowledgement."""
         self.reset()
-        self._pub.put(self._name_enc)
+        self._reset_completed_pub.put(self._name_enc)
 
     @abstractmethod
     def reset(self):
@@ -177,8 +179,8 @@ class ResetableObject(ABC):
 
     def close(self):
         """Clean up zenoh resources used by this resetable object."""
-        self._sub.undeclare()
-        self._pub.undeclare()
+        self._initiate_reset_sub.undeclare()
+        self._reset_completed_pub.undeclare()
 
 
 class TestResetableObject(ResetableObject):
