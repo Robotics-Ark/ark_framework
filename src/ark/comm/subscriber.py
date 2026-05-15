@@ -1,12 +1,13 @@
 import zenoh
+import threading
 from enum import Enum
+from gymnasium import Space
 from typing import Callable
 from ark.comm import Channel
 from collections import deque
 from ark.time import Clock, Time
 from ark.comm.end_point import EndPoint
-from ark.comm.stamped_message import StampedMessage
-from ark.comm.utils import message_from_sample
+from ark.comm.stamped_sample import StampedSample
 
 
 class Subscriber(EndPoint):
@@ -14,23 +15,24 @@ class Subscriber(EndPoint):
 
     def __init__(
         self,
-        world_name: str,
-        node_name: str,
-        session: zenoh.Session,
         channel: str | Channel,
+        space: Space,
+        session: zenoh.Session,
         clock: Clock,
-        callback: Callable[[StampedMessage], None],
+        callback: Callable[[StampedSample], None],
     ):
-        super().__init__(world_name, node_name, session, channel, clock)
+        super().__init__(channel, session, clock)
+        self._receive_space = space
         self._callback = callback
-        self._sub = self._session.declare_subscriber(self._channel, self._on_sample)
+        self._z_objs["sub"] = self._session.declare_subscriber(
+            self._channel, self._on_sample
+        )
+        self._z_objs["space_queryable"] = self.declare_space_queryable("sub", space)
 
-    def _on_sample(self, sample: zenoh.Sample):
+    def _on_sample(self, z_sample: zenoh.Sample):
+        sample = self.decode_sample(self._receive_space, z_sample.payload)
         t = self._clock.now()  # recieved time
-        self._callback(StampedMessage(t, message_from_sample(sample)))
-
-    def get_z_obj(self):
-        return self._sub
+        self._callback(StampedSample(t, sample))
 
 
 class ReadyWhen(Enum):
@@ -42,6 +44,7 @@ class ReadyWhen(Enum):
 
 
 class SampleWindowListener(Subscriber):
+    """A listener that retains a fixed number of the most recent messages received."""
 
     is_ready_func = {
         ReadyWhen.ALWAYS: lambda s: True,
@@ -51,29 +54,35 @@ class SampleWindowListener(Subscriber):
 
     def __init__(
         self,
-        world_name: str,
-        node_name: str,
-        session: zenoh.Session,
         channel: str | Channel,
+        space: Space,
+        session: zenoh.Session,
         clock: Clock,
-        n_buffer: int = 1,
-        ready_when: ReadyWhen | str = ReadyWhen.ALWAYS,
+        n_buffer: int,
+        ready_when: ReadyWhen | str,
     ):
-        self._buffer: deque[StampedMessage] = deque(maxlen=int(n_buffer))
+        self._buffer: deque[StampedSample] = deque(maxlen=int(n_buffer))
         self._ready_when = ReadyWhen(ready_when)
         self._is_ready = self.is_ready_func[self._ready_when]
-        super().__init__(
-            world_name, node_name, session, channel, clock, self._buffer.append
-        )
+        self._mutex = threading.Lock()
+        super().__init__(channel, space, session, clock, self.append_buffer)
+
+    def append_buffer(self, stamped_message: StampedSample) -> None:
+        """Append the given message to the buffer, evicting old messages if necessary."""
+        with self._mutex:
+            self._buffer.append(stamped_message)
 
     def is_ready(self) -> bool:
         """Return whether this listener is ready according to its ready_when condition."""
-        return self._is_ready(self)
+        with self._mutex:
+            return self._is_ready(self)
 
-    def get(self) -> list[StampedMessage]:
+    def get(self) -> list[StampedSample]:
+        """Return a list of the most recent messages in the buffer."""
         if not self.is_ready():
             raise RuntimeError("SampleWindowListener is not ready")
-        return list(self._buffer)
+        with self._mutex:
+            return list(self._buffer)
 
 
 class TimeWindowListener(Subscriber):
@@ -81,20 +90,21 @@ class TimeWindowListener(Subscriber):
 
     def __init__(
         self,
-        world_name: str,
-        node_name: str,
-        session: zenoh.Session,
         channel: str | Channel,
+        space: Space,
+        session: zenoh.Session,
         clock: Clock,
         window_sec: float,
     ):
-        self._buffer: deque[StampedMessage] = deque()
+        self._buffer: deque[StampedSample] = deque()
         self._window_nanosec = round(float(window_sec) * 1e9)
-        super().__init__(world_name, node_name, session, channel, clock, self._append)
+        self._mutex = threading.Lock()
+        super().__init__(channel, space, session, clock, self._append)
 
-    def _append(self, stamped_message: StampedMessage) -> None:
-        self._buffer.append(stamped_message)
-        self._prune(stamped_message.time)
+    def _append(self, stamped_message: StampedSample) -> None:
+        with self._mutex:
+            self._buffer.append(stamped_message)
+            self._prune(stamped_message.time)
 
     def _prune(self, now: Time) -> None:
         cutoff_nanosec = now.nanosec - self._window_nanosec
@@ -102,6 +112,7 @@ class TimeWindowListener(Subscriber):
         while buffer and buffer[0].time.nanosec < cutoff_nanosec:
             buffer.popleft()
 
-    def get(self) -> list[StampedMessage]:
-        self._prune(self._clock.now())
-        return list(self._buffer)
+    def get(self) -> list[StampedSample]:
+        with self._mutex:
+            self._prune(self._clock.now())
+            return list(self._buffer)

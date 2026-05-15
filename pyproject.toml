@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "wheel", "grpcio-tools>=1.60", "protobuf>=4.21"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -22,7 +22,6 @@ dependencies = [
   "protobuf>=4.21",
   "numpy",
   "PyYAML>=6.0",
-  "ark_msgs @ git+https://github.com/Robotics-Ark/ark_msgs.git",
   "scipy",
   "gymnasium",
 ]

@@ -1,90 +1,128 @@
 import zenoh
+import threading
+from dataclasses import dataclass
+from typing import Any
+from gymnasium import Space
 from ark.comm import Channel
+from ark.comm import msgs
 from ark.time import Clock
-from ark_msgs import Envelope
-from abc import ABC, abstractmethod
-from google.protobuf.message import Message
+from ark._msgs import Envelope
 from ark.comm.channel_noise import ChannelNoise, NoNoise
 
 
-class EndPoint(ABC):
-    """Base class for all communication end points (Publisher, Subscriber, Querier, Queryable)."""
+@dataclass(frozen=True, slots=True)
+class QuerySpace:
+    """Request and reply spaces for a query channel."""
+
+    request: Space
+    reply: Space
+
+
+class EndPoint:
+    """Common channel, clock, lifecycle, and Zenoh helpers."""
 
     def __init__(
         self,
-        world_name: str,  # the name of the world this end point belongs to
-        node_name: str,  # the name of the node that owns this end point
-        session: zenoh.Session,  # the zenoh session that this end point uses to communicate
-        channel: str | Channel,  # channel this end point uses to communicate
-        clock: Clock,  # the clock to use for timestamps in trace meta information
-    ):
-        """Initialize the end point with the given world name, node name, zenoh session, channel and clock."""
-        self._world_name = world_name
-        self._node_name = node_name
-        self._session = session
-        self._channel = Channel(channel)
-        self._clock = clock
-        self.post_init()
-
-    def post_init(self):
-        """Post-initialization hook that can be overridden by subclasses to perform additional setup after the base initialization."""
-        ...
-
-    @abstractmethod
-    def get_z_obj(
-        self,
-    ) -> zenoh.Publisher | zenoh.Subscriber | zenoh.Querier | zenoh.Queryable:
-        """Get the underlying zenoh object that this end point uses to communicate. This is needed for proper cleanup of the zenoh resources."""
-
-    def close(self):
-        """Close this end point and release any zenoh resources it holds."""
-        self.get_z_obj().undeclare()
-
-
-class SourceEndPoint(EndPoint):
-    """Base class for communication end points that can be the source of a trace (Publisher, Querier, Queryable)."""
-
-    def __init__(
-        self,
-        src_type: Envelope.SourceType,
-        world_name: str,
-        node_name: str,
-        session: zenoh.Session,
         channel: str | Channel,
+        session: zenoh.Session,
         clock: Clock,
-        noise: ChannelNoise | None,
     ):
-        """Initialize the source end point with the given world name, node name, zenoh session, channel, clock and optional noise function."""
-        super().__init__(world_name, node_name, session, channel, clock)
+        """Initialize shared endpoint state."""
+        self._channel = Channel(channel)
+        self._session = session
+        self._clock = clock
+        self._z_objs: dict[str, Any] = {}
+
+    def close(self) -> None:
+        """Close this end point and release any zenoh resources it holds."""
+        for z_obj in self._z_objs.values():
+            z_obj.undeclare()
+
+    def declare_space_queryable(
+        self, role: str | Channel, space: Space
+    ) -> zenoh.Queryable:
+        """Declare a queryable that replies with this endpoint role's schema."""
+        encoded_space = msgs.encode_space(space)
+        space_channel = self._channel / role / "get_space"
+
+        def on_space_query(z_query: zenoh.Query) -> None:
+            with z_query:
+                z_query.reply(z_query.key_expr, encoded_space)
+
+        return self._session.declare_queryable(space_channel, on_space_query)
+
+    @staticmethod
+    def decode_sample(space: Space, payload: Any) -> Any:
+        """Decode a sample from a serialized Ark envelope."""
+        env = Envelope()
+        env.ParseFromString(bytes(payload))
+        return msgs.decode_sample(space, env.payload)
+
+
+class EnvelopePacker:
+    """Encodes outgoing samples into Ark envelopes with trace metadata."""
+
+    def __init__(
+        self,
+        channel: str | Channel,
+        space: Space,
+        clock: Clock,
+        node_name: str,
+        src_type: Envelope.SourceType,
+        noise: ChannelNoise | None,
+        check_space: bool,
+    ):
+        self._channel = Channel(channel)
+        self._space = space
+        self._clock = clock
+        self._node_name = node_name
         self._src_type = src_type
-        self._seq_index = 0
         self._noise = noise or NoNoise()
+        self._check_space = check_space
+        self._seq_index = 0
+        self._pack_lock = threading.Lock()
 
-    def pack_envelope(self, msg: Message) -> Envelope:
-        """Create an Envelope with the given message and appropriate trace meta information."""
+    def pack(self, sample: Any) -> Envelope:
+        with self._pack_lock:
+            sample = self._noise.apply(sample)
+            self._check_sample(sample)
+            payload = msgs.encode_sample(self._space, sample)
+            trace = self._next_trace()
 
-        # Apply noise to the message if a noise function is provided
-        msg = self._noise.apply(msg)
+        return Envelope(
+            channel=str(self._channel),
+            trace=trace,
+            payload=payload,
+        )
 
-        # Create trace meta
-        t = Envelope.TraceMeta(
-            world_name=self._world_name,
+    def _check_sample(self, sample: Any) -> None:
+        if self._check_space and not self._space.contains(sample):
+            raise ValueError(
+                f"Sample does not conform to the provided Gymnasium space {self._space}."
+            )
+
+    def _next_trace(self) -> Envelope.TraceMeta:
+        trace = Envelope.TraceMeta(
             src_node_name=self._node_name,
             src_type=self._src_type,
             sent_seq_index=self._seq_index,
             sent_ark_time_ns=self._clock.now().nanosec,
             sent_wall_time_ns=self._clock.wall_now().nanosec,
         )
-
-        # Create Envelope
-        e = Envelope(
-            msg_type=msg.DESCRIPTOR.full_name,
-            channel=self._channel,
-            trace=t,
-            payload=msg.SerializeToString(),
-        )
-
-        # Increment sequence index for next message
         self._seq_index += 1
+        return trace
 
-        return e
+
+class SourceEndPoint(EndPoint):
+    """Base class for endpoints that send samples."""
+
+    def __init__(
+        self,
+        channel: str | Channel,
+        session: zenoh.Session,
+        clock: Clock,
+        envelope_packer: EnvelopePacker,
+    ):
+        """Initialize endpoint state used for outbound envelopes."""
+        super().__init__(channel, session, clock)
+        self._envelope_packer = envelope_packer

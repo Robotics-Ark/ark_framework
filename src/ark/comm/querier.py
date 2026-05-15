@@ -1,50 +1,67 @@
 import zenoh
+from typing import Any
 from ark.time import Clock
 from ark.comm import Channel
-from ark_msgs import Envelope
+from ark._msgs import Envelope
 from ark.comm.channel_noise import ChannelNoise
-from google.protobuf.message import Message
-from ark.comm.end_point import SourceEndPoint
-from ark.comm.stamped_message import StampedMessage
-from ark.comm.utils import message_from_sample
+from ark.comm.end_point import QuerySpace, SourceEndPoint, EnvelopePacker
+from ark.comm.stamped_sample import StampedSample
 
 
 class Querier(SourceEndPoint):
-    """A Querier end point that can send queries and receive replies from a zenoh channel."""
+    """Sends query requests and returns replies decoded with reply_space."""
 
     def __init__(
         self,
-        world_name: str,
-        node_name: str,
-        session: zenoh.Session,
         channel: str | Channel,
+        query_space: QuerySpace,
+        session: zenoh.Session,
         clock: Clock,
-        noise: ChannelNoise | None,
+        node_name: str,
+        noise: ChannelNoise,
+        check_space: bool,
         timeout: float,
     ):
-        src_type = Envelope.SourceType.QUERY
-        super().__init__(src_type, world_name, node_name, session, channel, clock, noise)
+        self._query_space = query_space
+        envelope_packer = EnvelopePacker(
+            channel,
+            self._query_space.request,
+            clock,
+            node_name,
+            Envelope.SourceType.QUERY,
+            noise,
+            check_space,
+        )
+        super().__init__(channel, session, clock, envelope_packer)
         self._timeout = timeout
-
-    def post_init(self):
-        self._querier = self._session.declare_querier(
+        self._z_objs["querier"] = self._session.declare_querier(
             self._channel, timeout=self._timeout
         )
 
-    def query(self, req: Message | None = None) -> StampedMessage:
-        _req = {}
-        if req:
-            _req["payload"] = self.pack_envelope(req).SerializeToString()
+    def query(self, request: Any) -> StampedSample:
+        query_kwargs = {
+            "payload": self._envelope_packer.pack(request).SerializeToString(),
+        }
 
-        for reply in self._querier.get(**_req):
-            if reply.ok is None:
-                continue
-            trec = self._clock.now()
-            return StampedMessage(trec, message_from_sample(reply.ok.sample))
+        for z_reply in self._z_objs["querier"].get(**query_kwargs):
+            return self._decode_reply(z_reply)
         else:
             raise TimeoutError(
                 f"No OK reply received for query on '{self._channel}' within {self._timeout}s"
             )
 
-    def get_z_obj(self):
-        return self._querier
+    def _decode_reply(self, z_reply: zenoh.Reply) -> StampedSample:
+        err = z_reply.err
+        if err is not None:
+            error_message = bytes(err.payload).decode("utf-8", errors="replace")
+            raise RuntimeError(f"Query on '{self._channel}' failed: {error_message}")
+
+        ok = z_reply.ok
+        if ok is None:
+            raise RuntimeError(f"Query on '{self._channel}' received an empty reply.")
+
+        received_time = self._clock.now()
+        return StampedSample(
+            received_time,
+            self.decode_sample(self._query_space.reply, ok.payload),
+        )

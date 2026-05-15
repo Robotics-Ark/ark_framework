@@ -4,10 +4,11 @@ __all__ = [
     "Channel",
     "PeriodicPublisher",
     "Publisher",
+    "QuerySpace",
     "Queryable",
     "Querier",
     "SampleWindowListener",
-    "StampedMessage",
+    "StampedSample",
     "Subscriber",
     "TimeWindowListener",
 ]
@@ -15,10 +16,11 @@ __all__ = [
 _LAZY_IMPORTS = {
     "PeriodicPublisher": (".publisher", "PeriodicPublisher"),
     "Publisher": (".publisher", "Publisher"),
-    "Queryable": (".queriable", "Queryable"),
+    "QuerySpace": (".end_point", "QuerySpace"),
+    "Queryable": (".queryable", "Queryable"),
     "Querier": (".querier", "Querier"),
     "SampleWindowListener": (".subscriber", "SampleWindowListener"),
-    "StampedMessage": (".stamped_message", "StampedMessage"),
+    "StampedSample": (".stamped_sample", "StampedSample"),
     "Subscriber": (".subscriber", "Subscriber"),
     "TimeWindowListener": (".subscriber", "TimeWindowListener"),
 }
