@@ -2,15 +2,17 @@ import ast
 import sys
 import zenoh
 from pathlib import Path
+from typing import Any
+from gymnasium import Space
 from ark.comm import Channel
 from ark.args import BaseArgsParser
 from collections.abc import Callable
-from ark.comm.channel_noise import ChannelNoise
-from google.protobuf.message import Message
+from ark.comm.channel_noise import ChannelNoise, NoNoise
 from ark.comm.querier import Querier
-from ark.comm.queriable import Queryable
+from ark.comm.queryable import Queryable
+from ark.comm.end_point import QuerySpace
 from ark.time import Clock, Rate, Stepper, Time
-from ark.comm.stamped_message import StampedMessage
+from ark.comm.stamped_sample import StampedSample
 from ark.comm.default_z_session import default_session
 from ark.comm.publisher import Publisher, PeriodicPublisher
 from ark.comm.subscriber import (
@@ -61,7 +63,11 @@ class Node:
         self._params, self._remaps = arg_parser.parse(sys.argv[1:])
 
         # Extract basic parameters
-        self._world_name = self.get_param("__world_name", required=True)
+        self._world_name = self.get_param(
+            "__world_name", self.get_param("__env_namespace")
+        )
+        if self._world_name is None:
+            raise ValueError("Missing required parameter: __world_name")
         self._channel_ns = Channel.public(self._world_name)
         self._node_name = self.get_param("__node_name", required=True)
         self._sim = bool(self.get_param("__sim", required=True))
@@ -106,11 +112,19 @@ class Node:
     def create_publisher(
         self,
         channel: str | Channel,
-        noise: Callable[[Message], Message] | None = None,
+        space: Space,
+        noise: ChannelNoise | None = None,
+        check_space: bool = True,
     ) -> Publisher:
         channel = self._resolve_channel(channel)
         pub = Publisher(
-            self._world_name, self._node_name, self._session, channel, self.clock, noise
+            channel,
+            space,
+            self._session,
+            self.clock,
+            self._node_name,
+            noise or NoNoise(),
+            check_space,
         )
         self._publishers[channel] = pub
         return pub
@@ -118,33 +132,38 @@ class Node:
     def create_periodic_publisher(
         self,
         channel: str | Channel,
+        space: Space,
         hz: float,
-        message_factory: Callable[[Time], Message],
-        noise: Callable[[Message], Message] | None = None,
+        message_factory: Callable[[Time], Any],
+        noise: ChannelNoise | None = None,
+        check_space: bool = True,
     ) -> PeriodicPublisher:
         channel = self._resolve_channel(channel)
         pub = PeriodicPublisher(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            space,
+            self._session,
             self.clock,
+            self._node_name,
+            noise or NoNoise(),
+            check_space,
             hz,
             message_factory,
-            noise,
         )
         self._publishers[channel] = pub
         return pub
 
     def create_subscriber(
-        self, channel: str | Channel, callback: Callable[[StampedMessage], None]
+        self,
+        channel: str | Channel,
+        space: Space,
+        callback: Callable[[StampedSample], None],
     ) -> Subscriber:
         channel = self._resolve_channel(channel)
         sub = Subscriber(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            space,
+            self._session,
             self.clock,
             callback,
         )
@@ -154,15 +173,15 @@ class Node:
     def create_sample_window_listener(
         self,
         channel: str | Channel,
+        space: Space,
         n_buffer: int = 1,
         ready_when: ReadyWhen | str = ReadyWhen.ALWAYS,
     ) -> SampleWindowListener:
         channel = self._resolve_channel(channel)
         lr = SampleWindowListener(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            space,
+            self._session,
             self.clock,
             n_buffer,
             ready_when,
@@ -173,14 +192,14 @@ class Node:
     def create_time_window_listener(
         self,
         channel: str | Channel,
+        space: Space,
         window_sec: float,
     ) -> TimeWindowListener:
         channel = self._resolve_channel(channel)
         lr = TimeWindowListener(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            space,
+            self._session,
             self.clock,
             window_sec,
         )
@@ -190,17 +209,29 @@ class Node:
     def create_querier(
         self,
         channel: str | Channel,
+        request_space: Space | QuerySpace,
+        reply_space: Space | None = None,
         noise: ChannelNoise | None = None,
+        check_space: bool = True,
         timeout: float = 10.0,
     ) -> Querier:
         channel = self._resolve_channel(channel)
+        if isinstance(request_space, QuerySpace):
+            if reply_space is not None:
+                raise ValueError(
+                    "reply_space cannot be set when request_space is QuerySpace."
+                )
+            query_space = request_space
+        else:
+            query_space = QuerySpace(request_space, reply_space or request_space)
         querier = Querier(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            query_space,
+            self._session,
             self.clock,
-            noise,
+            self._node_name,
+            noise or NoNoise(),
+            check_space,
             timeout,
         )
         self._queriers[channel] = querier
@@ -209,18 +240,30 @@ class Node:
     def create_queryable(
         self,
         channel: str | Channel,
-        callback: Callable[[StampedMessage], Message | None],
+        reply_space: Space | QuerySpace,
+        callback: Callable[[StampedSample], Any],
+        request_space: Space | None = None,
         noise: ChannelNoise | None = None,
+        check_space: bool = True,
     ) -> Queryable:
         channel = self._resolve_channel(channel)
+        if isinstance(reply_space, QuerySpace):
+            if request_space is not None:
+                raise ValueError(
+                    "request_space cannot be set when reply_space is QuerySpace."
+                )
+            query_space = reply_space
+        else:
+            query_space = QuerySpace(request_space or reply_space, reply_space)
         queryable = Queryable(
-            self._world_name,
-            self._node_name,
-            self._session,
             channel,
+            query_space,
+            self._session,
             self.clock,
+            self._node_name,
+            noise or NoNoise(),
+            check_space,
             callback,
-            noise,
         )
         self._queryables[channel] = queryable
         return queryable
