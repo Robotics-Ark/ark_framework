@@ -86,22 +86,22 @@ class SimulatedTime(ResetableObject):
         """
         super().__init__(world_name, session)
         self._time_pub = session.declare_publisher(init_time_channel(world_name))
-        self._sim_time: Time | None = None
+        self._sim_timestamp: Time | None = None
         self._time_step = Time.from_sec(time_step)
 
     def _publish_current_time(self):
         """Publish the current simulated time in nanoseconds."""
-        self._time_pub.put(self._sim_time.as_bytes())
+        self._time_pub.put(self._sim_timestamp.as_bytes())
 
     def reset(self):
         """Reset the simulated time to zero and publish the update."""
-        self._sim_time = Time(nanosec=0)
+        self._sim_timestamp = Time(nanosec=0)
         self._publish_current_time()
 
     def tick(self):
         """Advance the simulated time by one time step and publish the update."""
         try:
-            self._sim_time += self._time_step
+            self._sim_timestamp += self._time_step
         except TypeError:
             raise RuntimeError(
                 "Simulated time not initialized. You must call SimulatedTime.reset first."
