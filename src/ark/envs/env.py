@@ -118,7 +118,7 @@ class ArkEnv(Env, ABC):
         # store the transition for use in reward, terminated, truncated, and info calculations
         self._transition = Transition(state, action, next_state)
 
-        obs = self._get_obs()
+        obs = self.get_obs()
         reward = self.get_reward(state, action, next_state)
         terminated = self.get_terminated(state, action, next_state)
         truncated = self.get_truncated()
