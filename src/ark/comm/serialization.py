@@ -10,7 +10,7 @@ from ark.comm.stamped_sample import StampedSample
 from ark.comm.channel_noise import ChannelNoise, NoNoise
 
 
-class BaseCoder:
+class Coder:
 
     def __init__(self, channel: str | Channel, space: Space, clock: Clock):
         self._channel = Channel(channel)
@@ -33,7 +33,7 @@ class BaseCoder:
         return self._clock
 
 
-class Encoder(BaseCoder):
+class Encoder(Coder):
     """Encodes outgoing samples into Ark envelopes with trace metadata."""
 
     def __init__(
@@ -85,7 +85,7 @@ class Encoder(BaseCoder):
         return trace
 
 
-class Decoder(BaseCoder):
+class Decoder(Coder):
     """Decodes incoming Ark envelopes."""
 
     def __call__(self, z_sample: zenoh.Sample | zenoh.Query) -> StampedSample:
