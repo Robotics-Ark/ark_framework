@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import zenoh
+import pickle
 import threading
+
+import zenoh
 from ark.comm import Channel
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
@@ -69,15 +71,14 @@ class ResetableContainer:
         # Reply to the query with the assigned name so the member can use it for acknowledgements
         query.reply(self._reg_channel, name.encode())
 
-    def _initiate_reset(self) -> None:
+    def _initiate_reset(self, seed: dict | int | None = None) -> None:
         """Initiate a reset by clearing acknowledgements and publishing a reset message."""
 
         # Clear the set of acknowledgements so we can track which members have acknowledged the new reset
         with self._mutex:
             self._acks.clear()
 
-        # Publish an empty message on the reset channel to signal all members to reset themselves
-        self._pub.put(b"")
+        self._pub.put(pickle.dumps(seed, protocol=pickle.HIGHEST_PROTOCOL))
 
     def _on_ack(self, sample: zenoh.Sample):
         """Handle a reset completion acknowledgement from a member."""
@@ -97,11 +98,11 @@ class ResetableContainer:
         with self._mutex:
             self._acks.add(name)
 
-    def reset(self, timeout: float = None):
+    def reset(self, seed: dict | int | None = None, timeout: float = None):
         """Send reset and block until all current members have acknowledged completion."""
 
         # Initiate the reset
-        self._initiate_reset()
+        self._initiate_reset(seed)
 
         # Wait until all members have acknowledged the reset, or timeout if not all acks are received within the specified time limit
         if timeout:
@@ -170,11 +171,13 @@ class ResetableObject(ABC):
 
     def _on_reset_sample(self, sample: zenoh.Sample):
         """Handle a reset initiation message by resetting internal state and sending an acknowledgement."""
-        self.reset()
+        payload = bytes(sample.payload)
+        seed = pickle.loads(payload) if payload else None
+        self.reset(seed)
         self._reset_completed_pub.put(self._name_enc)
 
     @abstractmethod
-    def reset(self):
+    def reset(self, seed: dict | int | None = None):
         """Reset internal state."""
 
     def close(self):
@@ -189,6 +192,6 @@ class TestResetableObject(ResetableObject):
         super().__init__(world_name, session)
         self._reset_count = 0
 
-    def reset(self):
+    def reset(self, seed: dict | int | None = None):
         """Reset internal state by incrementing the reset count."""
         self._reset_count += 1
