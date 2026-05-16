@@ -81,6 +81,19 @@ class InboundChannelSpec:
     window: int | float
     ready_when: ReadyWhen | None = None  # only used for SampleWindowListener
 
+    @classmethod
+    def from_dict(cls, d: dict):
+        channel = Channel(d["channel"])
+        if d["listener"] == "sample_window":
+            listener_cls = SampleWindowListener
+            window = d["window"]
+            ready_when = ReadyWhen(d.get("ready_when", "ALWAYS"))
+        elif d["listener"] == "time_window":
+            listener_cls = TimeWindowListener
+            window = d["window"]
+            ready_when = None
+        return cls(channel, listener_cls, window, ready_when)
+
 
 class InboundChannels(ChannelSpace):
     """Framework-internal observation space for subscribed publisher channels.
