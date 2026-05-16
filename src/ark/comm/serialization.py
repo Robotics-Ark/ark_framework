@@ -56,7 +56,9 @@ class Encoder(BaseCoder):
 
     def __call__(self, sample: Any) -> bytes:
         with self._pack_lock:
+            # NOTE: when noise is None, no noise is not applied
             sample = self._noise.apply(sample)
+
             self._check_sample(sample)
             payload = encode_sample(self._space, sample)
             trace = self._next_trace()
