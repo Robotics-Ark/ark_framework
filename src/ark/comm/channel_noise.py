@@ -14,6 +14,10 @@ class ChannelNoise(ResetableObject):
         self._seed = seed
         self._rng = np.random.default_rng(seed)
 
+    def reset(self, seed: dict | int | None = None):
+        if isinstance(seed, int) or seed is None:
+            self._rng = np.random.default_rng(self._seed if seed is None else seed)
+
     @abstractmethod
     def apply(self, sample: Any) -> Any:
         """Apply noise to a sample drawn from this channel's Gymnasium space."""
@@ -32,9 +36,6 @@ class BoxGaussianNoise(ChannelNoise):
         super().__init__(world_name, session, seed)
         self.loc = loc
         self.scale = scale
-
-    def reset(self):
-        pass
 
     def apply(self, sample: np.ndarray):
         noise = self._rng.normal(loc=self.loc, scale=self.scale, size=sample.shape)

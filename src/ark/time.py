@@ -93,7 +93,7 @@ class SimulatedTime(ResetableObject):
         """Publish the current simulated time in nanoseconds."""
         self._time_pub.put(self._sim_timestamp.as_bytes())
 
-    def reset(self):
+    def reset(self, seed: dict | int | None = None):
         """Reset the simulated time to zero and publish the update."""
         self._sim_timestamp = Time(nanosec=0)
         self._publish_current_time()
