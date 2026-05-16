@@ -55,10 +55,10 @@ class SampleWindowListener(Subscriber):
         self,
         decoder: Decoder,
         session: zenoh.Session,
-        n_buffer: int | None,
+        window: int | None,
         ready_when: ReadyWhen | str,
     ):
-        self._buffer: deque[StampedSample] = deque(maxlen=n_buffer)
+        self._buffer: deque[StampedSample] = deque(maxlen=window)
         self._ready_when = ReadyWhen(ready_when)
         self._is_ready = self.is_ready_func[self._ready_when]
         self._mutex = threading.Lock()
@@ -77,7 +77,7 @@ class SampleWindowListener(Subscriber):
     def get(self) -> list[StampedSample]:
         """Return a list of the most recent messages in the buffer."""
         if not self.is_ready():
-            raise RuntimeError("SampleWindowListener is not ready")
+            raise RuntimeError("listener is not ready")
         with self._mutex:
             return list(self._buffer)
 
@@ -85,11 +85,23 @@ class SampleWindowListener(Subscriber):
 class TimeWindowListener(SampleWindowListener):
     """A listener that retains messages received within a rolling time window."""
 
-    def __init__(self, decoder: Decoder, session: zenoh.Session, window_sec: float):
+    def __init__(
+        self,
+        decoder: Decoder,
+        session: zenoh.Session,
+        window: float,
+        ready_when_: (
+            ReadyWhen | str
+        ) = None,  # NOTE: this is not used, kept for compatibility with InboundChannelSpec
+    ):
         self._buffer: deque[StampedSample] = deque()
-        self._window_nanosec = round(float(window_sec) * 1e9)
-        n_buffer = None  # no fixed buffer size
-        super().__init__(decoder, session, n_buffer, ReadyWhen.ALWAYS)
+        self._window_nanosec = round(float(window) * 1e9)
+        super().__init__(
+            decoder,
+            session,
+            None,  # no fixed buffer size
+            ReadyWhen.ALWAYS,
+        )
 
     def append_buffer(self, stamped_message):
         super().append_buffer(stamped_message)
