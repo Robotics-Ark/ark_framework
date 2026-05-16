@@ -19,8 +19,9 @@ class SpaceQueryable:
     """Exposes queryable that returns the encoded space of an end point's channel upon request."""
 
     def __init__(
-        self, channel: Channel, role: Role, space: Space, session: zenoh.Session
+        self, channel: str | Channel, role: Role, space: Space, session: zenoh.Session
     ):
+        channel = Channel(channel)
         self._enc_space = encode_space(space)
         qr_channel = channel / role.value / "get_space"
         self._qr = session.declare_queryable(qr_channel, self.on_query)
@@ -31,8 +32,9 @@ class SpaceQueryable:
             query.reply(query.key_expr, self._enc_space)
 
 
-def query_space(channel: Channel, role: Role, session: zenoh.Session) -> Space:
+def query_space(channel: str | Channel, role: Role, session: zenoh.Session) -> Space:
     """Helper function to query a channel for the space of a publisher or subscriber."""
+    channel = Channel(channel)
     qr_channel = channel / role.value / "get_space"
     qr = session.declare_querier(qr_channel)
     try:
@@ -41,7 +43,7 @@ def query_space(channel: Channel, role: Role, session: zenoh.Session) -> Space:
                 err = bytes(z_reply.err.payload).decode("utf-8", errors="replace")
                 raise RuntimeError(f"Space query failed: {err}")
             elif z_reply.ok is not None:
-                return decode_space(z_reply.ok.payload)
+                return decode_space(bytes(z_reply.ok.payload))
         else:
             raise RuntimeError("Space query failed: No reply received.")
     finally:

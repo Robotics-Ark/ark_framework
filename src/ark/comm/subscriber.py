@@ -25,9 +25,7 @@ class Subscriber(EndPoint):
         self.add_z_obj("sub", s, decoder.space, Role.SUBSCRIBER)
 
     def on_sample(self, z_sample: zenoh.Sample):
-        sample = self._decode(z_sample)
-        t = self._clock.now()  # received time
-        self._callback(StampedSample(t, sample))
+        self._callback(self._decode(z_sample))
 
     @property
     def space(self) -> Space:
@@ -96,6 +94,7 @@ class TimeWindowListener(SampleWindowListener):
     ):
         self._buffer: deque[StampedSample] = deque()
         self._window_nanosec = round(float(window) * 1e9)
+        self._clock = decoder.clock
         super().__init__(
             decoder,
             session,
