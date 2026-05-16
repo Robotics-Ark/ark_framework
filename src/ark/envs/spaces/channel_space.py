@@ -32,9 +32,14 @@ class ChannelSpace(GymDict):
     ):
         space = lambda ch: query_space(ch, self.query_role, session)
         super().__init__({str(ch): space(ch) for ch in channels}, seed=seed)
+        self._z_objs = {}  # for storing Zenoh publishers, listeners, etc. in subclasses
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({list(self.spaces.keys())})"
+
+    def close(self):
+        for z_obj in self._z_objs.values():
+            z_obj.undeclare()
 
 
 class OutboundChannels(ChannelSpace):
@@ -67,11 +72,12 @@ class OutboundChannels(ChannelSpace):
             check_space,
         )
         init_pub = lambda ch: Publisher(init_enc(ch), session)
-        self._pubs = {ch: init_pub(ch) for ch in channels}
+        for ch in channels:
+            self._z_objs[str(ch)] = init_pub(ch)
 
     def publish(self, action: dict[str, Any]):
-        for ch, pub in self._pubs.items():
-            pub.publish(action[ch])
+        for ch, pub in self._z_objs.items():
+            pub.publish(action[str(ch)])
 
 
 @dataclass
@@ -121,10 +127,11 @@ class InboundChannels(ChannelSpace):
             )
             return s.listener_cls(dec, session, s.window, s.ready_when)
 
-        self._listeners = {s.channel: init_listener(s) for s in specs}
+        for s in specs:
+            self._z_objs[str(s.channel)] = init_listener(s)
 
     def is_ready(self) -> bool:
-        return all(l.is_ready() for l in self._listeners.values())
+        return all(l.is_ready() for l in self._z_objs.values())
 
     def get(self) -> dict[str, list[StampedSample]]:
-        return {ch: l.get() for ch, l in self._listeners.items()}
+        return {ch: l.get() for ch, l in self._z_objs.items()}
