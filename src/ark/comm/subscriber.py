@@ -1,13 +1,11 @@
 import zenoh
 import threading
 from enum import Enum
-from gymnasium import Space
 from typing import Callable
-from ark.comm import Channel
 from collections import deque
-from ark.time import Clock, Time
-from ark.comm.end_point import EndPoint
-from ark.comm.stamped_sample import StampedSample
+from .end_point import EndPoint, Role
+from .serialization import Decoder
+from .stamped_sample import StampedSample
 
 
 class Subscriber(EndPoint):
@@ -15,23 +13,19 @@ class Subscriber(EndPoint):
 
     def __init__(
         self,
-        channel: str | Channel,
-        space: Space,
+        decoder: Decoder,
         session: zenoh.Session,
-        clock: Clock,
         callback: Callable[[StampedSample], None],
     ):
-        super().__init__(channel, session, clock)
-        self._receive_space = space
+        super().__init__(decoder.channel, session)
+        self._decode = decoder
         self._callback = callback
-        self._z_objs["sub"] = self._session.declare_subscriber(
-            self._channel, self._on_sample
-        )
-        self._z_objs["space_queryable"] = self.declare_space_queryable("sub", space)
+        s = self._session.declare_subscriber(decoder.channel, self.on_sample)
+        self.add_z_obj("sub", s, decoder.space, Role.SUBSCRIBER)
 
-    def _on_sample(self, z_sample: zenoh.Sample):
-        sample = self.decode_sample(self._receive_space, z_sample.payload)
-        t = self._clock.now()  # recieved time
+    def on_sample(self, z_sample: zenoh.Sample):
+        sample = self._decode(z_sample)
+        t = self._clock.now()  # received time
         self._callback(StampedSample(t, sample))
 
 
@@ -54,18 +48,16 @@ class SampleWindowListener(Subscriber):
 
     def __init__(
         self,
-        channel: str | Channel,
-        space: Space,
+        decoder: Decoder,
         session: zenoh.Session,
-        clock: Clock,
-        n_buffer: int,
+        n_buffer: int | None,
         ready_when: ReadyWhen | str,
     ):
-        self._buffer: deque[StampedSample] = deque(maxlen=int(n_buffer))
+        self._buffer: deque[StampedSample] = deque(maxlen=n_buffer)
         self._ready_when = ReadyWhen(ready_when)
         self._is_ready = self.is_ready_func[self._ready_when]
         self._mutex = threading.Lock()
-        super().__init__(channel, space, session, clock, self.append_buffer)
+        super().__init__(decoder, session, self.append_buffer)
 
     def append_buffer(self, stamped_message: StampedSample) -> None:
         """Append the given message to the buffer, evicting old messages if necessary."""
@@ -85,34 +77,29 @@ class SampleWindowListener(Subscriber):
             return list(self._buffer)
 
 
-class TimeWindowListener(Subscriber):
+class TimeWindowListener(SampleWindowListener):
     """A listener that retains messages received within a rolling time window."""
 
-    def __init__(
-        self,
-        channel: str | Channel,
-        space: Space,
-        session: zenoh.Session,
-        clock: Clock,
-        window_sec: float,
-    ):
+    def __init__(self, decoder: Decoder, session: zenoh.Session, window_sec: float):
         self._buffer: deque[StampedSample] = deque()
         self._window_nanosec = round(float(window_sec) * 1e9)
-        self._mutex = threading.Lock()
-        super().__init__(channel, space, session, clock, self._append)
+        n_buffer = None  # no fixed buffer size
+        super().__init__(decoder, session, n_buffer, ReadyWhen.ALWAYS)
 
-    def _append(self, stamped_message: StampedSample) -> None:
+    def append_buffer(self, stamped_message):
+        super().append_buffer(stamped_message)
+        self.prune()
+
+    def prune(self) -> None:
+        """Remove messages from the buffer that are outside the time window."""
+        now = self._clock.now()
         with self._mutex:
-            self._buffer.append(stamped_message)
-            self._prune(stamped_message.time)
-
-    def _prune(self, now: Time) -> None:
-        cutoff_nanosec = now.nanosec - self._window_nanosec
-        buffer = self._buffer
-        while buffer and buffer[0].time.nanosec < cutoff_nanosec:
-            buffer.popleft()
+            cutoff_nanosec = now.nanosec - self._window_nanosec
+            buffer = self._buffer
+            while buffer and buffer[0].time.nanosec < cutoff_nanosec:
+                buffer.popleft()
 
     def get(self) -> list[StampedSample]:
-        with self._mutex:
-            self._prune(self._clock.now())
-            return list(self._buffer)
+        """Return a list of messages received within the time window."""
+        self.prune()
+        return super().get()

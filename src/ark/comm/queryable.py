@@ -1,68 +1,32 @@
 import zenoh
+from .query import Query
+from .end_point import Role
 from typing import Any, Callable
-from ark.comm import Channel
-from ark.time import Clock
-from ark._msgs import Envelope
-from ark.comm.channel_noise import ChannelNoise
-from ark.comm.stamped_sample import StampedSample
-from ark.comm.end_point import QuerySpace, SourceEndPoint, EnvelopePacker
+from .stamped_sample import StampedSample
+from .serialization import Encoder, Decoder
 
 
-class Queryable(SourceEndPoint):
-    """Receives query requests and replies with samples encoded in reply_space."""
+class Queryable(Query):
 
     def __init__(
         self,
-        channel: str | Channel,
-        query_space: QuerySpace,
+        encoder: Encoder,
+        decoder: Decoder,
         session: zenoh.Session,
-        clock: Clock,
-        node_name: str,
-        noise: ChannelNoise,
-        check_space: bool,
         callback: Callable[[StampedSample], Any],
     ):
-        self._query_space = query_space
-        envelope_packer = EnvelopePacker(
-            channel,
-            self._query_space.reply,
-            clock,
-            node_name,
-            Envelope.SourceType.REPLY,
-            noise,
-            check_space,
-        )
-        super().__init__(channel, session, clock, envelope_packer)
+        super().__init__(encoder, decoder, session)
         self._callback = callback
-        self._z_objs["queryable"] = self._session.declare_queryable(
-            self._channel, self._on_query
-        )
-        self._z_objs["request_space_queryable"] = self.declare_space_queryable(
-            "query/request", self._query_space.request
-        )
-        self._z_objs["reply_space_queryable"] = self.declare_space_queryable(
-            "query/reply", self._query_space.reply
-        )
+        q = session.declare_queryable(encoder.channel, self.on_query)
+        self.add_z_obj("queryable", q, self._query_space, Role.QUERYABLE)
 
-    def _on_query(self, z_query: zenoh.Query) -> None:
+    def on_query(self, z_query: zenoh.Query) -> None:
         with z_query:
             try:
                 if z_query.payload is None:
                     raise ValueError(f"Query on '{self._channel}' has no payload.")
-
-                request_sample = self.decode_sample(
-                    self._query_space.request, z_query.payload
-                )
-                received_time = self._clock.now()
-                reply_sample = self._callback(
-                    StampedSample(received_time, request_sample)
-                )
-                payload = self._envelope_packer.pack(reply_sample).SerializeToString()
-                z_query.reply(z_query.key_expr, payload)
-            except Exception as exc:
-                message = (
-                    f"Queryable '{self._channel}' failed: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                z_query.reply_err(message.encode("utf-8"))
-                raise
+                response = self._callback(self._decode(z_query))
+                z_query.reply(z_query.key_expr, self._encode(response))
+            except Exception as e:
+                err = f"Error processing query on '{self._channel}': {e}"
+                z_query.reply_err(err.encode("utf-8"))

@@ -1,45 +1,27 @@
 import zenoh
-from gymnasium import Space
-from ark._msgs import Envelope
-from ark.comm import Channel
 from typing import Any, Callable
-from ark.time import Clock, Time, Stepper
-from .end_point import SourceEndPoint, EnvelopePacker
-from ark.comm.channel_noise import ChannelNoise
+from ark.time import Time, Stepper
+from .end_point import EndPoint, Role
+from .serialization import Encoder
 
 
-class Publisher(SourceEndPoint):
+class Publisher(EndPoint):
     """A Publisher end point that can publish samples to a zenoh channel."""
 
     def __init__(
         self,
-        channel: str | Channel,
-        space: Space,
+        encoder: Encoder,
         session: zenoh.Session,
-        clock: Clock,
-        node_name: str,
-        noise: ChannelNoise | None,
-        check_space: bool,
     ):
         """Initialize the Publisher with the given node name, zenoh session, channel, clock and optional noise function."""
-
-        envelope_packer = EnvelopePacker(
-            channel,
-            space,
-            clock,
-            node_name,
-            Envelope.SourceType.PUBLISH,
-            noise,
-            check_space,
-        )
-        super().__init__(channel, session, clock, envelope_packer)
-        self._z_objs["pub"] = self._session.declare_publisher(self._channel)
-        self._z_objs["space_queryable"] = self.declare_space_queryable("pub", space)
+        super().__init__(encoder.channel, session)
+        self._encode = encoder
+        p = self._session.declare_publisher(self._channel)
+        self.add_z_obj("pub", p, encoder.space, Role.PUBLISHER)
 
     def publish(self, sample: Any):
         """Publish a sample."""
-        env = self._envelope_packer.pack(sample)
-        self._z_objs["pub"].put(env.SerializeToString())
+        self._z_objs["pub"].put(self._encode(sample))
 
 
 class PeriodicPublisher(Publisher):
@@ -47,19 +29,18 @@ class PeriodicPublisher(Publisher):
 
     def __init__(
         self,
-        channel: str | Channel,
-        space: Space,
+        encoder: Encoder,
         session: zenoh.Session,
-        clock: Clock,
-        node_name: str,
-        noise: ChannelNoise,
-        check_space: bool,
         hz: float,
-        message_factory: Callable[[Time], Any],
+        sample: Callable[[Time], Any],
     ):
         """A Publisher that can publish samples at a fixed rate using a function that builds each sample based on the current time."""
-        super().__init__(channel, space, session, clock, node_name, noise, check_space)
-        self._stepper = Stepper(clock, hz, lambda t: self.publish(message_factory(t)))
+        super().__init__(encoder, session)
+        self._sample = sample
+        self._stepper = Stepper(encoder.clock, hz, self.step)
+
+    def step(self, t: Time):
+        self.publish(self._sample(t))
 
     def close(self):
         self._stepper.close()
