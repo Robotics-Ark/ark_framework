@@ -63,11 +63,7 @@ class Encoder(BaseCoder):
             payload = encode_sample(self._space, sample)
             trace = self._next_trace()
 
-        env = Envelope(
-            channel=str(self._channel),
-            trace=trace,
-            payload=payload,
-        )
+        env = Envelope(channel=str(self._channel), trace=trace, payload=payload)
 
         return env.SerializeToString()
 
