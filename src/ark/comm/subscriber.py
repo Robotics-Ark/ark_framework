@@ -1,6 +1,7 @@
 import zenoh
 import threading
 from enum import Enum
+from gymnasium import Space
 from typing import Callable
 from collections import deque
 from .end_point import EndPoint, Role
@@ -27,6 +28,10 @@ class Subscriber(EndPoint):
         sample = self._decode(z_sample)
         t = self._clock.now()  # received time
         self._callback(StampedSample(t, sample))
+
+    @property
+    def space(self) -> Space:
+        return self._decode.space
 
 
 class ReadyWhen(Enum):
