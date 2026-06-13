@@ -29,6 +29,9 @@ class Writer:
     def string(self, value: str) -> None:
         self.sized_bytes(value.encode("utf-8"))
 
+    def clear(self) -> None:
+        self._data.clear()
+
     def finish(self) -> bytes:
         return bytes(self._data)
 

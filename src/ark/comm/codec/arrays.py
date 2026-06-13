@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -8,7 +9,7 @@ from .binary import Reader, Writer
 
 
 def shape_size(shape: tuple[int, ...]) -> int:
-    return int(np.prod(shape, dtype=np.int64))
+    return math.prod(shape)
 
 
 def write_dtype(writer: Writer, dtype: Any) -> None:
@@ -59,11 +60,11 @@ def write_bool_array(writer: Writer, value: Any, shape: tuple[int, ...]) -> None
 def read_bool_array(reader: Reader, shape: tuple[int, ...]) -> np.ndarray:
     n = shape_size(shape)
     packed = reader.bytes((n + 7) // 8)
-    return np.unpackbits(
-        np.frombuffer(packed, dtype=np.uint8),
-        count=n,
-        bitorder="little",
-    ).astype(np.bool_).reshape(shape)
+    return (
+        np.unpackbits(np.frombuffer(packed, dtype=np.uint8), count=n, bitorder="little")
+        .view(np.bool_)
+        .reshape(shape)
+    )
 
 
 def write_bound(writer: Writer, value: Any, dtype: Any, shape: tuple[int, ...]) -> None:

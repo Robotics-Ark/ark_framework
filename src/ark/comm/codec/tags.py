@@ -15,3 +15,7 @@ class SpaceTag(IntEnum):
     SEQUENCE = 8
     GRAPH = 9
     ONE_OF = 10
+    IMAGE = 11
+    GRAYSCALE_IMAGE = 12
+    RGB_IMAGE = 13
+    DEPTH_IMAGE = 14

@@ -7,8 +7,10 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Te
 
 try:
     from gymnasium.spaces import Graph, OneOf, Sequence
-except ImportError:  # Older Gymnasium versions may not expose every space.
+except ImportError:
     Graph = OneOf = Sequence = None
+
+from ark.envs.spaces.image_space import DepthImage, GrayscaleImage, Image, RGBImage
 
 from .arrays import (
     read_array,
@@ -42,6 +44,37 @@ def decode_space(payload: BytesLike) -> Space:
 
 
 def _write_space(writer: Writer, space: Space) -> None:
+    # Image subclasses must be checked before Box (they inherit from it).
+    # Image subclasses must be checked before Box (they inherit from it).
+    if isinstance(space, RGBImage):
+        writer.uint(SpaceTag.RGB_IMAGE)
+        writer.uint(space.height)
+        writer.uint(space.width)
+        write_dtype(writer, space.dtype)
+        write_bound(writer, space.high, space.dtype, space.shape)
+        return
+    if isinstance(space, GrayscaleImage):
+        writer.uint(SpaceTag.GRAYSCALE_IMAGE)
+        writer.uint(space.height)
+        writer.uint(space.width)
+        write_dtype(writer, space.dtype)
+        write_bound(writer, space.high, space.dtype, space.shape)
+        return
+    if isinstance(space, DepthImage):
+        writer.uint(SpaceTag.DEPTH_IMAGE)
+        writer.uint(space.height)
+        writer.uint(space.width)
+        write_dtype(writer, space.dtype)
+        write_bound(writer, space.high, space.dtype, space.shape)
+        return
+    if isinstance(space, Image):
+        writer.uint(SpaceTag.IMAGE)
+        writer.uint(space.height)
+        writer.uint(space.width)
+        writer.uint(space.color_channels)
+        write_dtype(writer, space.dtype)
+        write_bound(writer, space.high, space.dtype, space.shape)
+        return
     if isinstance(space, Box):
         writer.uint(SpaceTag.BOX)
         write_dtype(writer, space.dtype)
@@ -104,6 +137,27 @@ def _write_space(writer: Writer, space: Space) -> None:
 
 def _read_space(reader: Reader) -> Space:
     tag = SpaceTag(reader.uint())
+    if tag == SpaceTag.RGB_IMAGE and RGBImage is not None:
+        height, width = reader.uint(), reader.uint()
+        dtype = read_dtype(reader)
+        high = read_bound(reader, dtype, (height, width, 3))
+        return RGBImage(height=height, width=width, dtype=dtype, high=high)
+    if tag == SpaceTag.GRAYSCALE_IMAGE and GrayscaleImage is not None:
+        height, width = reader.uint(), reader.uint()
+        dtype = read_dtype(reader)
+        high = read_bound(reader, dtype, (height, width))
+        return GrayscaleImage(height=height, width=width, dtype=dtype, high=high)
+    if tag == SpaceTag.DEPTH_IMAGE and DepthImage is not None:
+        height, width = reader.uint(), reader.uint()
+        dtype = read_dtype(reader)
+        high = read_bound(reader, dtype, (height, width))
+        return DepthImage(height=height, width=width, dtype=dtype, high=high)
+    if tag == SpaceTag.IMAGE and Image is not None:
+        height, width, color_channels = reader.uint(), reader.uint(), reader.uint()
+        dtype = read_dtype(reader)
+        shape = (height, width) if color_channels == 1 else (height, width, color_channels)
+        high = read_bound(reader, dtype, shape)
+        return Image(height=height, width=width, color_channels=color_channels, dtype=dtype, high=high)
     if tag == SpaceTag.BOX:
         dtype = read_dtype(reader)
         shape = read_shape(reader)
