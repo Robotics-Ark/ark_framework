@@ -1,4 +1,5 @@
 import zenoh
+from dataclasses import dataclass
 from google.protobuf.struct_pb2 import Struct, Value, ListValue
 
 PARAM_TYPE = (
@@ -45,10 +46,24 @@ def _param_to_serialized_struct(param: PARAM_TYPE) -> bytes:
     else:
         raise ValueError(f"Unsupported parameter type: {param_type.__name__}")
 
-    reply = Struct()
-    reply.fields["type"].string_value = param_type_name
-    reply.fields["value"].CopyFrom(param_value)
-    return reply.SerializeToString()
+    s = Struct()
+    s.fields["type"].string_value = param_type_name
+    s.fields["value"].CopyFrom(param_value)
+    return s.SerializeToString()
+
+
+def _decode_param_struct(struct: Struct) -> PARAM_TYPE:
+    param_type = struct.fields["type"].string_value
+    value = struct.fields["value"]
+
+    if param_type in SCALAR_DECODERS:
+        return SCALAR_DECODERS[param_type](value)
+    elif param_type.startswith("tuple[") and param_type.endswith("]"):
+        elem_type_name = param_type[6:-1]
+        decode = SCALAR_DECODERS[elem_type_name]
+        return tuple(decode(el) for el in value.list_value.values)
+    else:
+        raise ValueError(f"Unknown parameter type: {param_type}")
 
 
 def get_parameter(
@@ -66,17 +81,7 @@ def get_parameter(
 
             reply = Struct()
             reply.ParseFromString(bytes(z_reply.ok.payload))
-            param_type = reply.fields["type"].string_value
-            value = reply.fields["value"]
-
-            if param_type in SCALAR_DECODERS:
-                decode = SCALAR_DECODERS[param_type]
-                return decode(value)
-
-            elif param_type.startswith("tuple[") and param_type.endswith("]"):
-                elem_type_name = param_type[6:-1]
-                decode = SCALAR_DECODERS[elem_type_name]
-                return tuple(decode(el) for el in value.list_value.values)
+            return _decode_param_struct(reply)
 
     finally:
         qr.undeclare()
@@ -104,6 +109,12 @@ def set_parameter(
         qr.undeclare()
 
 
+@dataclass(frozen=True, slots=True)
+class Parameter:
+    value: PARAM_TYPE
+    env_value: bytes
+
+
 class ParameterServer:
 
     def __init__(
@@ -113,9 +124,9 @@ class ParameterServer:
         session: zenoh.Session,
     ):
         self._server_name = server_name
-        self._encoded_parameters: dict[str, bytes] = {
-            param_name: _param_to_serialized_struct(param)
-            for param_name, param in parameters.items()
+        self._parameters: dict[str, Parameter] = {
+            name: Parameter(value=param, env_value=_param_to_serialized_struct(param))
+            for name, param in parameters.items()
         }
         self._get_qr = session.declare_queryable(
             f"{self._server_name}/get_parameter", self._on_get_query
@@ -123,6 +134,16 @@ class ParameterServer:
         self._set_qr = session.declare_queryable(
             f"{self._server_name}/set_parameter", self._on_set_query
         )
+
+    def set(self, param_name: str, param_value: PARAM_TYPE) -> None:
+        self._parameters[param_name] = Parameter(
+            value=param_value, env_value=_param_to_serialized_struct(param_value)
+        )
+
+    def get(self, param_name: str) -> PARAM_TYPE:
+        if param_name not in self._parameters:
+            raise KeyError(f"Parameter '{param_name}' not found.")
+        return self._parameters[param_name].value
 
     def _on_get_query(self, query: zenoh.Query) -> None:
         with query:
@@ -132,13 +153,13 @@ class ParameterServer:
                 return
 
             param_name = query.payload.to_string()
-            enc_param = self._encoded_parameters.get(param_name)
+            param = self._parameters.get(param_name)
 
-            if enc_param is None:
+            if param is None:
                 query.reply_err(f"Parameter '{param_name}' not found.".encode("utf-8"))
                 return
 
-            query.reply(query.key_expr, enc_param)
+            query.reply(query.key_expr, param.env_value)
 
     def _on_set_query(self, query: zenoh.Query) -> None:
         with query:
@@ -147,16 +168,18 @@ class ParameterServer:
                 query.reply_err(b"Query payload is required.")
                 return
 
-            payload = bytes(query.payload)
             request = Struct()
-            request.ParseFromString(payload)
+            request.ParseFromString(bytes(query.payload))
 
             name = request.fields["name"].string_value
             if not name:
                 query.reply_err(b"Parameter name is required.")
                 return
 
-            self._encoded_parameters[name] = payload
+            decoded_value = _decode_param_struct(request)
+            self._parameters[name] = Parameter(
+                value=decoded_value, env_value=_param_to_serialized_struct(decoded_value)
+            )
             query.reply(query.key_expr, b"")
 
     def close(self):
