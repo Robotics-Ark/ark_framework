@@ -21,6 +21,8 @@ class FrameForest:
     def __init__(self):
         self._frames: set[str] = {WORLD_FRAME_NAME}
         self._edges: dict[str, Frame] = {}
+        # Memoized (root, T_root_frame) for frames whose full ancestor chain is static.
+        self._static_root_cache: dict[str, tuple[str, RigidTransform]] = {}
 
     def register_static_transform(
         self, parent: str, child: str, tf: RigidTransform
@@ -35,25 +37,44 @@ class FrameForest:
         self._register_transform(parent, child, tf, is_static=False)
 
     def update_dynamic_transform(self, child: str, tf: RigidTransform) -> None:
-        """Update an already-registered dynamic transform."""
+        """Replace the transform for an existing dynamic frame."""
         if not child:
             raise ValueError("Child frame name cannot be empty.")
-
         edge = self._edges.get(child)
         if edge is None:
             raise ValueError(f"Dynamic frame '{child}' is not registered.")
         if edge.is_static:
             raise ValueError(f"Frame '{child}' is static and cannot be updated.")
-
-        self._edges[child] = Frame(
-            parent=edge.parent,
-            tf=tf,
-            is_static=False,
-        )
+        self._edges[child] = Frame(parent=edge.parent, tf=tf, is_static=False)
 
     def has_frame(self, frame: str) -> bool:
         """Return whether the frame is known to the forest."""
         return frame in self._frames
+
+    def can_transform(self, target: str, source: str) -> bool:
+        """Return True if lookup_transform(target, source) would succeed."""
+        try:
+            self.lookup_transform(target, source)
+            return True
+        except ValueError:
+            return False
+
+    def get_all_frames(self) -> set[str]:
+        """Return all registered frame names."""
+        return set(self._frames)
+
+    def get_parent(self, frame: str) -> str | None:
+        """Return the parent frame name, or None if frame is a root."""
+        if frame not in self._frames:
+            raise ValueError(f"Unknown frame '{frame}'.")
+        edge = self._edges.get(frame)
+        return edge.parent if edge is not None else None
+
+    def get_children(self, frame: str) -> set[str]:
+        """Return all immediate children of frame."""
+        if frame not in self._frames:
+            raise ValueError(f"Unknown frame '{frame}'.")
+        return {child for child, edge in self._edges.items() if edge.parent == frame}
 
     def lookup_transform(self, target: str, source: str) -> RigidTransform:
         """Return T_target_source for two frames in the same tree."""
@@ -62,28 +83,58 @@ class FrameForest:
         if source not in self._frames:
             raise ValueError(f"Unknown source frame '{source}'.")
 
-        target_root, tf_root_target = self._pose_from_root(target)
-        source_root, tf_root_source = self._pose_from_root(source)
-        if target_root != source_root:
-            raise ValueError(
-                f"Frames '{target}' and '{source}' are in disconnected trees "
-                f"('{target_root}' and '{source_root}')."
-            )
+        # O(1) fast path: both frames have a cached all-static root transform.
+        t_entry = self._static_root_cache.get(target)
+        s_entry = self._static_root_cache.get(source)
+        if t_entry is not None and s_entry is not None:
+            root_t, T_root_target = t_entry
+            root_s, T_root_source = s_entry
+            if root_t != root_s:
+                raise ValueError(
+                    f"Frames '{target}' and '{source}' are in disconnected trees "
+                    f"('{root_t}' and '{root_s}')."
+                )
+            return T_root_target.inv() * T_root_source
 
-        return tf_root_target.inv() * tf_root_source
+        # General case: LCA traversal — walk only to the nearest common ancestor.
+        target_chain, target_root = self._build_ancestor_chain(target)
+
+        current = source
+        tf_current_source = RigidTransform.identity()  # T_current_source
+        all_static_source = True
+        visited: set[str] = set()
+
+        while True:
+            if current in target_chain:
+                T_lca_target = target_chain[current]
+                # Cache source's root transform when LCA is the root and path is all-static.
+                if (
+                    all_static_source
+                    and source not in self._static_root_cache
+                    and self._edges.get(current) is None
+                ):
+                    self._static_root_cache[source] = (current, tf_current_source)
+                return T_lca_target.inv() * tf_current_source
+
+            if current in visited:
+                raise ValueError(f"Cycle detected in frames near '{current}'.")
+            visited.add(current)
+
+            edge = self._edges.get(current)
+            if edge is None:
+                raise ValueError(
+                    f"Frames '{target}' and '{source}' are in disconnected trees "
+                    f"('{target_root}' and '{current}')."
+                )
+
+            if not edge.is_static:
+                all_static_source = False
+            tf_current_source = edge.tf * tf_current_source
+            current = edge.parent
 
     def world_pose(self, frame: str) -> RigidTransform:
         """Return T_world_frame for a frame connected to the world tree."""
-        try:
-            return self.lookup_transform(WORLD_FRAME_NAME, frame)
-        except ValueError as exc:
-            if frame in self._frames:
-                root, _ = self._pose_from_root(frame)
-                if root != WORLD_FRAME_NAME:
-                    raise ValueError(
-                        f"Frame '{frame}' is not connected to '{WORLD_FRAME_NAME}'."
-                    ) from exc
-            raise
+        return self.lookup_transform(WORLD_FRAME_NAME, frame)
 
     def resolve_pose(
         self,
@@ -136,56 +187,72 @@ class FrameForest:
         if parent == child:
             raise ValueError(f"Frame '{child}' cannot have itself as a parent.")
         if child in self._edges:
-            current_kind = "static" if self._edges[child].is_static else "dynamic"
+            kind = "static" if self._edges[child].is_static else "dynamic"
             raise ValueError(
-                f"Frame '{child}' is already registered as a {current_kind} frame."
+                f"Frame '{child}' is already registered as a {kind} frame."
             )
         if self._introduces_cycle(parent, child):
             raise ValueError(
                 f"Registering '{child}' under '{parent}' would create a cycle."
             )
-
         self._frames.add(parent)
         self._frames.add(child)
-        self._edges[child] = Frame(
-            parent=parent,
-            tf=tf,
-            is_static=is_static,
-        )
+        self._edges[child] = Frame(parent=parent, tf=tf, is_static=is_static)
 
-    def _pose_from_root(self, frame: str) -> tuple[str, RigidTransform]:
+    def _build_ancestor_chain(self, frame: str) -> tuple[dict[str, RigidTransform], str]:
+        """Walk from frame toward root, return ({ancestor: T_ancestor_frame}, root_name).
+
+        Short-circuits at cached static ancestors. Populates the static root cache
+        when the full ancestor path is all-static.
+        """
+        chain: dict[str, RigidTransform] = {}
         current = frame
-        tf_root_frame = RigidTransform.identity()
-        visited: list[str] = []
+        tf = RigidTransform.identity()  # T_current_frame
+        all_static = True
+        root = frame
+        visited: set[str] = set()
 
         while True:
             if current in visited:
-                cycle = " -> ".join([*visited, current])
-                raise ValueError(f"Detected cycle in frames: {cycle}")
-            visited.append(current)
+                raise ValueError(f"Cycle detected in frames near '{current}'.")
+            visited.add(current)
+            chain[current] = tf
+
+            # Short-circuit at a cached static ancestor (skip remaining walk to root).
+            if current != frame and current in self._static_root_cache:
+                cached_root, T_root_current = self._static_root_cache[current]
+                chain[cached_root] = T_root_current * tf  # T_root_frame
+                root = cached_root
+                if all_static:
+                    self._static_root_cache[frame] = (cached_root, T_root_current * tf)
+                break
 
             edge = self._edges.get(current)
             if edge is None:
-                return current, tf_root_frame
+                root = current
+                if all_static:
+                    self._static_root_cache[frame] = (current, tf)
+                break
 
-            tf_root_frame = edge.tf * tf_root_frame
+            if not edge.is_static:
+                all_static = False
+            tf = edge.tf * tf
             current = edge.parent
+
+        return chain, root
 
     def _introduces_cycle(self, parent: str, child: str) -> bool:
         current = parent
         visited: set[str] = set()
-
         while True:
             if current == child:
                 return True
             if current in visited:
                 return True
             visited.add(current)
-
             edge = self._edges.get(current)
             if edge is None:
                 return False
-
             current = edge.parent
 
     def _dot_source(self) -> str:
@@ -215,29 +282,18 @@ class FrameForest:
                 ]
             else:
                 edge = self._edges[frame]
-                attrs = [
-                    'shape="box"',
-                    (
-                        'fillcolor="palegreen3"'
-                        if frame in leaves
-                        else (
-                            'fillcolor="indianred1"'
-                            if edge.is_static
-                            else 'fillcolor="lightskyblue"'
-                        )
-                    ),
-                    (
-                        'color="darkgreen"'
-                        if frame in leaves
-                        else (
-                            'color="firebrick3"'
-                            if edge.is_static
-                            else 'color="royalblue3"'
-                        )
-                    ),
-                ]
                 if not edge.is_static:
-                    attrs.append('style="filled,rounded"')
+                    # dynamic frames: blue + rounded, leaf or not
+                    attrs = [
+                        'shape="box"',
+                        'style="filled,rounded"',
+                        'fillcolor="lightskyblue"',
+                        'color="royalblue3"',
+                    ]
+                elif frame in leaves:
+                    attrs = ['shape="box"', 'fillcolor="palegreen3"', 'color="darkgreen"']
+                else:
+                    attrs = ['shape="box"', 'fillcolor="indianred1"', 'color="firebrick3"']
 
             lines.append(f'  "{self._escape_label(frame)}" [{", ".join(attrs)}];')
 
