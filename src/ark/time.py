@@ -1,22 +1,14 @@
 import time
 import zenoh
-import struct
 import threading
 from typing import Callable
-from ark.comm import Channel
 from dataclasses import dataclass
-from ark.reset import ResetableObject
-
-TIME_FMT = "<q"  # little-endian 64-bit signed integer (nanoseconds)
-TIME_BYTES_SIZE = 8  # Size of the time data in bytes
-
-
-def init_time_channel(world_name: str) -> Channel:
-    """Helper function to construct the time channel for a given world name."""
-    return Channel.internal(world_name, "time")
+from ark.reset import ResetObject
+from ark.parameters import get_parameter
+from google.protobuf import timestamp
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Time:
     nanosec: int
 
@@ -25,16 +17,14 @@ class Time:
         return self.nanosec / 1e9
 
     def as_bytes(self) -> bytes:
-        return struct.pack(TIME_FMT, self.nanosec)
+        return timestamp.from_nanoseconds(float(self.nanosec)).SerializeToString()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Time":
-        if len(data) != TIME_BYTES_SIZE:
-            raise ValueError(
-                f"Invalid data length for Time. Expected {TIME_BYTES_SIZE} bytes."
-            )
-        nanosec = struct.unpack(TIME_FMT, data)[0]
-        return cls(nanosec=nanosec)
+        ts = timestamp.Timestamp()
+        ts.ParseFromString(data)
+        nanosec = timestamp.to_nanoseconds(ts)
+        return cls(nanosec=int(nanosec))
 
     @classmethod
     def from_sec(cls, sec: float) -> "Time":
@@ -70,33 +60,33 @@ class Time:
         return self.nanosec == other.nanosec
 
 
-class SimulatedTime(ResetableObject):
+class SimulatedTime(ResetObject):
 
-    def __init__(self, world_name: str, session: zenoh.Session, time_step: float):
+    def __init__(self, env_name: str, time_step: float, session: zenoh.Session):
         """Initialize the SimulatedTime.
 
         Parameters:
         -----------
-        world_name: str
-            The name of the world.
-        session: zenoh.Session
-            The zenoh session to use for publishing time updates.
+        env_name: str
+            The name of the environment.
         time_step: float
             The time step in seconds for each tick of the simulated time.
+        session: zenoh.Session
+            The zenoh session to use for publishing time updates.
         """
-        super().__init__(world_name, session)
-        self._time_pub = session.declare_publisher(init_time_channel(world_name))
+        super().__init__(env_name, session)
+        self._time_pub = session.declare_publisher(f"{env_name}/time")
         self._sim_timestamp: Time | None = None
         self._time_step = Time.from_sec(time_step)
 
-    def _publish_current_time(self):
+    def _publish_time(self):
         """Publish the current simulated time in nanoseconds."""
         self._time_pub.put(self._sim_timestamp.as_bytes())
 
     def reset(self, seed: dict | int | None = None):
         """Reset the simulated time to zero and publish the update."""
         self._sim_timestamp = Time(nanosec=0)
-        self._publish_current_time()
+        self._publish_time()
 
     def tick(self):
         """Advance the simulated time by one time step and publish the update."""
@@ -104,43 +94,36 @@ class SimulatedTime(ResetableObject):
             self._sim_timestamp += self._time_step
         except TypeError:
             raise RuntimeError(
-                "Simulated time not initialized. You must call SimulatedTime.reset first."
+                "Simulated time not initialized. You must call SimulatedTime.reset() first."
             )
-        self._publish_current_time()
+        self._publish_time()
 
 
 class Clock:
 
-    def __init__(self, sim: bool, world_name: str, session: zenoh.Session):
+    def __init__(self, env_name: str, session: zenoh.Session):
         """Initialize the Clock.
 
         Parameters:
         -----------
-        sim: bool
-            Whether to use simulated time.
-        world_name: str
-            The name of the world.
+        env_name: str
+            The name of the environment.
         session: zenoh.Session
             The zenoh session to use for subscribing to time updates.
         """
-        self._sim = sim
-        self._sim_time: Time | None = None
+        self.sim = get_parameter(f"{env_name}/parameters", "sim", session)
 
-        if self._sim:
+        if self.sim:
+            self._sim_time: Time | None = None
             self._sim_time_cv = threading.Condition()
             self.now = self._sim_now
             self._time_sub = session.declare_subscriber(
-                init_time_channel(world_name), self._on_time_sample
+                f"{env_name}/time", self._on_time_sample
             )
         else:
             self._time_sub = None
             self._sim_time_cv = None
             self.now = self.wall_now
-
-    @property
-    def sim(self) -> bool:
-        """Check if the clock is using simulated time."""
-        return self._sim
 
     def _on_time_sample(self, sample: zenoh.Sample):
         """Callback for handling incoming time samples from the TIME_CHANNEL."""
@@ -152,7 +135,7 @@ class Clock:
 
     def _sim_now(self) -> Time:
         """Get the current simulated time as a Time object."""
-        if not self._sim:
+        if not self.sim:
             raise RuntimeError("Simulated time is not enabled.")
         with self._sim_time_cv:
             while self._sim_time is None:
@@ -165,7 +148,7 @@ class Clock:
 
     def wait_until(self, target: Time) -> None:
         """Block until the simulated time reaches the target time."""
-        if not self._sim:
+        if not self.sim:
             raise RuntimeError("Simulated time is not enabled.")
         with self._sim_time_cv:
             while self._sim_time is None or self._sim_time < target:
