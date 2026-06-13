@@ -7,7 +7,7 @@ from .codec.registry import sample_codec
 from .channel import Channel, ChannelNoise, NoNoise
 
 
-class Query(EndPoint):
+class Querier(EndPoint):
 
     def __init__(
         self,

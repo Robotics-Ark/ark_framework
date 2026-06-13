@@ -16,10 +16,10 @@ class Queryable(EndPoint):
         res_space: Space,
         callback: Callable,
         session: zenoh.Session,
-        check_req: bool = False,
-        check_res: bool = False,
-        req_noise: ChannelNoise | None = None,
-        res_noise: ChannelNoise | None = None,
+        check_req: bool,
+        check_res: bool,
+        req_noise: ChannelNoise | None,
+        res_noise: ChannelNoise | None,
     ):
         super().__init__(session)
         self._channel = channel

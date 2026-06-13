@@ -14,8 +14,8 @@ class Publisher(EndPoint):
         channel: Channel,
         space: Space,
         session: zenoh.Session,
-        check: bool = False,
-        noise: ChannelNoise | None = None,
+        check: bool,
+        noise: ChannelNoise | None,
     ):
         super().__init__(channel, session)
         self._space = space

@@ -17,8 +17,8 @@ class Subscriber(EndPoint):
         space: Space,
         callback: Callable[[StampedSample], None],
         session: zenoh.Session,
-        check: bool = False,
-        noise: ChannelNoise | None = None,
+        check: bool,
+        noise: ChannelNoise | None,
     ):
         super().__init__(channel, session)
         self._space = space
