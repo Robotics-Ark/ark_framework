@@ -225,7 +225,3 @@ backup/
 *.pdf
 *.png
 *.dot
-
-# Ignore generated protobuf files
-src/ark/_msgs/*_pb2.py
-src/ark/_msgs/*_pb2.pyi

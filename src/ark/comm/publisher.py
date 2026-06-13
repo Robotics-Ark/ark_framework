@@ -1,47 +1,40 @@
 import zenoh
-from typing import Any, Callable
-from ark.time import Time, Stepper
-from .end_point import EndPoint, Role
-from .serialization import Encoder
+from typing import Any
+from gymnasium import Space
+from .end_point import EndPoint
+from .queryable_space import QueryableSpace
+from .channel import Channel, ChannelNoise, NoNoise
+from .codec.registry import sample_codec
 
 
 class Publisher(EndPoint):
-    """A Publisher end point that can publish samples to a zenoh channel."""
 
     def __init__(
         self,
-        encoder: Encoder,
+        channel: Channel,
+        space: Space,
         session: zenoh.Session,
+        check: bool = False,
+        noise: ChannelNoise | None = None,
     ):
-        """Initialize the Publisher with the given node name, zenoh session, channel, clock and optional noise function."""
-        super().__init__(encoder.channel, session)
-        self._encode = encoder
-        p = self._session.declare_publisher(self._channel)
-        self.add_z_obj("pub", p, encoder.space, Role.PUBLISHER)
+        super().__init__(channel, session)
+        self._space = space
+        self._check = check
+        self._noise = noise or NoNoise()
+        self._z_pub = self._session.declare_publisher(self._channel.full_name)
+        self._z_pub_qr = QueryableSpace(
+            self._channel, "publisher", self._space, self._session
+        )
+        self._codec = sample_codec.get(self._space)
 
     def publish(self, sample: Any):
-        """Publish a sample."""
-        self._z_objs["pub"].put(self._encode(sample))
+        if self._check and not self._space.contains(sample):
+            raise ValueError(
+                f"Sample {sample} does not conform to channel space {self._space}"
+            )
+        noisy_sample = self._noise.apply(sample)
+        self._z_pub.put(self._codec.encode(noisy_sample))
 
-
-class PeriodicPublisher(Publisher):
-    """A Publisher that can publish samples at a fixed rate using a function that builds each sample based on the current time."""
-
-    def __init__(
-        self,
-        encoder: Encoder,
-        session: zenoh.Session,
-        hz: float,
-        sample: Callable[[Time], Any],
-    ):
-        """A Publisher that can publish samples at a fixed rate using a function that builds each sample based on the current time."""
-        super().__init__(encoder, session)
-        self._sample = sample
-        self._stepper = Stepper(encoder.clock, hz, self.step)
-
-    def step(self, t: Time):
-        self.publish(self._sample(t))
-
-    def close(self):
-        self._stepper.close()
-        super().close()
+    def close(self) -> None:
+        self._z_pub.undeclare()
+        self._z_pub_qr.undeclare()

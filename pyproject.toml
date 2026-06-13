@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel", "grpcio-tools>=1.60", "protobuf>=4.21"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,21 +9,21 @@ requires-python = ">=3.12"
 description = "The Ark framework."
 
 authors = [
-  { name = "Christopher E. Mower" },
-  { name = "Refinath S N" }
+  { name = "Christopher E. Mower" }
 ]
 
 maintainers = [
   { name = "Christopher E. Mower" },
-  { name = "Refinath S N" }
+  { name = "Refinath S N" },
+  { name = "Abhineet Kumar" },
 ]
 
 dependencies = [
-  "protobuf>=4.21",
   "numpy",
   "PyYAML>=6.0",
   "scipy",
   "gymnasium",
+  "protobuf",
 ]
 
 [tool.setuptools]
