@@ -24,6 +24,7 @@ dependencies = [
   "scipy",
   "gymnasium",
   "protobuf",
+  "Pillow>=9.0",
 ]
 
 [tool.setuptools]
