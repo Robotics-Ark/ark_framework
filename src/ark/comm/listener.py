@@ -16,8 +16,8 @@ class NSampleListener(Subscriber):
         channel: Channel,
         space: Space,
         session: zenoh.Session,
-        check: bool = False,
-        noise: ChannelNoise | None = None,
+        check: bool,
+        noise: ChannelNoise | None,
     ):
         self._lock = threading.Lock()
         self._window: deque[StampedSample] = deque(maxlen=n)
@@ -40,8 +40,8 @@ class TSampleListener(Subscriber):
         channel: Channel,
         space: Space,
         session: zenoh.Session,
-        check: bool = False,
-        noise: ChannelNoise | None = None,
+        check: bool,
+        noise: ChannelNoise | None,
     ):
         self._lock = threading.Lock()
         self._duration = Time.from_sec(t)
