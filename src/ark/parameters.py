@@ -162,3 +162,16 @@ class ParameterServer:
     def close(self):
         self._get_qr.undeclare()
         self._set_qr.undeclare()
+
+
+class ParameterClient:
+
+    def __init__(self, server_name: str, session: zenoh.Session):
+        self._server_name = server_name
+        self._session = session
+
+    def get(self, param_name: str) -> PARAM_TYPE:
+        return get_parameter(self._server_name, param_name, self._session)
+
+    def set(self, param_name: str, param_value: PARAM_TYPE) -> None:
+        set_parameter(self._server_name, param_name, param_value, self._session)
