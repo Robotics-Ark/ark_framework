@@ -9,6 +9,7 @@ from gymnasium import Space
 from .comm.end_point import EndPoint
 from .comm.publisher import Publisher
 from .comm.subscriber import Subscriber
+from .comm.listener import NSampleListener, TSampleListener
 from .comm.querier import Querier
 from .comm.queryable import Queryable
 from .reset import ResetObject
@@ -101,6 +102,44 @@ class Node(ResetObject):
         )
         self._add_end_point(channel_name, sub)
         return sub
+
+    def create_n_sample_listener(
+        self,
+        channel_name: ChannelName | str,
+        space: Space,
+        n: int,
+        check: bool = False,
+        noise: ChannelNoise | None = None,
+    ) -> NSampleListener:
+        listener = NSampleListener(
+            n,
+            self._resolve_channel(channel_name),
+            space,
+            self._session,
+            check,
+            noise,
+        )
+        self._add_end_point(channel_name, listener)
+        return listener
+
+    def create_t_sample_listener(
+        self,
+        channel_name: ChannelName | str,
+        space: Space,
+        t: float,
+        check: bool = False,
+        noise: ChannelNoise | None = None,
+    ) -> TSampleListener:
+        listener = TSampleListener(
+            t,
+            self._resolve_channel(channel_name),
+            space,
+            self._session,
+            check,
+            noise,
+        )
+        self._add_end_point(channel_name, listener)
+        return listener
 
     def create_queryable(
         self,
