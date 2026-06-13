@@ -1,3 +1,4 @@
+import struct
 import time
 import zenoh
 import threading
@@ -5,7 +6,9 @@ from typing import Callable
 from dataclasses import dataclass
 from ark.reset import ResetObject
 from ark.parameters import get_parameter
-from google.protobuf import timestamp
+
+
+_TIME_STRUCT = struct.Struct("<q")
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,47 +20,37 @@ class Time:
         return self.nanosec / 1e9
 
     def as_bytes(self) -> bytes:
-        return timestamp.from_nanoseconds(float(self.nanosec)).SerializeToString()
+        return _TIME_STRUCT.pack(self.nanosec)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Time":
-        ts = timestamp.Timestamp()
-        ts.ParseFromString(data)
-        nanosec = timestamp.to_nanoseconds(ts)
-        return cls(nanosec=int(nanosec))
+        (nanosec,) = _TIME_STRUCT.unpack(data)
+        return cls(nanosec=nanosec)
 
     @classmethod
     def from_sec(cls, sec: float) -> "Time":
         return cls(nanosec=round(sec * 1e9))
 
-    def __add__(self, other: object) -> "Time":
+    def __add__(self, other: "Time") -> "Time":
         return Time(nanosec=self.nanosec + other.nanosec)
 
-    def __sub__(self, other: object) -> "Time":
+    def __sub__(self, other: "Time") -> "Time":
         return Time(nanosec=self.nanosec - other.nanosec)
 
-    def __iadd__(self, other: object) -> "Time":
-        self.nanosec += other.nanosec
-        return self
-
-    def __isub__(self, other: object) -> "Time":
-        self.nanosec -= other.nanosec
-        return self
-
-    def __lt__(self, other: object) -> bool:
+    def __lt__(self, other: "Time") -> bool:
         return self.nanosec < other.nanosec
 
-    def __le__(self, other: object) -> bool:
+    def __le__(self, other: "Time") -> bool:
         return self.nanosec <= other.nanosec
 
-    def __gt__(self, other: object) -> bool:
+    def __gt__(self, other: "Time") -> bool:
         return self.nanosec > other.nanosec
 
-    def __ge__(self, other: object) -> bool:
+    def __ge__(self, other: "Time") -> bool:
         return self.nanosec >= other.nanosec
 
     def __eq__(self, other: object) -> bool:
-        return self.nanosec == other.nanosec
+        return isinstance(other, Time) and self.nanosec == other.nanosec
 
 
 class SimulatedTime(ResetObject):
