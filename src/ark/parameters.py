@@ -20,10 +20,41 @@ SCALAR_DECODERS = {
 }
 
 
+def _param_to_serialized_struct(param: PARAM_TYPE) -> bytes:
+    param_type = type(param)
+
+    if param_type in SCALAR_ENCODERS:
+        param_value = SCALAR_ENCODERS[param_type](param)
+        param_type_name = param_type.__name__
+    elif isinstance(param, tuple):
+        try:
+            elem_type = type(param[0])
+        except IndexError:
+            raise ValueError("Tuple parameter cannot be empty.")
+
+        if not all(isinstance(el, elem_type) for el in param):
+            raise ValueError("All elements in the tuple must be of the same type.")
+
+        if elem_type not in SCALAR_ENCODERS:
+            raise ValueError(f"Unsupported element type in tuple: {elem_type.__name__}")
+
+        encode = SCALAR_ENCODERS[elem_type]
+        param_list_value = ListValue(values=[encode(el) for el in param])
+        param_value = Value(list_value=param_list_value)
+        param_type_name = f"tuple[{elem_type.__name__}]"
+    else:
+        raise ValueError(f"Unsupported parameter type: {param_type.__name__}")
+
+    reply = Struct()
+    reply.fields["type"].string_value = param_type_name
+    reply.fields["value"].CopyFrom(param_value)
+    return reply.SerializeToString()
+
+
 def get_parameter(
     server_name: str, param_name: str, session: zenoh.Session
 ) -> PARAM_TYPE:
-    qr = session.declare_querier(server_name)
+    qr = session.declare_querier(f"{server_name}/get_parameter")
     try:
         for z_reply in qr.get(payload=param_name.encode("utf-8")):
             if z_reply.err is not None:
@@ -51,6 +82,28 @@ def get_parameter(
         qr.undeclare()
 
 
+def set_parameter(
+    server_name: str, param_name: str, param_value: PARAM_TYPE, session: zenoh.Session
+) -> None:
+    request = Struct()
+    request.ParseFromString(_param_to_serialized_struct(param_value))
+    request.fields["name"].string_value = param_name
+
+    qr = session.declare_querier(f"{server_name}/set_parameter")
+    try:
+        for z_reply in qr.get(payload=request.SerializeToString()):
+            if z_reply.err is not None:
+                err = bytes(z_reply.err.payload).decode("utf-8", errors="replace")
+                raise RuntimeError(f"Parameter set failed: {err}")
+
+            if z_reply.ok is not None:
+                return
+
+        raise RuntimeError("Parameter set failed: No reply received.")
+    finally:
+        qr.undeclare()
+
+
 class ParameterServer:
 
     def __init__(
@@ -59,44 +112,19 @@ class ParameterServer:
         parameters: dict[str, PARAM_TYPE],
         session: zenoh.Session,
     ):
+        self._server_name = server_name
+        self._encoded_parameters: dict[str, bytes] = {
+            param_name: _param_to_serialized_struct(param)
+            for param_name, param in parameters.items()
+        }
+        self._get_qr = session.declare_queryable(
+            f"{self._server_name}/get_parameter", self._on_get_query
+        )
+        self._set_qr = session.declare_queryable(
+            f"{self._server_name}/set_parameter", self._on_set_query
+        )
 
-        # Encode parameters
-        self._encoded_parameters: dict[str, bytes] = {}
-        for param_name, param in parameters.items():
-            param_type = type(param)
-            if param_type in SCALAR_ENCODERS:
-                param_value = SCALAR_ENCODERS[param_type](param)
-                param_type_name = param_type.__name__
-            elif isinstance(param, tuple) and len(param) > 0:
-                elem_type = type(param[0])
-
-                if not all(isinstance(el, elem_type) for el in param):
-                    raise ValueError(
-                        f"All elements in the tuple for key '{param_name}' must be of the same type."
-                    )
-
-                if elem_type not in SCALAR_ENCODERS:
-                    raise ValueError(
-                        f"Unsupported element type in tuple for key '{param_name}': {elem_type.__name__}"
-                    )
-
-                encode = SCALAR_ENCODERS[elem_type]
-                param_list_value = ListValue(values=[encode(el) for el in param])
-                param_value = Value(list_value=param_list_value)
-                param_type_name = f"tuple[{elem_type.__name__}]"
-            else:
-                raise ValueError(
-                    f"Unsupported parameter type for key '{param_name}': {param_type.__name__}"
-                )
-            reply = Struct()
-            reply.fields["type"].string_value = param_type_name
-            reply.fields["value"].CopyFrom(param_value)
-            self._encoded_parameters[param_name] = reply.SerializeToString()
-
-        # Setup queryable
-        self._qr = session.declare_queryable(server_name, self._on_query)
-
-    def _on_query(self, query: zenoh.Query) -> None:
+    def _on_get_query(self, query: zenoh.Query) -> None:
         with query:
 
             if not query.payload:
@@ -112,5 +140,25 @@ class ParameterServer:
 
             query.reply(query.key_expr, enc_param)
 
+    def _on_set_query(self, query: zenoh.Query) -> None:
+        with query:
+
+            if not query.payload:
+                query.reply_err(b"Query payload is required.")
+                return
+
+            payload = bytes(query.payload)
+            request = Struct()
+            request.ParseFromString(payload)
+
+            name = request.fields["name"].string_value
+            if not name:
+                query.reply_err(b"Parameter name is required.")
+                return
+
+            self._encoded_parameters[name] = payload
+            query.reply(query.key_expr, b"")
+
     def close(self):
-        self._qr.undeclare()
+        self._get_qr.undeclare()
+        self._set_qr.undeclare()
