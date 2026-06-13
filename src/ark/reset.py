@@ -1,197 +1,162 @@
-from __future__ import annotations
-
-import pickle
-import threading
-
 import zenoh
-from ark.comm import Channel
+import warnings
+import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ark.time import Clock
+from google.protobuf.struct_pb2 import Value
 
 
-def init_namespace(world_name: str) -> Channel:
-    """Helper function to construct the base reset channel for a given world name."""
-    return Channel.internal(world_name, "reset")
+def encode_seed(seed: int | None) -> bytes:
+    """Encode an optional seed into bytes."""
+    value = Value()
+    if isinstance(seed, int):
+        value.number_value = seed
+    return value.SerializeToString()
 
 
-def init_register_channel(ns: Channel) -> Channel:
-    """Helper function to construct the registration channel for a given reset namespace."""
-    return ns / "register"
+def decode_seed(data: bytes) -> int | None:
+    """Decode bytes into an optional seed."""
+    value = Value()
+    value.ParseFromString(data)
+    return int(value.number_value) if value.HasField("number_value") else None
 
 
-def init_initiate_channel(ns: Channel) -> Channel:
-    """Helper function to construct the reset initiation channel for a given reset namespace."""
-    return ns / "initiate"
-
-
-def init_completed_channel(ns: Channel) -> Channel:
-    """Helper function to construct the reset completion acknowledgement channel for a given reset namespace."""
-    return ns / "completed"
-
-
-class ResetableContainer:
-    """A container for managing resetable members, allowing them to register themselves and receive reset initiation messages and provide completion acknowledgements."""
-
-    def __init__(self, world_name: str, session: zenoh.Session, clock: Clock):
-        self._session = session
-        self._clock = clock
-        self._world_name = world_name
-        self._ns = init_namespace(self._world_name)
-        self._members: set[str] = set()
-        self._acks: set[str] = set()
-        self._mutex = threading.Lock()
-
-        # Register a queryable that allows resetable members to register themselves and receive a unique name for acknowledgements
-        self._reg_channel = init_register_channel(self._ns)
-        self._reg = self._session.declare_queryable(
-            self._reg_channel, self._on_register
-        )
-
-        # Declare a publisher for sending reset initiation messages to members
-        self._reset_channel = init_initiate_channel(self._ns)
-        self._pub = self._session.declare_publisher(self._reset_channel)
-
-        # Declare a subscriber for receiving reset completion acknowledgements from members
-        self._reset_completed_channel = init_completed_channel(self._ns)
-        self._sub = self._session.declare_subscriber(
-            self._reset_completed_channel, self._on_ack
-        )
-
-    def _on_register(self, query: zenoh.Query):
-        """Handle a registration query from a resetable member."""
-
-        # Generate a unique name for this member and add it to the set of members
-        name = f"resetable_{len(self._members)}"
-        with self._mutex:
-            self._members.add(name)
-
-        # Reply to the query with the assigned name so the member can use it for acknowledgements
-        query.reply(self._reg_channel, name.encode())
-
-    def _initiate_reset(self, seed: dict | int | None = None) -> None:
-        """Initiate a reset by clearing acknowledgements and publishing a reset message."""
-
-        # Clear the set of acknowledgements so we can track which members have acknowledged the new reset
-        with self._mutex:
-            self._acks.clear()
-
-        self._pub.put(pickle.dumps(seed, protocol=pickle.HIGHEST_PROTOCOL))
-
-    def _on_ack(self, sample: zenoh.Sample):
-        """Handle a reset completion acknowledgement from a member."""
-
-        # Extract the member name from the sample and validate it
-        name = sample.payload.to_string()
-        if name not in self._members:
-            raise ValueError(
-                f"Reset completion acknowledgement from unknown member: {name!r}"
-            )
-        if name in self._acks:
-            raise ValueError(
-                f"Duplicate reset completion acknowledgement from member: {name!r}"
-            )
-
-        # Add the member name to the set of acknowledgements for the current reset
-        with self._mutex:
-            self._acks.add(name)
-
-    def reset(self, seed: dict | int | None = None, timeout: float = None):
-        """Send reset and block until all current members have acknowledged completion."""
-
-        # Initiate the reset
-        self._initiate_reset(seed)
-
-        # Wait until all members have acknowledged the reset, or timeout if not all acks are received within the specified time limit
-        if timeout:
-            from ark.time import Time
-
-            deadline = self._clock.wall_now() + Time.from_sec(timeout)
-        else:
-            deadline = None
-        while missing := self._members - self._acks:
-            if deadline and self._clock.wall_now() >= deadline:
-                raise TimeoutError(
-                    "Timeout waiting for reset completion "
-                    f"acknowledgements from:\n{', '.join(sorted(missing))}"
-                )
-
-    def close(self):
-        """Clean up zenoh resources used by this container."""
-        self._reg.undeclare()
-        self._pub.undeclare()
-        self._sub.undeclare()
-
-
-class ResetableObject(ABC):
-
-    _REG_TIMEOUT = 5.0  # seconds
+class ResetBase(ABC):
 
     def __init__(self, world_name: str, session: zenoh.Session):
         self._world_name = world_name
         self._session = session
-        self._ns = init_namespace(self._world_name)
-
-        # Register resetable object and get assigned name for acknowledgements
-        self._reg_channel = init_register_channel(self._ns)
-        self._name = self._register_resetable()
-        self._name_enc = self._name.encode()
-
-        # Subscribe to reset initiation messages
-        self._reset_channel = init_initiate_channel(self._ns)
-        self._initiate_reset_sub = self._session.declare_subscriber(
-            self._reset_channel, self._on_reset_sample
-        )
-
-        # Declare a publisher for sending reset completion acknowledgements
-        self._reset_completed_channel = init_completed_channel(self._ns)
-        self._reset_completed_pub = self._session.declare_publisher(
-            self._reset_completed_channel
-        )
-
-    def _register_resetable(self) -> str:
-        """Register this resetable object and return the assigned name for acknowledgements."""
-        query = self._session.declare_querier(
-            self._reg_channel, timeout=self._REG_TIMEOUT
-        )
-        replies = query.get()
-        if not replies:
-            raise TimeoutError(
-                f"No reply received from {self._reg_channel} within {self._REG_TIMEOUT}s"
-            )
-        for reply in replies:
-            if reply.ok is None:
-                continue
-            name = reply.ok.payload.to_string()
-            break
-        query.undeclare()
-        return name
-
-    def _on_reset_sample(self, sample: zenoh.Sample):
-        """Handle a reset initiation message by resetting internal state and sending an acknowledgement."""
-        payload = bytes(sample.payload)
-        seed = pickle.loads(payload) if payload else None
-        self.reset(seed)
-        self._reset_completed_pub.put(self._name_enc)
+        self._reset_channel = f"{world_name}/reset"
+        self._register_channel = f"{self._reset_channel}/register"
+        self._deregister_channel = f"{self._reset_channel}/deregister"
+        self._initiate_channel = f"{self._reset_channel}/initiate"
+        self._completed_channel = f"{self._reset_channel}/completed"
 
     @abstractmethod
-    def reset(self, seed: dict | int | None = None):
-        """Reset internal state."""
+    def reset(self, seed: int | None = None):
+        """Reset the internal state of the object.
 
+        Parameters:
+        -----------
+        seed: int | None
+            An optional seed for random number generation.
+        """
+
+    @abstractmethod
     def close(self):
-        """Clean up zenoh resources used by this resetable object."""
-        self._initiate_reset_sub.undeclare()
-        self._reset_completed_pub.undeclare()
+        """Clean up resources and close any open connections or subscriptions."""
 
 
-class TestResetableObject(ResetableObject):
+class ResetContainer(ResetBase):
 
     def __init__(self, world_name: str, session: zenoh.Session):
         super().__init__(world_name, session)
-        self._reset_count = 0
+        self._members: set[str] = set()
+        self._completed: set[str] = set()
+        self._mutex = threading.Lock()
+        self._reg_qr = self._session.declare_queryable(
+            self._register_channel, self._on_register
+        )
+        self._dereg_sub = self._session.declare_subscriber(
+            self._deregister_channel, self._on_deregister
+        )
+        self._init_pub = self._session.declare_publisher(self._initiate_channel)
+        self._completed_sub = self._session.declare_subscriber(
+            self._completed_channel, self._on_completed
+        )
 
-    def reset(self, seed: dict | int | None = None):
-        """Reset internal state by incrementing the reset count."""
-        self._reset_count += 1
+    def _on_register(self, query: zenoh.Query) -> None:
+        with self._mutex:
+            new_member_name = f"reset{len(self._members)}"
+            self._members.add(new_member_name)
+        with query:
+            query.reply(query.key_expr, new_member_name.encode("utf-8"))
+
+    def _on_deregister(self, sample: zenoh.Sample) -> None:
+        member_name = sample.payload.to_string()
+        with self._mutex:
+            if member_name not in self._members:
+                warnings.warn(
+                    f"Deregistration request from unknown member: {member_name!r}"
+                )
+                return
+            self._members.remove(member_name)
+            self._completed.discard(member_name)
+
+    def _initiate_reset(self, seed: int | None = None) -> None:
+        with self._mutex:
+            self._completed.clear()
+            self._init_pub.put(encode_seed(seed))
+
+    def _on_completed(self, sample: zenoh.Sample) -> None:
+        member_name = sample.payload.to_string()
+        if member_name not in self._members:
+            warnings.warn(
+                f"Reset completion acknowledgement from unknown member: {member_name!r}"
+            )
+            return
+
+        with self._mutex:
+            if member_name in self._completed:
+                raise ValueError(
+                    f"Duplicate reset completion acknowledgement from member: {member_name!r}"
+                )
+            self._completed.add(member_name)
+
+    def _block_until_complete(self) -> None:
+        completed = False
+        while not completed:
+            with self._mutex:
+                completed = self._completed == self._members
+
+    def reset(self, seed: int | None = None):
+        self._initiate_reset(seed)
+        self._block_until_complete()
+
+    def close(self):
+        self._reg_qr.undeclare()
+        self._init_pub.undeclare()
+        self._completed_sub.undeclare()
+
+
+class ResetObject(ResetBase):
+
+    def __init__(self, world_name: str, session: zenoh.Session):
+        super().__init__(world_name, session)
+        self._reset_object_name: bytes = self._register_reset_object()
+        self._init_sub = self._session.declare_subscriber(
+            self._initiate_channel, self._on_initiate_reset
+        )
+        self._completed_pub = self._session.declare_publisher(self._completed_channel)
+        self._dereg_pub = self._session.declare_publisher(self._deregister_channel)
+
+    def _register_reset_object(self) -> bytes:
+        if hasattr(self, "_reset_object_name"):
+            raise RuntimeError("Reset object is already registered.")
+        try:
+            qr = self._session.declare_querier(self._register_channel)
+            for reply in qr.get():
+                if reply.ok is None:
+                    continue
+                return bytes(reply.ok.payload)
+            else:
+                raise RuntimeError(
+                    "No reply received from reset registration queryable."
+                )
+        finally:
+            qr.undeclare()
+
+    def _on_initiate_reset(self, sample: zenoh.Sample) -> None:
+        self.reset(decode_seed(bytes(sample.payload)))
+        self._acknowledge_reset_completion()
+
+    def _acknowledge_reset_completion(self) -> None:
+        self._completed_pub.put(self._reset_object_name)
+
+    def _deregister(self) -> None:
+        self._dereg_pub.put(self._reset_object_name)
+
+    def close(self):
+        self._deregister()
+        self._init_sub.undeclare()
+        self._completed_pub.undeclare()
+        self._dereg_pub.undeclare()
