@@ -75,7 +75,7 @@ class SimulatedTime(ResetObject):
             The zenoh session to use for publishing time updates.
         """
         super().__init__(env_name, session)
-        self._time_pub = session.declare_publisher(f"{env_name}/time")
+        self._time_pub = session.declare_publisher(f"_ark/{env_name}/time")
         self._sim_timestamp: Time | None = None
         self._time_step = Time.from_sec(time_step)
 
@@ -118,7 +118,7 @@ class Clock:
             self._sim_time_cv = threading.Condition()
             self.now = self._sim_now
             self._time_sub = session.declare_subscriber(
-                f"{env_name}/time", self._on_time_sample
+                f"_ark/{env_name}/time", self._on_time_sample
             )
         else:
             self._time_sub = None
