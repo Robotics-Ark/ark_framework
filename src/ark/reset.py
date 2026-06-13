@@ -22,10 +22,10 @@ def decode_seed(data: bytes) -> int | None:
 
 class ResetBase(ABC):
 
-    def __init__(self, world_name: str, session: zenoh.Session):
-        self._world_name = world_name
+    def __init__(self, env_name: str, session: zenoh.Session):
+        self._env_name = env_name
         self._session = session
-        self._reset_channel = f"{world_name}/reset"
+        self._reset_channel = f"_ark/{env_name}/reset"
         self._register_channel = f"{self._reset_channel}/register"
         self._deregister_channel = f"{self._reset_channel}/deregister"
         self._initiate_channel = f"{self._reset_channel}/initiate"
@@ -48,8 +48,8 @@ class ResetBase(ABC):
 
 class ResetContainer(ResetBase):
 
-    def __init__(self, world_name: str, session: zenoh.Session):
-        super().__init__(world_name, session)
+    def __init__(self, env_name: str, session: zenoh.Session):
+        super().__init__(env_name, session)
         self._members: set[str] = set()
         self._completed: set[str] = set()
         self._mutex = threading.Lock()
@@ -120,8 +120,8 @@ class ResetContainer(ResetBase):
 
 class ResetObject(ResetBase):
 
-    def __init__(self, world_name: str, session: zenoh.Session):
-        super().__init__(world_name, session)
+    def __init__(self, env_name: str, session: zenoh.Session):
+        super().__init__(env_name, session)
         self._reset_object_name: bytes = self._register_reset_object()
         self._init_sub = self._session.declare_subscriber(
             self._initiate_channel, self._on_initiate_reset
