@@ -6,12 +6,12 @@ import zenoh
 from pathlib import Path
 from typing import Callable
 from gymnasium import Space
+from .reset import ResetObject
 from .comm.end_point import EndPoint
 from .comm.publisher import Publisher
 from .comm.subscriber import Subscriber
 from .comm.querier import Querier
 from .comm.queryable import Queryable
-from .reset import ResetObject
 from .comm.queryable_space import query_space
 from .parameters import ParameterServer, PARAM_TYPE
 from .time import Rate, Stepper, Clock, Time
@@ -45,6 +45,11 @@ class Node(ResetObject):
         self._steppers = []
         self._clock = Clock(self._env_name, self._session)
         self._stop_event = threading.Event()
+        super().__init__(env_name, session)
+
+    def reset(self, seed: int | None = None):
+        for stepper in self._steppers:
+            stepper.reset()
 
     def _add_end_point(self, channel_name: ChannelName | str, end_point: EndPoint):
         if channel_name in self._end_points:
@@ -216,7 +221,6 @@ class Node(ResetObject):
 
     def close(self):
         self._stop_event.set()
-        super().close()
         for ep in self._end_points.values():
             ep.close()
         for s in self._steppers:
