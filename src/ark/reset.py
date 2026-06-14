@@ -46,7 +46,7 @@ class ResetBase(ABC):
         """Clean up resources and close any open connections or subscriptions."""
 
 
-class ResetContainer(ResetBase):
+class ResetCoordinator(ResetBase):
 
     def __init__(self, env_name: str, session: zenoh.Session):
         super().__init__(env_name, session)

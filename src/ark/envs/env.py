@@ -5,7 +5,7 @@ from enum import IntEnum
 from ark.node import Node
 from dataclasses import dataclass
 from ark.parameters import PARAM_TYPE
-from ark.reset import ResetContainer
+from ark.reset import ResetCoordinator
 from gymnasium.spaces import Dict, Sequence
 from ark.comm.channel import ChannelName, ChannelNoise, NoNoise
 from ark.comm.listener import ReadyWhen, NSampleListener, TSampleListener
@@ -148,7 +148,7 @@ class ArkEnv(Env):
             self._session,
         )
         self._rate = None
-        self._reset_container = ResetContainer(self._env_name, self._session)
+        self._reset_coordinator = ResetCoordinator(self._env_name, self._session)
 
         # Setup inbound channels, spaces, and listeners
         (
@@ -224,7 +224,7 @@ class ArkEnv(Env):
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed, options=options)
-        self._reset_container.reset(seed)
+        self._reset_coordinator.reset(seed)
         if self._step_hz:
             self._rate = self._node.create_rate(self._step_hz)
         if isinstance(seed, int):
@@ -256,6 +256,6 @@ class ArkEnv(Env):
         )
 
     def close(self):
-        self._reset_container.close()
+        self._reset_coordinator.close()
         self._node.close()
         self._session.close()
