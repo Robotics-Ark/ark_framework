@@ -11,6 +11,8 @@ from .channel import Channel, ChannelNoise, NoNoise
 
 class Subscriber(EndPoint):
 
+    role = "subscriber"
+
     def __init__(
         self,
         channel: Channel,
@@ -30,7 +32,7 @@ class Subscriber(EndPoint):
             self._channel.name, self._on_callback
         )
         self._z_sub_qr = QueryableSpace(
-            self._channel, "subscriber", self._space, self._session
+            self._channel, self.role, self._space, self._session
         )
         self._codec = sample_codec.get(self._space)
 

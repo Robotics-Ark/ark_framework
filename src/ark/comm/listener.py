@@ -63,6 +63,8 @@ class Listener(Subscriber):
 
 class NSampleListener(Listener):
 
+    role = "sample_window_listener"
+
     def _on_sample(self, stamped_sample: StampedSample) -> None:
         with self._lock:
             self._window.append(stamped_sample)
@@ -73,6 +75,8 @@ class NSampleListener(Listener):
 
 
 class TSampleListener(Listener):
+
+    role = "time_window_listener"
 
     def __init__(
         self,
