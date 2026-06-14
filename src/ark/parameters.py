@@ -1,3 +1,4 @@
+import time
 import zenoh
 from dataclasses import dataclass
 from google.protobuf.struct_pb2 import Struct, Value, ListValue
@@ -67,24 +68,34 @@ def _decode_param_struct(struct: Struct) -> PARAM_TYPE:
 
 
 def get_parameter(
-    server_name: str, param_name: str, session: zenoh.Session
+    server_name: str,
+    param_name: str,
+    session: zenoh.Session,
+    timeout: float = 30.0,
+    retry_interval: float = 0.05,
 ) -> PARAM_TYPE:
-    qr = session.declare_querier(f"{server_name}/get_parameter")
-    try:
-        for z_reply in qr.get(payload=param_name.encode("utf-8")):
-            if z_reply.err is not None:
-                err = bytes(z_reply.err.payload).decode("utf-8", errors="replace")
-                raise RuntimeError(f"Parameter query failed: {err}")
+    deadline = time.monotonic() + timeout
+    while True:
+        qr = session.declare_querier(f"{server_name}/get_parameter")
+        try:
+            for z_reply in qr.get(payload=param_name.encode("utf-8")):
+                if z_reply.err is not None:
+                    err = bytes(z_reply.err.payload).decode("utf-8", errors="replace")
+                    raise RuntimeError(f"Parameter query failed: {err}")
+                if z_reply.ok is None:
+                    continue
+                reply = Struct()
+                reply.ParseFromString(bytes(z_reply.ok.payload))
+                return _decode_param_struct(reply)
+        finally:
+            qr.undeclare()
 
-            if z_reply.ok is None:
-                continue
-
-            reply = Struct()
-            reply.ParseFromString(bytes(z_reply.ok.payload))
-            return _decode_param_struct(reply)
-
-    finally:
-        qr.undeclare()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Parameter '{param_name}' not available on server '{server_name}' "
+                f"after {timeout}s. Is the environment running?"
+            )
+        time.sleep(retry_interval)
 
 
 # Helpers for specific parameters that are commonly used in the framework.
