@@ -3,7 +3,7 @@ from typing import Any
 from gymnasium import Space
 from .end_point import EndPoint
 from .queryable_space import QueryableSpace
-from .channel import Channel, ChannelNoise, NoNoise
+from .channel import Channel, NOISE_TYPE, normalise_noise
 from .codec.registry import sample_codec
 
 
@@ -15,12 +15,12 @@ class Publisher(EndPoint):
         space: Space,
         session: zenoh.Session,
         check: bool,
-        noise: ChannelNoise | None,
+        noise: NOISE_TYPE = None,
     ):
         super().__init__(channel, session)
         self._space = space
         self._check = check
-        self._noise = noise or NoNoise()
+        self._noises = normalise_noise(noise)
         self._z_pub = self._session.declare_publisher(self._channel.full_name)
         self._z_pub_qr = QueryableSpace(
             self._channel, "publisher", self._space, self._session
@@ -32,8 +32,9 @@ class Publisher(EndPoint):
             raise ValueError(
                 f"Sample {sample} does not conform to channel space {self._space}"
             )
-        noisy_sample = self._noise.apply(sample)
-        self._z_pub.put(self._codec.encode(noisy_sample))
+        for noise in self._noises:
+            sample = noise.apply(sample)
+        self._z_pub.put(self._codec.encode(sample))
 
     def close(self) -> None:
         self._z_pub.undeclare()
