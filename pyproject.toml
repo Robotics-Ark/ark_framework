@@ -27,6 +27,31 @@ dependencies = [
   "Pillow>=9.0",
 ]
 
+# Simulator backends are optional — install only what you use:
+#
+#   pip install -e ".[pybullet]"   — PyBullet backend
+#   pip install -e ".[mujoco]"     — MuJoCo backend
+#   pip install -e ".[newton]"     — Newton backend (requires NVIDIA Warp + GPU)
+#   pip install -e ".[sim]"        — all simulator backends
+#
+[project.optional-dependencies]
+pybullet = [
+  "pybullet",
+  "pybullet_utils",
+]
+mujoco = [
+  "mujoco",
+]
+newton = [
+  "warp-lang",
+  "newton",
+]
+sim = [
+  "ark[pybullet]",
+  "ark[mujoco]",
+  "ark[newton]",
+]
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 
