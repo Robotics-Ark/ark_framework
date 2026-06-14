@@ -17,7 +17,7 @@ from .parameters import ParameterServer, PARAM_TYPE
 from .time import Rate, Stepper, Clock, Time
 from .comm.stamped_sample import StampedSample
 from .comm.default_z_session import default_session
-from .comm.channel import Channel, ChannelName, ChannelNoise
+from .comm.channel import Channel, ChannelName, NOISE_TYPE
 from .comm.listener import NSampleListener, TSampleListener, ReadyWhen
 
 
@@ -80,7 +80,7 @@ class Node(ResetObject):
         channel_name: ChannelName | str,
         space: Space,
         check: bool = False,
-        noise: ChannelNoise | None = None,
+        noise: NOISE_TYPE = None,
     ) -> Publisher:
         pub = Publisher(
             self._resolve_channel(channel_name), space, self._session, check, noise
@@ -94,7 +94,7 @@ class Node(ResetObject):
         space: Space,
         callback: Callable[[StampedSample], None],
         check: bool = False,
-        noise: ChannelNoise | None = None,
+        noise: NOISE_TYPE = None,
     ) -> Subscriber:
         sub = Subscriber(
             self._resolve_channel(channel_name),
@@ -113,7 +113,7 @@ class Node(ResetObject):
         space: Space,
         n: int,
         check: bool = False,
-        noise: ChannelNoise | None = None,
+        noise: NOISE_TYPE = None,
         ready_when: ReadyWhen = ReadyWhen.ALWAYS,
     ) -> NSampleListener:
         listener = NSampleListener(
@@ -134,7 +134,7 @@ class Node(ResetObject):
         space: Space,
         t: float,
         check: bool = False,
-        noise: ChannelNoise | None = None,
+        noise: NOISE_TYPE = None,
         ready_when: ReadyWhen = ReadyWhen.ALWAYS,
     ) -> TSampleListener:
         listener = TSampleListener(
@@ -157,8 +157,8 @@ class Node(ResetObject):
         callback: Callable,
         check_req: bool = False,
         check_res: bool = False,
-        req_noise: ChannelNoise | None = None,
-        res_noise: ChannelNoise | None = None,
+        req_noise: NOISE_TYPE = None,
+        res_noise: NOISE_TYPE = None,
     ) -> Queryable:
         queryable = Queryable(
             self._resolve_channel(channel_name),
@@ -181,8 +181,8 @@ class Node(ResetObject):
         res_space: Space,
         check_req: bool = False,
         check_res: bool = False,
-        req_noise: ChannelNoise | None = None,
-        res_noise: ChannelNoise | None = None,
+        req_noise: NOISE_TYPE = None,
+        res_noise: NOISE_TYPE = None,
     ) -> Querier:
         querier = Querier(
             self._resolve_channel(channel_name),

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ark.parameters import PARAM_TYPE
 from ark.reset import ResetCoordinator
 from gymnasium.spaces import Dict, Sequence
-from ark.comm.channel import ChannelName, ChannelNoise, NoNoise
+from ark.comm.channel import ChannelName, NOISE_TYPE
 from ark.comm.listener import ReadyWhen, NSampleListener, TSampleListener
 
 
@@ -22,7 +22,7 @@ class InboundChannelSpec(frozen=True, slots=True):
     window_length: int | float = 1
     listener_type: ListenerType = ListenerType.NSAMPLE
     check: bool = False
-    noise: ChannelNoise | NoNoise = NoNoise()
+    noise: NOISE_TYPE = None
     ready_when: ReadyWhen = ReadyWhen.ALWAYS
 
     def init_listener(self, node: Node) -> NSampleListener | TSampleListener:
@@ -61,7 +61,7 @@ class InboundChannelSpec(frozen=True, slots=True):
 class ActionChannelSpec(frozen=True, slots=True):
     channel_name: ChannelName | str
     check: bool = False
-    noise: ChannelNoise | NoNoise = NoNoise()
+    noise: NOISE_TYPE = None
 
     def init_publisher(self, node: Node):
         space = node.query_space(self.channel_name, "subscriber")

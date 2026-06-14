@@ -6,7 +6,7 @@ from gymnasium import Space
 from ark.time import Time
 from abc import abstractmethod
 from .subscriber import Subscriber
-from .channel import Channel, ChannelNoise
+from .channel import Channel, NOISE_TYPE
 from .stamped_sample import StampedSample
 
 
@@ -39,7 +39,7 @@ class Listener(Subscriber):
         space: Space,
         session: zenoh.Session,
         check: bool,
-        noise: ChannelNoise | None,
+        noise: NOISE_TYPE,
         ready_when: ReadyWhen,
     ):
         self._window: deque[StampedSample] = deque(maxlen=window_length)
@@ -81,7 +81,7 @@ class TSampleListener(Listener):
         space: Space,
         session: zenoh.Session,
         check: bool,
-        noise: ChannelNoise | None,
+        noise: NOISE_TYPE,
         ready_when: ReadyWhen,
     ):
         self._window_duration = Time.from_sec(t)
@@ -91,7 +91,6 @@ class TSampleListener(Listener):
             None,  # window_length is not used for time-based listeners
             channel,
             space,
-            self._on_sample,
             session,
             check,
             noise,

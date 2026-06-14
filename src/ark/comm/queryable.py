@@ -4,7 +4,7 @@ from gymnasium import Space
 from .end_point import EndPoint
 from .codec.registry import sample_codec
 from .queryable_space import QueryableSpace
-from .channel import Channel, ChannelNoise, NoNoise
+from .channel import Channel, NOISE_TYPE, normalise_noise
 
 
 class Queryable(EndPoint):
@@ -18,18 +18,17 @@ class Queryable(EndPoint):
         session: zenoh.Session,
         check_req: bool,
         check_res: bool,
-        req_noise: ChannelNoise | None,
-        res_noise: ChannelNoise | None,
+        req_noise: NOISE_TYPE = None,
+        res_noise: NOISE_TYPE = None,
     ):
-        super().__init__(session)
-        self._channel = channel
+        super().__init__(channel, session)
         self._req_space = req_space
         self._res_space = res_space
         self._callback = callback
         self._check_req = check_req
         self._check_res = check_res
-        self._req_noise = req_noise or NoNoise()
-        self._res_noise = res_noise or NoNoise()
+        self._req_noises = normalise_noise(req_noise)
+        self._res_noises = normalise_noise(res_noise)
         self._req_codec = sample_codec.get(self._req_space)
         self._res_codec = sample_codec.get(self._res_space)
         self._qr = self._session.declare_queryable(
@@ -46,13 +45,15 @@ class Queryable(EndPoint):
         with query:
             try:
                 request = self._req_codec.decode(query.payload)
-                request = self._req_noise.apply(request)
+                for noise in self._req_noises:
+                    request = noise.apply(request)
                 if self._check_req and not self._req_space.contains(request):
                     raise ValueError(
                         f"Request {request} does not conform to the request space {self._req_space}"
                     )
                 response = self._callback(request)
-                response = self._res_noise.apply(response)
+                for noise in self._res_noises:
+                    response = noise.apply(response)
                 if self._check_res and not self._res_space.contains(response):
                     raise ValueError(
                         f"Response {response} does not conform to the response space {self._res_space}"
