@@ -25,7 +25,7 @@ class Subscriber(EndPoint):
         self._callback = callback
         self._check = check
         self._noise = noise or NoNoise()
-        self._clock = Clock()
+        self._clock = Clock(channel.env_name, session)
         self._z_sub = self._session.declare_subscriber(
             self._channel.name, self._on_callback
         )
