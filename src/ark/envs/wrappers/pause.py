@@ -8,7 +8,7 @@ class TerminalPauseWrapper(Wrapper):
 
 
 class TerminalPreResetPauseWrapper(TerminalPauseWrapper):
-    """A wrapper that adds a pause before resetting the environment, allowing the user to prepare for the next episode."""
+    """Pauses before resetting, allowing the user to prepare for the next episode."""
 
     def reset(self, **kwargs):
         self._pause()
@@ -17,7 +17,7 @@ class TerminalPreResetPauseWrapper(TerminalPauseWrapper):
 
 
 class TerminalPostResetPauseWrapper(TerminalPauseWrapper):
-    """A wrapper that adds a pause after resetting the environment, allowing the user to prepare for the next episode."""
+    """Pauses after resetting, allowing the user to prepare for the next episode."""
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
