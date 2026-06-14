@@ -4,7 +4,6 @@ import zenoh
 import threading
 from typing import Callable
 from dataclasses import dataclass
-from ark.reset import ResetObject
 from ark.parameters import get_sim
 
 _TIME_STRUCT = struct.Struct("<q")
@@ -52,94 +51,96 @@ class Time:
         return isinstance(other, Time) and self.nanosec == other.nanosec
 
 
-class SimulatedTime(ResetObject):
+class SimulatedTime:
+    """Publishes simulated time ticks on the Zenoh network.
 
-    def __init__(self, env_name: str, time_step: float, session: zenoh.Session):
-        """Initialize the SimulatedTime.
+    Owned by SimulatorNode, which calls reset() before the first step and
+    tick() after each physics step. Not a ResetObject — the SimulatorNode
+    handles its lifecycle through the reset protocol.
+    """
 
-        Parameters:
-        -----------
-        env_name: str
-            The name of the environment.
-        time_step: float
-            The time step in seconds for each tick of the simulated time.
-        session: zenoh.Session
-            The zenoh session to use for publishing time updates.
-        """
-        super().__init__(env_name, session)
+    def __init__(self, env_name: str, time_step_sec: float, session: zenoh.Session):
+        self._time_step = Time.from_sec(time_step_sec)
         self._time_pub = session.declare_publisher(f"_ark/{env_name}/time")
-        self._sim_timestamp: Time | None = None
-        self._time_step = Time.from_sec(time_step)
+        self._current: Time | None = None
 
-    def _publish_time(self):
-        """Publish the current simulated time in nanoseconds."""
-        self._time_pub.put(self._sim_timestamp.as_bytes())
+    @property
+    def time_step(self) -> Time:
+        return self._time_step
 
-    def reset(self, seed: dict | int | None = None):
-        """Reset the simulated time to zero and publish the update."""
-        self._sim_timestamp = Time(nanosec=0)
-        self._publish_time()
+    def reset(self):
+        self._current = Time(nanosec=0)
+        self._time_pub.put(self._current.as_bytes())
 
     def tick(self):
-        """Advance the simulated time by one time step and publish the update."""
-        try:
-            self._sim_timestamp += self._time_step
-        except TypeError:
+        if self._current is None:
             raise RuntimeError(
-                "Simulated time not initialized. You must call SimulatedTime.reset() first."
+                "SimulatedTime.reset() must be called before tick()."
             )
-        self._publish_time()
+        self._current += self._time_step
+        self._time_pub.put(self._current.as_bytes())
+
+    def close(self):
+        self._time_pub.undeclare()
+
+
+_SIM_CHANNEL = "_ark/{env_name}/sim"
 
 
 class Clock:
 
     def __init__(self, env_name: str, session: zenoh.Session):
-        """Initialize the Clock.
+        # Always initialise the condition variable so _sim_now and
+        # wait_until are safe to call regardless of the current mode.
+        self._sim_time: Time | None = None
+        self._sim_time_cv = threading.Condition()
 
-        Parameters:
-        -----------
-        env_name: str
-            The name of the environment.
-        session: zenoh.Session
-            The zenoh session to use for subscribing to time updates.
-        """
+        # Sim-time subscription is always active; it becomes meaningful
+        # as soon as a SimulatorNode starts publishing.
+        self._time_sub = session.declare_subscriber(
+            f"_ark/{env_name}/time", self._on_time_sample
+        )
+
+        # Set initial mode from the env parameter server, then subscribe
+        # so we react automatically if the executor hot-swaps sim ↔ real.
         self.sim = get_sim(env_name, session)
+        self._update_time_source(self.sim)
+        self._sim_sub = session.declare_subscriber(
+            _SIM_CHANNEL.format(env_name=env_name), self._on_sim_change
+        )
 
-        if self.sim:
-            self._sim_time: Time | None = None
-            self._sim_time_cv = threading.Condition()
-            self.now = self._sim_now
-            self._time_sub = session.declare_subscriber(
-                f"_ark/{env_name}/time", self._on_time_sample
-            )
-        else:
-            self._time_sub = None
-            self._sim_time_cv = None
-            self.now = self.wall_now
+    def _update_time_source(self, sim: bool) -> None:
+        self.sim = sim
+        self.now = self._sim_now if sim else self.wall_now
 
-    def _on_time_sample(self, sample: zenoh.Sample):
-        """Callback for handling incoming time samples from the TIME_CHANNEL."""
+    def _on_sim_change(self, sample: zenoh.Sample) -> None:
         payload = bytes(sample.payload)
-        t = Time.from_bytes(payload)
+        new_sim = bool(payload[0]) if payload else self.sim
+        if new_sim == self.sim:
+            return
+        self._update_time_source(new_sim)
+        if not new_sim:
+            # Clear stale sim timestamp so _sim_now doesn't serve old data
+            # if sim is re-enabled later.
+            with self._sim_time_cv:
+                self._sim_time = None
+
+    def _on_time_sample(self, sample: zenoh.Sample) -> None:
+        t = Time.from_bytes(bytes(sample.payload))
         with self._sim_time_cv:
             self._sim_time = t
             self._sim_time_cv.notify_all()
 
     def _sim_now(self) -> Time:
-        """Get the current simulated time as a Time object."""
-        if not self.sim:
-            raise RuntimeError("Simulated time is not enabled.")
         with self._sim_time_cv:
             while self._sim_time is None:
                 self._sim_time_cv.wait()
             return Time(nanosec=self._sim_time.nanosec)
 
     def wall_now(self) -> Time:
-        """Get the current wall-clock time as a Time object."""
         return Time(nanosec=time.time_ns())
 
     def wait_until(self, target: Time) -> None:
-        """Block until the simulated time reaches the target time."""
         if not self.sim:
             raise RuntimeError("Simulated time is not enabled.")
         with self._sim_time_cv:
@@ -151,21 +152,21 @@ class Sleep:
 
     def __init__(self, clock: Clock):
         self._clock = clock
-        self._sleep = self._sim_sleep if clock.sim else self._wall_sleep
 
     def _wall_sleep(self, dur: Time) -> None:
-        if dur.nanosec <= 0:
-            return
         time.sleep(dur.sec)
 
     def _sim_sleep(self, dur: Time) -> None:
-        if dur.nanosec <= 0:
-            return
         now = self._clock.now()
         self._clock.wait_until(now + dur)
 
     def __call__(self, dur: Time) -> None:
-        self._sleep(dur)
+        if dur.nanosec <= 0:
+            return
+        if self._clock.sim:
+            self._sim_sleep(dur)
+        else:
+            self._wall_sleep(dur)
 
 
 class Rate:

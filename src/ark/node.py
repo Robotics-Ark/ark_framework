@@ -36,6 +36,7 @@ class Node(ResetObject):
         self._node_name = node_name
         self._channel_remaps = channel_remaps
         self._session = session
+        self._sim = bool(parameters.get("sim", False))
         self._param_server = ParameterServer(
             f"{self._env_name}/{self._node_name}/parameters",
             parameters,
@@ -50,6 +51,14 @@ class Node(ResetObject):
     def reset(self, seed: int | None = None):
         for stepper in self._steppers:
             stepper.reset()
+
+    def _noise(self, noise: NOISE_TYPE) -> NOISE_TYPE:
+        """Strip noise when running on real hardware.
+
+        Real sensors and actuators already have physical noise; adding
+        simulated noise on top would corrupt the measurements.
+        """
+        return noise if self._sim else None
 
     def _add_end_point(self, channel_name: ChannelName | str, end_point: EndPoint):
         if channel_name in self._end_points:
@@ -89,7 +98,8 @@ class Node(ResetObject):
         noise: NOISE_TYPE = None,
     ) -> Publisher:
         pub = Publisher(
-            self._resolve_channel(channel_name), space, self._session, check, noise
+            self._resolve_channel(channel_name), space, self._session, check,
+            self._noise(noise),
         )
         self._add_end_point(channel_name, pub)
         return pub
@@ -108,7 +118,7 @@ class Node(ResetObject):
             callback,
             self._session,
             check,
-            noise,
+            self._noise(noise),
         )
         self._add_end_point(channel_name, sub)
         return sub
@@ -128,7 +138,7 @@ class Node(ResetObject):
             space,
             self._session,
             check,
-            noise,
+            self._noise(noise),
             ready_when,
         )
         self._add_end_point(channel_name, listener)
@@ -149,7 +159,7 @@ class Node(ResetObject):
             space,
             self._session,
             check,
-            noise,
+            self._noise(noise),
             ready_when,
         )
         self._add_end_point(channel_name, listener)
@@ -174,8 +184,8 @@ class Node(ResetObject):
             self._session,
             check_req,
             check_res,
-            req_noise,
-            res_noise,
+            self._noise(req_noise),
+            self._noise(res_noise),
         )
         self._add_end_point(channel_name, queryable)
         return queryable
@@ -197,8 +207,8 @@ class Node(ResetObject):
             self._session,
             check_req,
             check_res,
-            req_noise,
-            res_noise,
+            self._noise(req_noise),
+            self._noise(res_noise),
         )
         self._add_end_point(channel_name, querier)
         return querier
