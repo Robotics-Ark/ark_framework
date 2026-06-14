@@ -5,8 +5,7 @@ import threading
 from typing import Callable
 from dataclasses import dataclass
 from ark.reset import ResetObject
-from ark.parameters import get_parameter
-
+from ark.parameters import get_sim
 
 _TIME_STRUCT = struct.Struct("<q")
 
@@ -104,7 +103,7 @@ class Clock:
         session: zenoh.Session
             The zenoh session to use for subscribing to time updates.
         """
-        self.sim = get_parameter(f"{env_name}/parameters", "sim", session)
+        self.sim = get_sim(env_name, session)
 
         if self.sim:
             self._sim_time: Time | None = None
