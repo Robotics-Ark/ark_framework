@@ -40,7 +40,6 @@ class Node(ResetObject):
             self._session,
         )
         self._end_points = {}
-        self._rates = []
         self._steppers = []
         self._clock = Clock(self._env_name, self._session)
         self._stop_event = threading.Event()
@@ -194,9 +193,7 @@ class Node(ResetObject):
         return querier
 
     def create_rate(self, hz: float) -> Rate:
-        rate = Rate(self._clock, hz)
-        self._rates.append(rate)
-        return rate
+        return Rate(self._clock, hz)
 
     def create_stepper(self, hz: float, callback: Callable[[Time], None]) -> Stepper:
         stepper = Stepper(self._clock, hz, callback)
@@ -207,6 +204,9 @@ class Node(ResetObject):
         signal.signal(signal.SIGINT, lambda *_: self._stop_event.set())
         signal.signal(signal.SIGTERM, lambda *_: self._stop_event.set())
         self._stop_event.wait()
+
+    def now(self) -> Time:
+        return self._clock.now()
 
     def close(self):
         self._stop_event.set()
