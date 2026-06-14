@@ -9,7 +9,6 @@ from gymnasium import Space
 from .comm.end_point import EndPoint
 from .comm.publisher import Publisher
 from .comm.subscriber import Subscriber
-from .comm.listener import NSampleListener, TSampleListener
 from .comm.querier import Querier
 from .comm.queryable import Queryable
 from .reset import ResetObject
@@ -18,6 +17,7 @@ from .time import Rate, Stepper, Clock, Time
 from .comm.stamped_sample import StampedSample
 from .comm.default_z_session import default_session
 from .comm.channel import Channel, ChannelName, ChannelNoise
+from .comm.listener import NSampleListener, TSampleListener, ReadyWhen
 
 
 class Node(ResetObject):
@@ -110,6 +110,7 @@ class Node(ResetObject):
         n: int,
         check: bool = False,
         noise: ChannelNoise | None = None,
+        ready_when: ReadyWhen = ReadyWhen.ALWAYS,
     ) -> NSampleListener:
         listener = NSampleListener(
             n,
@@ -118,6 +119,7 @@ class Node(ResetObject):
             self._session,
             check,
             noise,
+            ready_when,
         )
         self._add_end_point(channel_name, listener)
         return listener
@@ -129,6 +131,7 @@ class Node(ResetObject):
         t: float,
         check: bool = False,
         noise: ChannelNoise | None = None,
+        ready_when: ReadyWhen = ReadyWhen.ALWAYS,
     ) -> TSampleListener:
         listener = TSampleListener(
             t,
@@ -137,6 +140,7 @@ class Node(ResetObject):
             self._session,
             check,
             noise,
+            ready_when,
         )
         self._add_end_point(channel_name, listener)
         return listener
