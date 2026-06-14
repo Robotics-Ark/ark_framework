@@ -1,3 +1,5 @@
+import queue
+import threading
 import zenoh
 from gymnasium import Space
 from typing import Callable
@@ -6,7 +8,9 @@ from .end_point import EndPoint
 from .codec.registry import sample_codec
 from .queryable_space import QueryableSpace
 from .stamped_sample import StampedSample
-from .channel import Channel, ChannelNoise, NoNoise
+from .channel import Channel, NOISE_TYPE, normalise_noise
+
+_SENTINEL = object()
 
 
 class Subscriber(EndPoint):
@@ -18,35 +22,46 @@ class Subscriber(EndPoint):
         callback: Callable[[StampedSample], None],
         session: zenoh.Session,
         check: bool,
-        noise: ChannelNoise | None,
+        noise: NOISE_TYPE = None,
     ):
         super().__init__(channel, session)
         self._space = space
         self._callback = callback
         self._check = check
-        self._noise = noise or NoNoise()
+        self._noises = normalise_noise(noise)
         self._clock = Clock(channel.env_name, session)
+        self._codec = sample_codec.get(self._space)
+        self._delivery_queue: queue.Queue = queue.Queue()
+        self._delivery_thread = threading.Thread(
+            target=self._delivery_loop, daemon=True
+        )
+        self._delivery_thread.start()
         self._z_sub = self._session.declare_subscriber(
             self._channel.name, self._on_callback
         )
-
-        # NOTE: consider later making 'role' a property of the Subscriber class, so
-        # that it can be overridden by subclasses.
-        role = "subscriber"
-        self._z_sub_qr = QueryableSpace(self._channel, role, self._space, self._session)
-        self._codec = sample_codec.get(self._space)
+        self._z_sub_qr = QueryableSpace(self._channel, "subscriber", self._space, self._session)
 
     def _on_callback(self, sample: zenoh.Sample):
         t = self._clock.now()
-        sample = self._codec.decode(sample.payload)
-        sample = self._noise.apply(sample)
-        if self._check and not self._space.contains(sample):
-            raise ValueError(
-                f"Sample {sample} does not conform to the space {self._space}"
-            )
-        stamped_sample = StampedSample(t, sample)
-        self._callback(stamped_sample)
+        raw = self._codec.decode(sample.payload)
+        self._delivery_queue.put((t, raw))
+
+    def _delivery_loop(self):
+        while True:
+            item = self._delivery_queue.get()
+            if item is _SENTINEL:
+                break
+            t, sample = item
+            for noise in self._noises:
+                sample = noise.apply(sample)
+            if self._check and not self._space.contains(sample):
+                raise ValueError(
+                    f"Sample {sample} does not conform to the space {self._space}"
+                )
+            self._callback(StampedSample(t, sample))
 
     def close(self):
         self._z_sub.undeclare()
+        self._delivery_queue.put(_SENTINEL)
+        self._delivery_thread.join()
         self._z_sub_qr.undeclare()
