@@ -57,26 +57,22 @@ class Listener(Subscriber):
             return self._is_ready(self._window)
 
     @abstractmethod
-    def get_window(self) -> list[StampedSample]:
+    def get_window(self) -> tuple[StampedSample]:
         """Returns the current window of samples."""
 
 
 class NSampleListener(Listener):
 
-    role = "sample_window_listener"
-
     def _on_sample(self, stamped_sample: StampedSample) -> None:
         with self._lock:
             self._window.append(stamped_sample)
 
-    def get_window(self) -> list[StampedSample]:
+    def get_window(self) -> tuple[StampedSample]:
         with self._lock:
-            return list(self._window)
+            return tuple(self._window)
 
 
 class TSampleListener(Listener):
-
-    role = "time_window_listener"
 
     def __init__(
         self,
@@ -113,8 +109,8 @@ class TSampleListener(Listener):
             self._window.append(stamped_sample)
             self._trim_window(cutoff)
 
-    def get_window(self) -> list[StampedSample]:
+    def get_window(self) -> tuple[StampedSample]:
         cutoff = self._clock.now() - self._window_duration
         with self._lock:
             self._trim_window(cutoff)
-            return list(self._window)
+            return tuple(self._window)
