@@ -192,12 +192,12 @@ class ArkEnv(Env):
         listeners = {ch.channel_name: ch.init_listener(self._node) for ch in channels}
         return channels, space, listeners
 
-    def _get_obs(self, channel_name: str) -> tuple:
+    def _get_observation(self, channel_name: str) -> tuple:
         return self._observation_listeners[channel_name].get_window()
 
     def get_observation(self) -> dict[str, tuple]:
         return {
-            ch.channel_name: self._get_obs(ch.channel_name)
+            ch.channel_name: self._get_observation(ch.channel_name)
             for ch in self._observation_channels
         }
 
