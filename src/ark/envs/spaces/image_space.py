@@ -43,8 +43,8 @@ class Image(Box):
             seed=seed,
         )
 
-    def view(self, sample: NDArray[Any]):
-        raise NotImplementedError("ImageSpace does not support viewing.")
+    def render(self, *_):
+        raise NotImplementedError("Image does not support rendering.")
 
 
 class GrayscaleImage(Image):
@@ -66,19 +66,24 @@ class GrayscaleImage(Image):
             seed=seed,
         )
 
-    def view(self, sample: NDArray[Any]) -> tuple[plt.Figure, plt.Axes]:
+    def render(
+        self, sample: NDArray[Any], ax: plt.Axes | None = None
+    ) -> tuple[plt.Figure, plt.Axes]:
         sample = np.asarray(sample, dtype=self.dtype)
         if not self.contains(sample):
             raise ValueError("Sample is not contained in the space.")
-        fig, ax = plt.subplots()
-        ax.imshow(
-            sample,
-            cmap="gray",
-            vmin=float(np.min(self.low)),
-            vmax=float(np.max(self.high)),
-        )
-        ax.axis("off")
-        return fig, ax
+        if ax is None:
+            fig, ax = plt.subplots()
+            ax.imshow(
+                sample,
+                cmap="gray",
+                vmin=float(np.min(self.low)),
+                vmax=float(np.max(self.high)),
+            )
+            ax.axis("off")
+        else:
+            ax.images[0].set_data(sample)
+        return ax.figure, ax
 
 
 class RGBImage(Image):
@@ -100,14 +105,19 @@ class RGBImage(Image):
             seed=seed,
         )
 
-    def view(self, sample: NDArray[Any]) -> tuple[plt.Figure, plt.Axes]:
+    def render(
+        self, sample: NDArray[Any], ax: plt.Axes | None = None
+    ) -> tuple[plt.Figure, plt.Axes]:
         sample = np.asarray(sample, dtype=self.dtype)
         if not self.contains(sample):
             raise ValueError("Sample is not contained in the space.")
-        fig, ax = plt.subplots()
-        ax.imshow(sample)
-        ax.axis("off")
-        return fig, ax
+        if ax is None:
+            fig, ax = plt.subplots()
+            ax.imshow(sample)
+            ax.axis("off")
+        else:
+            ax.images[0].set_data(sample)
+        return ax.figure, ax
 
 
 class DepthImage(Image):
@@ -129,17 +139,21 @@ class DepthImage(Image):
             seed=seed,
         )
 
-    def view(self, sample: NDArray[Any]) -> tuple[plt.Figure, plt.Axes]:
+    def render(
+        self, sample: NDArray[Any], ax: plt.Axes | None = None
+    ) -> tuple[plt.Figure, plt.Axes]:
         sample = np.asarray(sample, dtype=self.dtype)
         if not self.contains(sample):
             raise ValueError("Sample is not contained in the space.")
-        fig, ax = plt.subplots()
-        ax.imshow(sample, cmap="viridis")
-        # Add color map legend
-        cbar = fig.colorbar(ax.images[0], ax=ax)
-        cbar.set_label("Depth")
-        ax.axis("off")
-        return fig, ax
+        if ax is None:
+            fig, ax = plt.subplots()
+            ax.imshow(sample, cmap="viridis")
+            cbar = fig.colorbar(ax.images[0], ax=ax)
+            cbar.set_label("Depth")
+            ax.axis("off")
+        else:
+            ax.images[0].set_data(sample)
+        return ax.figure, ax
 
 
 class RGBDImage(GymDict):
@@ -174,9 +188,12 @@ class RGBDImage(GymDict):
             seed=seed,
         )
 
-    def view(
-        self, sample: NDArray[Any] | dict[str, NDArray[Any]], vstack: bool = False
-    ) -> tuple[plt.Figure, plt.Axes]:
+    def render(
+        self,
+        sample: NDArray[Any] | dict[str, NDArray[Any]],
+        axes: np.ndarray | None = None,
+        vstack: bool = False,
+    ) -> tuple[plt.Figure, np.ndarray]:
         if isinstance(sample, dict):
             rgb_sample = sample.get("rgb")
             depth_sample = sample.get("depth")
@@ -195,18 +212,18 @@ class RGBDImage(GymDict):
         if not self.spaces["depth"].contains(depth_sample):
             raise ValueError("Depth sample is not contained in the space.")
 
-        fig, axes = plt.subplots(1, 2) if not vstack else plt.subplots(2, 1)
+        if axes is None:
+            fig, axes = plt.subplots(1, 2) if not vstack else plt.subplots(2, 1)
+            axes[0].imshow(rgb_sample)
+            axes[0].set_title("RGB Image")
+            axes[0].axis("off")
+            im = axes[1].imshow(depth_sample, cmap="viridis")
+            axes[1].set_title("Depth Image")
+            axes[1].axis("off")
+            cbar = fig.colorbar(im, ax=axes[1])
+            cbar.set_label("Depth")
+        else:
+            axes[0].images[0].set_data(rgb_sample)
+            axes[1].images[0].set_data(depth_sample)
 
-        axes[0].imshow(rgb_sample)
-        axes[0].set_title("RGB Image")
-        axes[0].axis("off")
-
-        im = axes[1].imshow(depth_sample, cmap="viridis")
-        axes[1].set_title("Depth Image")
-        axes[1].axis("off")
-
-        # Add color map legend for depth image
-        cbar = fig.colorbar(im, ax=axes[1])
-        cbar.set_label("Depth")
-
-        return fig, axes
+        return axes[0].figure, axes
