@@ -141,6 +141,7 @@ class ArkEnv(Env):
             1.0 / float(step_duration) if step_duration is not None else None
         )
         self._session = session
+        self._reset_coordinator = ResetCoordinator(self._env_name, self._session)
         self._node = Node(
             env_name,
             "env",
@@ -149,7 +150,6 @@ class ArkEnv(Env):
             self._session,
         )
         self._rate = None
-        self._reset_coordinator = ResetCoordinator(self._env_name, self._session)
 
         # Setup inbound channels, spaces, and listeners
         (
