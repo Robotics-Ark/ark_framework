@@ -87,6 +87,11 @@ def get_parameter(
         qr.undeclare()
 
 
+# Helpers for specific parameters that are commonly used in the framework.
+def get_sim(env_name: str, session: zenoh.Session) -> bool:
+    return get_parameter(f"{env_name}/env/parameters", "sim", session)
+
+
 def set_parameter(
     server_name: str, param_name: str, param_value: PARAM_TYPE, session: zenoh.Session
 ) -> None:
@@ -178,7 +183,8 @@ class ParameterServer:
 
             decoded_value = _decode_param_struct(request)
             self._parameters[name] = Parameter(
-                value=decoded_value, env_value=_param_to_serialized_struct(decoded_value)
+                value=decoded_value,
+                env_value=_param_to_serialized_struct(decoded_value),
             )
             query.reply(query.key_expr, b"")
 
