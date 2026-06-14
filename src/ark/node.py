@@ -12,6 +12,7 @@ from .comm.subscriber import Subscriber
 from .comm.querier import Querier
 from .comm.queryable import Queryable
 from .reset import ResetObject
+from .comm.queryable_space import query_space
 from .parameters import ParameterServer, PARAM_TYPE
 from .time import Rate, Stepper, Clock, Time
 from .comm.stamped_sample import StampedSample
@@ -69,6 +70,10 @@ class Node(ResetObject):
     def _resolve_channel(self, channel_name: ChannelName | str) -> Channel:
         resolved_name = self._resolve_channel_name(channel_name)
         return Channel(resolved_name, self._env_name)
+
+    def query_space(self, channel_name: ChannelName | str, role: str) -> Space:
+        channel = self._resolve_channel(channel_name)
+        return query_space(channel.full_name, role, self._session)
 
     def create_publisher(
         self,

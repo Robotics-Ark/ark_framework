@@ -5,8 +5,10 @@ from .channel import ChannelName
 from .codec.registry import space_codec
 
 
-def query_space(channel_name: ChannelName, role: str, session: zenoh.Session) -> Space:
-    qr = session.declare_querier(channel_name / role / "get_space")
+def query_space(
+    channel_name: ChannelName | str, role: str, session: zenoh.Session
+) -> Space:
+    qr = session.declare_querier(ChannelName(channel_name) / role / "get_space")
     try:
         for z_reply in qr.get():
             if z_reply.err is not None:
@@ -19,6 +21,22 @@ def query_space(channel_name: ChannelName, role: str, session: zenoh.Session) ->
             raise RuntimeError("Space query failed: No reply received.")
     finally:
         qr.undeclare()
+
+
+def query_spaces(
+    channel_names: list[ChannelName | str],
+    role: list[str] | str,
+    session: zenoh.Session,
+) -> dict[str, Space]:
+    if isinstance(role, str):
+        role = [role] * len(channel_names)
+    elif len(role) != len(channel_names):
+        raise ValueError("Length of role list must match length of channel_names list.")
+
+    spaces = {}
+    for channel_name, r in zip(channel_names, role):
+        spaces[str(channel_name)] = query_space(channel_name, r, session)
+    return spaces
 
 
 class QueryableSpace:
