@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from ark.parameters import PARAM_TYPE
 from ark.reset import ResetCoordinator
 from gymnasium.spaces import Dict, Sequence
-from ark.comm.channel import ChannelName, NOISE_TYPE
+from ark.comm.channel import ChannelName
+from ark.noise import NOISE_TYPE
 from ark.comm.listener import ReadyWhen, NSampleListener, TSampleListener
 
 

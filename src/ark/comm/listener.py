@@ -6,7 +6,8 @@ from gymnasium import Space
 from ark.time import Time
 from abc import abstractmethod
 from .subscriber import Subscriber
-from .channel import Channel, NOISE_TYPE
+from .channel import Channel
+from ark.noise import NOISE_TYPE
 from .stamped_sample import StampedSample
 
 

@@ -17,7 +17,8 @@ from .parameters import ParameterServer, PARAM_TYPE
 from .time import Rate, Stepper, Clock, Time
 from .comm.stamped_sample import StampedSample
 from .comm.default_z_session import default_session
-from .comm.channel import Channel, ChannelName, NOISE_TYPE
+from .comm.channel import Channel, ChannelName
+from .noise import NOISE_TYPE
 from .comm.listener import NSampleListener, TSampleListener, ReadyWhen
 
 

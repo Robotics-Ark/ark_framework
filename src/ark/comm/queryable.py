@@ -4,7 +4,8 @@ from gymnasium import Space
 from .end_point import EndPoint
 from .codec.registry import sample_codec
 from .queryable_space import QueryableSpace
-from .channel import Channel, NOISE_TYPE, normalise_noise
+from .channel import Channel
+from ark.noise import NOISE_TYPE, normalise_noise
 
 
 class Queryable(EndPoint):
