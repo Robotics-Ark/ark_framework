@@ -11,8 +11,6 @@ from .channel import Channel, ChannelNoise, NoNoise
 
 class Subscriber(EndPoint):
 
-    role = "subscriber"
-
     def __init__(
         self,
         channel: Channel,
@@ -31,9 +29,11 @@ class Subscriber(EndPoint):
         self._z_sub = self._session.declare_subscriber(
             self._channel.name, self._on_callback
         )
-        self._z_sub_qr = QueryableSpace(
-            self._channel, self.role, self._space, self._session
-        )
+
+        # NOTE: consider later making 'role' a property of the Subscriber class, so
+        # that it can be overridden by subclasses.
+        role = "subscriber"
+        self._z_sub_qr = QueryableSpace(self._channel, role, self._space, self._session)
         self._codec = sample_codec.get(self._space)
 
     def _on_callback(self, sample: zenoh.Sample):
