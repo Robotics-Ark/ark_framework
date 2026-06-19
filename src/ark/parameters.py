@@ -138,8 +138,10 @@ class ParameterServer:
         server_name: str,
         parameters: dict[str, PARAM_TYPE],
         session: zenoh.Session,
+        read_only: bool = False,
     ):
         self._server_name = server_name
+        self._read_only = read_only
         self._parameters: dict[str, Parameter] = {
             name: Parameter(value=param, env_value=_param_to_serialized_struct(param))
             for name, param in parameters.items()
@@ -147,9 +149,12 @@ class ParameterServer:
         self._get_qr = session.declare_queryable(
             f"{self._server_name}/get_parameter", self._on_get_query
         )
-        self._set_qr = session.declare_queryable(
-            f"{self._server_name}/set_parameter", self._on_set_query
-        )
+        if not self._read_only:
+            self._set_qr = session.declare_queryable(
+                f"{self._server_name}/set_parameter", self._on_set_query
+            )
+        else:
+            self._set_qr = None
 
     def set(self, param_name: str, param_value: PARAM_TYPE) -> None:
         self._parameters[param_name] = Parameter(
