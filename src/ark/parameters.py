@@ -103,6 +103,22 @@ def get_sim(env_name: str, session: zenoh.Session) -> bool:
     return get_parameter(f"{env_name}/env/parameters", "sim", session)
 
 
+def get_keys(server_name: str, session: zenoh.Session) -> list[str]:
+    qr = session.declare_querier(f"{server_name}/get_keys")
+    try:
+        for z_reply in qr.get():
+            if z_reply.err is not None:
+                err = bytes(z_reply.err.payload).decode("utf-8", errors="replace")
+                raise RuntimeError(f"Get keys query failed: {err}")
+            if z_reply.ok is None:
+                continue
+            list_value = ListValue()
+            list_value.ParseFromString(bytes(z_reply.ok.payload))
+            return [v.string_value for v in list_value.values]
+    finally:
+        qr.undeclare()
+
+
 def set_parameter(
     server_name: str, param_name: str, param_value: PARAM_TYPE, session: zenoh.Session
 ) -> None:
@@ -146,6 +162,9 @@ class ParameterServer:
             name: Parameter(value=param, env_value=_param_to_serialized_struct(param))
             for name, param in parameters.items()
         }
+        self._get_keys_qr = session.declare_queryable(
+            f"{self._server_name}/get_keys", self._on_get_keys_query
+        )
         self._get_qr = session.declare_queryable(
             f"{self._server_name}/get_parameter", self._on_get_query
         )
@@ -165,6 +184,14 @@ class ParameterServer:
         if param_name not in self._parameters:
             raise KeyError(f"Parameter '{param_name}' not found.")
         return self._parameters[param_name].value
+
+    def keys(self):
+        return self._parameters.keys()
+
+    def _on_get_keys_query(self, query: zenoh.Query) -> None:
+        with query:
+            keys = ListValue(values=[Value(string_value=k) for k in self.keys()])
+            query.reply(query.key_expr, keys.SerializeToString())
 
     def _on_get_query(self, query: zenoh.Query) -> None:
         with query:
