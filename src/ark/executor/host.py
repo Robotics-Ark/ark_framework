@@ -1,7 +1,8 @@
+import os
 import platform
 from dataclasses import dataclass
 
-supported_os = {"windows", "linux", "darwin"}
+SUPPORTED_OS = {"windows", "linux", "darwin"}
 
 
 @dataclass(frozen=True)
@@ -13,9 +14,9 @@ class Host:
     is_local: bool = False
 
     def __post_init__(self):
-        if self.os not in supported_os:
+        if self.os not in SUPPORTED_OS:
             raise ValueError(
-                f"Unsupported OS '{self.os}'. Supported OS:\n{supported_os}"
+                f"Unsupported OS '{self.os}'. Supported OS:\n{SUPPORTED_OS}"
             )
 
     @classmethod
@@ -24,6 +25,6 @@ class Host:
             name="local",
             os=platform.system().lower(),
             ssh_alias="",
-            conda_path="",
+            conda_path=os.environ.get("CONDA_EXE", ""),
             is_local=True,
         )
