@@ -5,7 +5,7 @@ from dataclasses import dataclass
 SUPPORTED_OS = {"windows", "linux", "darwin"}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Host:
     name: str  # unique identifier for this host
     os: str  # "windows", "linux", "darwin"
