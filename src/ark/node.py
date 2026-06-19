@@ -98,7 +98,10 @@ class Node(ResetObject):
         noise: NOISE_TYPE = None,
     ) -> Publisher:
         pub = Publisher(
-            self._resolve_channel(channel_name), space, self._session, check,
+            self._resolve_channel(channel_name),
+            space,
+            self._session,
+            check,
             self._noise(noise),
         )
         self._add_end_point(channel_name, pub)
