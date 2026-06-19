@@ -1,30 +1,200 @@
 import os
 import platform
-from dataclasses import dataclass
+import shlex
+import subprocess
+from abc import ABC, abstractmethod
+from typing import IO
+
+_FILE = int | IO[bytes] | None
 
 SUPPORTED_OS = {"windows", "linux", "darwin"}
 
+_SSH_OPTS = ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes"]
 
-@dataclass(frozen=True, slots=True)
-class Host:
-    name: str  # unique identifier for this host
-    os: str  # "windows", "linux", "darwin"
-    ssh_alias: str  # alias from ~/.ssh/config, e.g. "pc1"; unused for local hosts
-    conda_path: str  # full path to conda executable on remote; unused for local hosts
-    is_local: bool = False
 
-    def __post_init__(self):
-        if self.os not in SUPPORTED_OS:
-            raise ValueError(
-                f"Unsupported OS '{self.os}'. Supported OS:\n{SUPPORTED_OS}"
+def _ssh_config_aliases() -> set[str]:
+    config_path = os.path.expanduser("~/.ssh/config")
+    if not os.path.exists(config_path):
+        return set()
+    aliases = set()
+    with open(config_path) as f:
+        for line in f:
+            parts = line.strip().split()
+            if parts and parts[0].lower() == "host":
+                for alias in parts[1:]:
+                    if not any(c in alias for c in ("*", "?", "!")):
+                        aliases.add(alias)
+    return aliases
+
+
+class Host(ABC):
+
+    def __init__(self, name: str, os: str, conda_path: str):
+        self.name = name
+        self.os = os
+        self.conda_path = self._ensure_conda_path(conda_path)
+
+    def _ensure_conda_path(self, conda_path: str) -> str:
+        try:
+            if self.os == "windows":
+                proc = self.run(
+                    f"if (Test-Path '{conda_path}') {{ exit 0 }} else {{ exit 1 }}"
+                )
+            else:
+                proc = self.run(f"[ -x '{conda_path}' ]")
+            proc.communicate(timeout=10)
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"Conda path '{conda_path}' is not executable on host '{self.name}'."
+                )
+            return conda_path
+        except (subprocess.TimeoutExpired, OSError):
+            raise RuntimeError(
+                f"Failed to verify conda path '{conda_path}' on host '{self.name}'."
             )
 
-    @classmethod
-    def local(cls) -> "Host":
-        return cls(
-            name="local",
-            os=platform.system().lower(),
-            ssh_alias="",
-            conda_path=os.environ.get("CONDA_EXE", ""),
-            is_local=True,
+    @abstractmethod
+    def run(
+        self,
+        args: str | list[str],
+        stdout: _FILE = subprocess.PIPE,
+        stderr: _FILE = subprocess.PIPE,
+        log_file: str = "",
+    ) -> subprocess.Popen: ...
+
+    def _env_python(self, env: str) -> str:
+        conda_dir = os.path.dirname(os.path.dirname(self.conda_path))
+        return os.path.join(conda_dir, "envs", env, "bin", "python")
+
+    def run_in_env(
+        self,
+        env: str,
+        args: str | list[str],
+        stdout: _FILE = subprocess.PIPE,
+        stderr: _FILE = subprocess.PIPE,
+        log_file: str = "",
+    ) -> subprocess.Popen:
+        python = self._env_python(env)
+        if isinstance(args, str):
+            full_args = [python, "-c", args]
+        else:
+            args_list = list(args)
+            if args_list and args_list[0] in ("python", "python3"):
+                args_list = args_list[1:]
+            full_args = [python] + args_list
+        return self.run(full_args, stdout=stdout, stderr=stderr, log_file=log_file)
+
+
+class LocalHost(Host):
+
+    os = platform.system().lower()
+
+    def __init__(self, name: str = "localhost", conda_path: str = ""):
+        super().__init__(
+            name=name,
+            os=self.os,
+            conda_path=conda_path or os.environ.get("CONDA_EXE", ""),
         )
+
+    def run(
+        self,
+        args: str | list[str],
+        stdout: _FILE = subprocess.PIPE,
+        stderr: _FILE = subprocess.PIPE,
+        log_file: str = "",
+    ) -> subprocess.Popen:
+        if log_file:
+            f = open(log_file, "w")
+            return subprocess.Popen(
+                args, shell=isinstance(args, str), stdout=f, stderr=f
+            )
+        return subprocess.Popen(
+            args,
+            shell=isinstance(args, str),
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+class ExternalHost(Host):
+
+    def __init__(self, name: str, ssh_alias: str, conda_path: str):
+        self.ssh_alias = self._ensure_ssh_alias(ssh_alias)
+
+        self._os = ""
+        if not (self._check_unix() or self._check_windows()):
+            raise RuntimeError(
+                f"Could not determine OS for host '{name}': "
+                "uname and cmd /c ver both failed"
+            )
+        if self._os not in SUPPORTED_OS:
+            raise RuntimeError(
+                f"Unsupported OS '{self._os}' for host '{name}'. "
+                f"Supported: {SUPPORTED_OS}"
+            )
+
+        super().__init__(name=name, os=self._os, conda_path=conda_path)
+
+    def _ensure_ssh_alias(self, ssh_alias: str) -> str:
+        known = _ssh_config_aliases()
+        if ssh_alias not in known:
+            raise ValueError(
+                f"SSH alias '{ssh_alias}' not found in ~/.ssh/config. "
+                f"Known aliases: {sorted(known)}"
+            )
+        return ssh_alias
+
+    def _check_unix(self) -> bool:
+        stdout, _ = self.run("uname -s").communicate(timeout=10)
+        uname = stdout.strip().lower().decode()
+        if uname in ("linux", "darwin"):
+            self._os = uname
+            return True
+        return False
+
+    def _check_windows(self) -> bool:
+        stdout, _ = self.run("cmd /c ver").communicate(timeout=10)
+        if b"windows" in stdout.lower():
+            self._os = "windows"
+            return True
+        return False
+
+    def run(
+        self,
+        args: str | list[str],
+        stdout: _FILE = subprocess.PIPE,
+        stderr: _FILE = subprocess.PIPE,
+        log_file: str = "",
+    ) -> subprocess.Popen:
+        cmd = shlex.join(args) if isinstance(args, list) else args
+        if log_file:
+            cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
+            return subprocess.Popen(
+                ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        return subprocess.Popen(
+            ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+def load_hosts(config: dict) -> dict[str, Host]:
+    local_spec = config.get("local", {})
+    local = LocalHost(
+        name=local_spec.get("name", "localhost"),
+        conda_path=local_spec.get("conda_path", ""),
+    )
+    hosts = {local.name: local}
+
+    external_specs = config.get("external", {})
+    for name, spec in external_specs.items():
+        hosts[name] = ExternalHost(
+            name=name,
+            ssh_alias=spec["ssh_alias"],
+            conda_path=spec["conda_path"],
+        )
+
+    return hosts
