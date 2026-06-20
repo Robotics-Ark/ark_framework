@@ -2,6 +2,7 @@ import yaml
 import argparse
 from pathlib import Path
 from ark.core import Core
+from ark.logging import log
 from ark.executor.host import load_hosts
 from ark.logging import configure_logging
 
@@ -61,15 +62,25 @@ def main():
 
     core = None
     try:
-        core = Core(args.hosts, args.sim_envs, args.zenoh_config, args.router_port, args.real_env)
+        core = Core(
+            args.hosts,
+            args.sim_envs,
+            args.zenoh_config,
+            args.router_port,
+            args.real_env,
+        )
         if args.nodes:
             core.launch_nodes(args.nodes)
         core.spin()
+    except KeyboardInterrupt:
+        log.warning("Core interrupted by user")
     except Exception as e:
-        print(f"Core failed with exception: {e}")
+        log.error(f"Core failed with exception: {e}")
     finally:
+        log.info("Shutting down core")
         if core is not None:
             core.close()
+        log.info("Core shutdown complete")
 
 
 if __name__ == "__main__":
