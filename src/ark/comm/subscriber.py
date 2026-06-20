@@ -38,7 +38,7 @@ class Subscriber(EndPoint):
         )
         self._delivery_thread.start()
         self._z_sub = self._session.declare_subscriber(
-            self._channel.name, self._on_callback
+            self._channel.full_name, self._on_callback
         )
         self._z_sub_qr = QueryableSpace(self._channel, "subscriber", self._space, self._session)
 
