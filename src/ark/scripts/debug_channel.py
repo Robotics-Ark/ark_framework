@@ -34,7 +34,10 @@ def cmd_hz(session, channel: str, window: float) -> None:
                 span = (timestamps[-1] - timestamps[0]) if n >= 2 else 0.0
             if n >= 2:
                 hz = (n - 1) / span
-                print(f"  rate: {hz:.2f} Hz  ({n} msgs in last {window:.0f}s window)", flush=True)
+                print(
+                    f"  rate: {hz:.2f} Hz  ({n} msgs in last {window:.0f}s window)",
+                    flush=True,
+                )
             else:
                 print(f"  waiting for messages...", flush=True)
     finally:
@@ -42,9 +45,9 @@ def cmd_hz(session, channel: str, window: float) -> None:
 
 
 _ROLE_SUFFIXES = [
-    ("/publisher/get_space",  "pub"),
+    ("/publisher/get_space", "pub"),
     ("/subscriber/get_space", "sub"),
-    ("/request/get_space",    "queryable"),
+    ("/request/get_space", "queryable"),
 ]
 
 # Known internal channel patterns and their roles (regex suffix → roles list).
@@ -54,20 +57,20 @@ import re as _re
 
 _INTERNAL_KNOWN: list[tuple[str, list[str]]] = [
     # executor
-    (r"^_ark/executor/run$",         ["queryable"]),
-    (r"^_ark/executor/run_node$",    ["queryable"]),
-    (r"^_ark/executor/list$",        ["queryable"]),
-    (r"^_ark/executor/kill$",        ["queryable"]),
-    (r"^_ark/executor/kill_env$",    ["queryable"]),
+    (r"^_ark/executor/run$", ["queryable"]),
+    (r"^_ark/executor/run_node$", ["queryable"]),
+    (r"^_ark/executor/list$", ["queryable"]),
+    (r"^_ark/executor/kill$", ["queryable"]),
+    (r"^_ark/executor/kill_env$", ["queryable"]),
     # reset coordinator (global)
     (r"^_ark/reset/register_reset_object$", ["queryable"]),
-    (r"^_ark/reset/initiate_reset$",        ["queryable"]),
+    (r"^_ark/reset/initiate_reset$", ["queryable"]),
     # reset per-env
-    (r"^_ark/reset/[^/]+/initiate_reset$",  ["pub", "sub"]),
+    (r"^_ark/reset/[^/]+/initiate_reset$", ["pub", "sub"]),
     (r"^_ark/reset/[^/]+/reset_completed$", ["pub", "sub"]),
     # simulated time
-    (r"^_ark/[^/]+/time$",  ["pub", "sub"]),
-    (r"^_ark/[^/]+/sim$",   ["sub"]),
+    (r"^_ark/[^/]+/time$", ["pub", "sub"]),
+    (r"^_ark/[^/]+/sim$", ["sub"]),
 ]
 
 # All static infrastructure channels (always present when core is running).
@@ -168,7 +171,9 @@ def cmd_ls(session, include_internal: bool, env_name: str | None = None) -> None
     for ch_full, info in sorted(channels.items()):
         grp, _, ch_name = ch_full.partition("/")
         roles_str = ", ".join(sorted(info["roles"]))
-        grouped.setdefault(grp, []).append((ch_name or ch_full, roles_str, info["space"]))
+        grouped.setdefault(grp, []).append(
+            (ch_name or ch_full, roles_str, info["space"])
+        )
 
     for grp in sorted(grouped):
         print(f"{grp}/")
@@ -181,10 +186,12 @@ def cmd_ls(session, include_internal: bool, env_name: str | None = None) -> None
         int_grouped: dict[str, list[tuple[str, str]]] = {}
         for k in sorted(internal):
             # k is e.g. "_ark/executor/run" or "_ark/reset/env1/foo"
-            without_prefix = k[len("_ark/"):]  # "executor/run"
+            without_prefix = k[len("_ark/") :]  # "executor/run"
             segment, _, rest = without_prefix.partition("/")
             roles_str = ", ".join(sorted(internal[k]))
-            int_grouped.setdefault(segment, []).append((rest or without_prefix, roles_str))
+            int_grouped.setdefault(segment, []).append(
+                (rest or without_prefix, roles_str)
+            )
         print("_ark/")
         for segment in sorted(int_grouped):
             print(f"  {segment}/")
@@ -201,7 +208,9 @@ def cmd_echo(session, channel: str) -> None:
         print(f"Subscribing to '{channel}'  space={space}  — Ctrl-C to stop\n")
     except Exception as e:
         decode = bytes
-        print(f"Subscribing to '{channel}'  (raw bytes — publisher space not found: {e})\n")
+        print(
+            f"Subscribing to '{channel}'  (raw bytes — publisher space not found: {e})\n"
+        )
 
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -220,13 +229,14 @@ def cmd_echo(session, channel: str) -> None:
 def main():
     parser = argparse.ArgumentParser(
         prog="ark-debug-channel",
-        description="Inspect ark channels at runtime (similar to rostopic).",
+        description="Inspect ark channels at runtime.",
     )
     subs = parser.add_subparsers(dest="command", required=True)
 
     ls_p = subs.add_parser("ls", help="List all active channels grouped by env.")
     ls_p.add_argument(
-        "--include-internal", action="store_true",
+        "--include-internal",
+        action="store_true",
         help="Also show internal channels (listens for active publishers for 2s).",
     )
     ls_p.add_argument(
@@ -237,21 +247,29 @@ def main():
     )
 
     hz_p = subs.add_parser("hz", help="Print the publish rate of a channel.")
-    hz_p.add_argument("channel", help="Full channel path, e.g. pybullet_envs_0/mychatter")
     hz_p.add_argument(
-        "--window", type=float, default=5.0,
+        "channel", help="Full channel path, e.g. pybullet_envs_0/mychatter"
+    )
+    hz_p.add_argument(
+        "--window",
+        type=float,
+        default=5.0,
         help="Sliding average window in seconds (default: 5)",
     )
 
     echo_p = subs.add_parser("echo", help="Print messages received on a channel.")
-    echo_p.add_argument("channel", help="Full channel path, e.g. pybullet_envs_0/mychatter")
+    echo_p.add_argument(
+        "channel", help="Full channel path, e.g. pybullet_envs_0/mychatter"
+    )
 
     args = parser.parse_args()
     session = default_session()
 
     try:
         if args.command == "ls":
-            cmd_ls(session, include_internal=args.include_internal, env_name=args.env_name)
+            cmd_ls(
+                session, include_internal=args.include_internal, env_name=args.env_name
+            )
         elif args.command == "hz":
             cmd_hz(session, args.channel, args.window)
         else:
