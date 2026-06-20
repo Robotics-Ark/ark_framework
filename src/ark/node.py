@@ -228,7 +228,7 @@ class Node(ResetObject, Spinner):
         return self._clock.now()
 
     def close(self):
-        self._stop_event.set()
+        self.stop_spinning()
         for ep in self._end_points.values():
             ep.close()
         for s in self._steppers:

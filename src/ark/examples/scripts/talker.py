@@ -19,7 +19,7 @@ class Talker(Node):
 
     def _step(self, t):
         if self._count >= self._max_count:
-            self._stop_event.set()
+            self.stop_spinning()
             return
         self._pub.publish(np.array([float(self._count)]))
         print(f"[talker] {self._hello} count={self._count}", flush=True)
