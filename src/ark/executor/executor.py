@@ -21,6 +21,8 @@ class _ProcessEntry:
     env_name: str
     is_node: bool
     node_name: str | None = None
+    pid_file: str = ""
+    host: Host | None = None
 
 
 class Executor:
@@ -68,12 +70,14 @@ class Executor:
             self._node_ids.discard((entry.env_name, entry.node_name))
         return entry
 
-    def _terminate(self, proc: subprocess.Popen) -> None:
-        proc.terminate()
+    def _terminate(self, entry: _ProcessEntry) -> None:
+        if entry.pid_file and isinstance(entry.host, ExternalHost):
+            entry.host.kill_proc(entry.pid_file)
+        entry.proc.terminate()
         try:
-            proc.wait(timeout=5)
+            entry.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            entry.proc.kill()
 
     def _on_run(self, query: zenoh.Query) -> None:
         with query:
@@ -81,17 +85,20 @@ class Executor:
                 req = RunRequest.from_json(query.payload)
                 host = self._hosts[req.host]
                 router = {"ARK_ZENOH_ROUTER": host.router_addr} if isinstance(host, ExternalHost) and host.router_addr else None
+                proc_id = f"{req.env_name}/{req.id}"
+                pid_file = f"/tmp/ark_{proc_id.replace('/', '_')}.pid" if isinstance(host, ExternalHost) else ""
                 proc = host.run(
                     req.command,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
                     env_vars=router,
+                    pid_file=pid_file,
                 )
-                proc_id = f"{req.env_name}/{req.id}"
                 with self._lock:
                     self._processes[proc_id] = _ProcessEntry(
-                        proc=proc, env_name=req.env_name, is_node=False
+                        proc=proc, env_name=req.env_name, is_node=False,
+                        pid_file=pid_file, host=host,
                     )
                 query.reply(query.key_expr, RunReply(success=True).to_json())
                 log.info(
@@ -132,6 +139,7 @@ class Executor:
                 ]
                 host = self._hosts[req.host]
                 router = {"ARK_ZENOH_ROUTER": host.router_addr} if isinstance(host, ExternalHost) and host.router_addr else None
+                pid_file = f"/tmp/ark_{proc_id.replace('/', '_')}.pid" if isinstance(host, ExternalHost) else ""
                 proc = host.run_in_env(
                     req.conda_env,
                     args,
@@ -139,6 +147,7 @@ class Executor:
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
                     env_vars=router,
+                    pid_file=pid_file,
                 )
                 with self._lock:
                     self._processes[proc_id] = _ProcessEntry(
@@ -146,6 +155,8 @@ class Executor:
                         env_name=req.env_name,
                         is_node=True,
                         node_name=req.node_name,
+                        pid_file=pid_file,
+                        host=host,
                     )
                 query.reply(query.key_expr, RunReply(success=True).to_json())
                 log.info("Started node '%s' on host '%s'" % (proc_id, req.host))
@@ -185,7 +196,7 @@ class Executor:
                     entry = self._deregister(req.id)
                 if entry is None:
                     raise ValueError(f"No process with id '{req.id}'")
-                self._terminate(entry.proc)
+                self._terminate(entry)
                 query.reply(query.key_expr, RunReply(success=True).to_json())
                 log.info("Killed process '%s' in env '%s'" % (req.id, entry.env_name))
             except Exception as e:
@@ -207,7 +218,7 @@ class Executor:
                         raise ValueError(f"No processes found in env '{req.env_name}'")
                     entries = [self._deregister(pid) for pid in ids]
                 for entry in entries:
-                    self._terminate(entry.proc)
+                    self._terminate(entry)
                 query.reply(query.key_expr, RunReply(success=True).to_json())
                 log.info("Killed all processes in env '%s'" % req.env_name)
             except Exception as e:
@@ -233,11 +244,11 @@ class Executor:
         self._closed = True
         self._stop_event.set()
         with self._lock:
-            procs = [entry.proc for entry in self._processes.values()]
+            entries = list(self._processes.values())
             self._processes.clear()
             self._node_ids.clear()
-        for proc in procs:
-            self._terminate(proc)
+        for entry in entries:
+            self._terminate(entry)
         self._qr_run.undeclare()
         self._qr_run_node.undeclare()
         self._qr_list.undeclare()

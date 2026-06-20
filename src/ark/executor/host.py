@@ -61,6 +61,7 @@ class Host(ABC):
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
         env_vars: dict[str, str] | None = None,
+        pid_file: str = "",
     ) -> subprocess.Popen: ...
 
     def _env_python(self, env: str) -> str:
@@ -75,6 +76,7 @@ class Host(ABC):
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
         env_vars: dict[str, str] | None = None,
+        pid_file: str = "",
     ) -> subprocess.Popen:
         python = self._env_python(env)
         if isinstance(args, str):
@@ -84,7 +86,7 @@ class Host(ABC):
             if args_list and args_list[0] in ("python", "python3"):
                 args_list = args_list[1:]
             full_args = [python] + args_list
-        return self.run(full_args, stdout=stdout, stderr=stderr, log_file=log_file, env_vars=env_vars)
+        return self.run(full_args, stdout=stdout, stderr=stderr, log_file=log_file, env_vars=env_vars, pid_file=pid_file)
 
     def __repr__(self) -> str:
         return f"Host(name={self.name!r}, os={self.os!r})"
@@ -108,6 +110,7 @@ class LocalHost(Host):
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
         env_vars: dict[str, str] | None = None,
+        pid_file: str = "",
     ) -> subprocess.Popen:
         env = {**os.environ, **(env_vars or {})}
         if log_file:
@@ -184,13 +187,17 @@ class ExternalHost(Host):
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
         env_vars: dict[str, str] | None = None,
+        pid_file: str = "",
     ) -> subprocess.Popen:
         cmd = shlex.join(args) if isinstance(args, list) else args
         if env_vars:
             prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env_vars.items())
             cmd = f"{prefix} {cmd}"
         if log_file:
-            cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
+            if pid_file:
+                cmd = f"echo $$ > {shlex.quote(pid_file)}; exec {cmd} > {shlex.quote(log_file)} 2>&1"
+            else:
+                cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
             return subprocess.Popen(
                 ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
                 stdout=subprocess.DEVNULL,
@@ -200,6 +207,14 @@ class ExternalHost(Host):
             ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
             stdout=stdout,
             stderr=stderr,
+        )
+
+    def kill_proc(self, pid_file: str) -> None:
+        cmd = f"kill $(cat {shlex.quote(pid_file)} 2>/dev/null) 2>/dev/null; rm -f {shlex.quote(pid_file)}"
+        subprocess.run(
+            ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
+            capture_output=True,
+            timeout=10,
         )
 
 
