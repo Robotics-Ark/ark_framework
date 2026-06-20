@@ -1,0 +1,7 @@
+local:
+  name: localhost
+# external:
+#   myremote: # This is the name of the remote host. You can change it to any name you prefer.
+#     ssh_alias: myremote # This is the SSH alias for the remote host. It should be defined in your SSH config file (~/.ssh/config).
+#     conda_path: /path/to/miniforge3/bin/conda # This is the path to the conda executable on the remote host. Adjust it according to your remote environment.
+#     ssh_tunnel: true # Set to true if you want to use SSH tunneling for communication with the remote host.
