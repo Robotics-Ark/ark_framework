@@ -149,19 +149,19 @@ Example output:
 Ark network connectivity check
 ========================================
 
-  Host: mycluster  (cluster → 135.84.176.142)
-    mycluster → laptop (192.168.1.10):7447 ... reachable
-    → direct connection  (router_ip: 192.168.1.10)
+  Host: remote_a  (worker → <remote-a-ip>)
+    remote_a → laptop (<laptop-ip>):7447 ... reachable
+    → direct connection  (router_ip: <laptop-ip>)
 
-  Host: gpu_node  (gpu → 135.84.176.200)
-    gpu_node → laptop (192.168.1.10):7447 ... blocked
+  Host: remote_b  (worker → <remote-b-ip>)
+    remote_b → laptop (<laptop-ip>):7447 ... blocked
     → SSH reverse tunnel required
 
 Updated config written to: path/to/hosts.yaml
 
 Summary:
-  mycluster: direct (router_ip: 192.168.1.10)
-  gpu_node: ssh_tunnel
+  remote_a: direct (router_ip: <laptop-ip>)
+  remote_b: ssh_tunnel
 ```
 
 The tool adds `ssh_tunnel` and `router_ip` fields to each external host entry. The `ark core` command reads these automatically — no further configuration needed.
