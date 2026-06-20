@@ -1,5 +1,6 @@
 import time
 import zenoh
+from .logging import log
 from dataclasses import dataclass
 from google.protobuf.struct_pb2 import Struct, Value, ListValue
 
@@ -100,7 +101,7 @@ def get_parameter(
 
 # Helpers for specific parameters that are commonly used in the framework.
 def get_sim(env_name: str, session: zenoh.Session) -> bool:
-    return get_parameter(f"{env_name}/env/parameters", "sim", session)
+    return get_parameter(f"{env_name}/parameters", "sim", session, timeout=2.0)
 
 
 def get_keys(server_name: str, session: zenoh.Session) -> list[str]:
@@ -174,6 +175,10 @@ class ParameterServer:
             )
         else:
             self._set_qr = None
+        log.info(
+            "initialized parameter server '%s' with %d parameters"
+            % (self._server_name, len(self._parameters))
+        )
 
     def set(self, param_name: str, param_value: PARAM_TYPE) -> None:
         self._parameters[param_name] = Parameter(
@@ -192,6 +197,10 @@ class ParameterServer:
         with query:
             keys = ListValue(values=[Value(string_value=k) for k in self.keys()])
             query.reply(query.key_expr, keys.SerializeToString())
+            log.info(
+                "Parameter keys retrieved from server '%s': %s"
+                % (self._server_name, list(self.keys()))
+            )
 
     def _on_get_query(self, query: zenoh.Query) -> None:
         with query:
@@ -205,9 +214,17 @@ class ParameterServer:
 
             if param is None:
                 query.reply_err(f"Parameter '{param_name}' not found.".encode("utf-8"))
+                log.error(
+                    "Parameter query failed: Parameter '%s' not found on server '%s'"
+                    % (param_name, self._server_name)
+                )
                 return
 
             query.reply(query.key_expr, param.env_value)
+            log.info(
+                "Parameter '%s' retrieved from server '%s'"
+                % (param_name, self._server_name)
+            )
 
     def _on_set_query(self, query: zenoh.Query) -> None:
         with query:
@@ -222,6 +239,7 @@ class ParameterServer:
             name = request.fields["name"].string_value
             if not name:
                 query.reply_err(b"Parameter name is required.")
+                log.error("Parameter set query failed: Parameter name is required.")
                 return
 
             decoded_value = _decode_param_struct(request)
@@ -230,10 +248,16 @@ class ParameterServer:
                 env_value=_param_to_serialized_struct(decoded_value),
             )
             query.reply(query.key_expr, b"")
+            log.info(
+                "Parameter '%s' set to '%s' on server '%s'"
+                % (name, str(decoded_value), self._server_name)
+            )
 
     def close(self):
+        self._get_keys_qr.undeclare()
         self._get_qr.undeclare()
-        self._set_qr.undeclare()
+        if self._set_qr is not None:
+            self._set_qr.undeclare()
 
 
 class ParameterClient:
