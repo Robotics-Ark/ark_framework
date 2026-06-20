@@ -48,6 +48,12 @@ def parse_args():
         default=None,
         help="Name for a real-hardware env (sim=False). E.g. --real_env real.",
     )
+    parser.add_argument(
+        "--log_dir",
+        type=path,
+        default=Path("/tmp/.ark"),
+        help="Root directory for node log files (default: /tmp/.ark).",
+    )
     return parser.parse_args()
 
 
@@ -68,6 +74,7 @@ def main():
             args.zenoh_config,
             args.router_port,
             args.real_env,
+            args.log_dir,
         )
         if args.nodes:
             core.launch_nodes(args.nodes)

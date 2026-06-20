@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from ..logging import log
 from ..base import Spinner
@@ -25,8 +26,11 @@ class Core(Spinner):
         zenoh_config: Path | None = None,
         router_port: int = 7447,
         real_env: str | None = None,
+        log_dir: str | Path = "/tmp/.ark",
     ):
         super().__init__()
+        self._log_dir = Path(log_dir)
+        self._run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._managed_procs = self._start_router(hosts, router_port)
         self._session = load_session(zenoh_config)
         self._sim_env_param_servers = self._init_sim_env_param_servers(sim_envs)
@@ -117,7 +121,7 @@ class Core(Spinner):
                     node_name=node_name,
                     parameters=spec.get("param", {}),
                     channel_remaps=spec.get("remap", {}),
-                    log_file=f"/tmp/{env_name}_{node_name}.log",
+                    log_file=str(self._log_dir / env_name / node_name / f"run_{self._run_ts}.log"),
                 )
                 for reply in qr.get(payload=json.dumps(asdict(req)).encode()):
                     if reply.ok:

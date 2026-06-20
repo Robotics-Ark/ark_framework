@@ -3,6 +3,7 @@ import platform
 import shlex
 import subprocess
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import IO
 
 _FILE = int | IO[bytes] | None
@@ -114,6 +115,7 @@ class LocalHost(Host):
     ) -> subprocess.Popen:
         env = {**os.environ, **(env_vars or {})}
         if log_file:
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
             f = open(log_file, "w")
             return subprocess.Popen(
                 args, shell=isinstance(args, str), stdout=f, stderr=f, env=env
@@ -194,13 +196,12 @@ class ExternalHost(Host):
             prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env_vars.items())
             cmd = f"{prefix} {cmd}"
         if log_file:
+            mkdir_cmd = f"mkdir -p {shlex.quote(str(Path(log_file).parent))}"
             if pid_file:
-                # `exec VAR=val cmd` is invalid in bash — exec doesn't process env assignments.
-                # Use `exec env VAR=val cmd` so the env utility handles them instead.
                 exec_cmd = f"exec env {cmd}" if env_vars else f"exec {cmd}"
-                cmd = f"echo $$ > {shlex.quote(pid_file)}; {exec_cmd} > {shlex.quote(log_file)} 2>&1"
+                cmd = f"{mkdir_cmd} && echo $$ > {shlex.quote(pid_file)}; {exec_cmd} > {shlex.quote(log_file)} 2>&1"
             else:
-                cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
+                cmd = f"{mkdir_cmd} && {cmd} > {shlex.quote(log_file)} 2>&1"
             return subprocess.Popen(
                 ["ssh", *_SSH_OPTS, self.ssh_alias, cmd],
                 stdout=subprocess.DEVNULL,
