@@ -134,3 +134,43 @@ cd ark_framework
 ```
 
 The `eclipse-zenoh` Python package does not include `zenohd`, which is why this additional installation is required for multi-PC deployments.
+
+## Multi-PC network setup
+
+After installing zenohd on every PC, run the network check tool from the machine that will run `ark core`. It tests connectivity between your laptop and each external host and writes the recommended configuration back into your `hosts.yaml`:
+
+```bash
+ark-network-check --hosts path/to/hosts.yaml
+```
+
+Example output:
+
+```
+Ark network connectivity check
+========================================
+
+  Host: mycluster  (cluster → 135.84.176.142)
+    mycluster → laptop (192.168.1.10):7447 ... reachable
+    → direct connection  (router_ip: 192.168.1.10)
+
+  Host: gpu_node  (gpu → 135.84.176.200)
+    gpu_node → laptop (192.168.1.10):7447 ... blocked
+    → SSH reverse tunnel required
+
+Updated config written to: path/to/hosts.yaml
+
+Summary:
+  mycluster: direct (router_ip: 192.168.1.10)
+  gpu_node: ssh_tunnel
+```
+
+The tool adds `ssh_tunnel` and `router_ip` fields to each external host entry. The `ark core` command reads these automatically — no further configuration needed.
+
+**How connectivity is handled at runtime:**
+
+| Scenario | Method | Requires |
+|---|---|---|
+| Host can reach laptop on port 7447 | Direct TCP | Open port 7447 on laptop |
+| Host cannot reach laptop | SSH reverse tunnel | Only SSH (port 22) |
+
+`ark core` starts `zenohd` on the local machine and, for each host requiring a tunnel, opens a reverse SSH connection that forwards port 7447 on the remote host back to the local `zenohd`. All communication flows through port 22.
