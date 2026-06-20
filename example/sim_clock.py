@@ -18,28 +18,26 @@ def _load_env_names(sim_envs_path: Path) -> list[str]:
     ]
 
 
-def _parse_hz(hz_args: list[str], env_names: list[str]) -> dict[str, float]:
-    """Parse --hz args into a per-env hz dict.
+def _parse_per_ns(tokens: list[str], env_names: list[str], default: float) -> dict[str, float]:
+    """Parse a list of tokens into a per-env float dict.
 
     Accepted forms:
-      --hz 100               apply 100 Hz to all envs
-      --hz pybullet_envs:100 mujoco_envs:50   per-namespace rates
-    Unspecified namespaces fall back to the plain default (default: 100.0).
+      ["2.0"]                          — apply 2.0 to all envs
+      ["pybullet_envs:2.0", "mujoco_envs:0.5"]  — per-namespace values
+    Unspecified namespaces fall back to the plain default.
     """
-    default_hz = 100.0
     ns_overrides: dict[str, float] = {}
-
-    for token in hz_args:
+    for token in tokens:
         if ":" in token:
-            ns, rate = token.split(":", 1)
-            ns_overrides[ns.strip()] = float(rate)
+            ns, val = token.split(":", 1)
+            ns_overrides[ns.strip()] = float(val)
         else:
-            default_hz = float(token)
+            default = float(token)
 
     return {
         name: next(
-            (rate for ns, rate in ns_overrides.items() if name.startswith(ns)),
-            default_hz,
+            (v for ns, v in ns_overrides.items() if name.startswith(ns)),
+            default,
         )
         for name in env_names
     }
@@ -50,27 +48,40 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Step simulated time for ark envs. "
-        "Use --hz for a global rate or per-namespace rates (e.g. pybullet_envs:100 mujoco_envs:50)."
+        "Use --hz and --speed for global or per-namespace values."
     )
     parser.add_argument("--sim_envs", type=Path, required=True, help="Path to sim_envs.yaml")
     parser.add_argument(
         "--hz", nargs="+", default=["100.0"],
         metavar="[NAMESPACE:]HZ",
-        help="Step rate(s) in Hz. Single value applies to all envs; "
-             "use namespace:rate pairs for per-env rates.",
+        help="Tick rate in Hz (real time). Single value or namespace:rate pairs. Default: 100.",
+    )
+    parser.add_argument(
+        "--speed", nargs="+", default=["1.0"],
+        metavar="[NAMESPACE:]SPEED",
+        help="Sim-time speed multiplier relative to real time. "
+             "> 1 runs faster, < 1 runs slower. Default: 1.0.",
     )
     args = parser.parse_args()
 
     env_names = _load_env_names(args.sim_envs)
-    env_hz = _parse_hz(args.hz, env_names)
+    env_hz = _parse_per_ns(args.hz, env_names, default=100.0)
+    env_speed = _parse_per_ns(args.speed, env_names, default=1.0)
+
     session = default_session()
 
-    clocks = {name: SimulatedTime(name, 1.0 / env_hz[name], session) for name in env_names}
+    clocks = {
+        name: SimulatedTime(name, env_speed[name] / env_hz[name], session)
+        for name in env_names
+    }
     for c in clocks.values():
         c.reset()
 
     for name in env_names:
-        log.info("env '%s' stepping at %.0f Hz" % (name, env_hz[name]))
+        log.info(
+            "env '%s'  hz=%.0f  speed=%.2f×  (sim step=%.4fs)"
+            % (name, env_hz[name], env_speed[name], env_speed[name] / env_hz[name])
+        )
 
     now = time.monotonic()
     next_tick = {name: now for name in env_names}

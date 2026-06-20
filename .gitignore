@@ -225,3 +225,6 @@ backup/
 *.pdf
 *.png
 *.dot
+
+# Misc
+example/myhosts.yaml

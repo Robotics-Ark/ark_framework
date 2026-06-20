@@ -37,14 +37,14 @@ class Executor:
         self._monitor_thread = threading.Thread(target=self._monitor, daemon=True)
         self._monitor_thread.start()
         self._session = session
-        self._qr_run = self._session.declare_queryable("executor/run", self._on_run)
+        self._qr_run = self._session.declare_queryable("_ark/executor/run", self._on_run)
         self._qr_run_node = self._session.declare_queryable(
-            "executor/run_node", self._on_run_node
+            "_ark/executor/run_node", self._on_run_node
         )
-        self._qr_list = self._session.declare_queryable("executor/list", self._on_list)
-        self._qr_kill = self._session.declare_queryable("executor/kill", self._on_kill)
+        self._qr_list = self._session.declare_queryable("_ark/executor/list", self._on_list)
+        self._qr_kill = self._session.declare_queryable("_ark/executor/kill", self._on_kill)
         self._qr_kill_env = self._session.declare_queryable(
-            "executor/kill_env", self._on_kill_env
+            "_ark/executor/kill_env", self._on_kill_env
         )
         log.info(
             "executor initialized with hosts:\n"

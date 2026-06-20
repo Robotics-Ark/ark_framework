@@ -7,8 +7,11 @@ _SHM_AVAILABLE = hasattr(zenoh, "shm")
 
 
 def _default_cfg() -> dict:
-    router = os.environ.get("ARK_ZENOH_ROUTER", "127.0.0.1:7447").strip()
-    cfg: dict = {"mode": "client", "connect": {"endpoints": [f"tcp/{router}"]}}
+    router = os.environ.get("ARK_ZENOH_ROUTER", "").strip()
+    if router:
+        cfg: dict = {"mode": "client", "connect": {"endpoints": [f"tcp/{router}"]}}
+    else:
+        cfg = {"mode": "peer"}
     if _SHM_AVAILABLE:
         cfg["transport"] = {"shared_memory": {"enabled": True}}
     return cfg

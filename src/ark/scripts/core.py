@@ -33,8 +33,8 @@ def parse_args():
     parser.add_argument(
         "--hosts",
         type=lambda p: load_hosts(load_yaml(path(p))),
-        required=True,
-        help="Path to the hosts configuration file.",
+        default=None,
+        help="Path to the hosts configuration file (default: localhost only).",
     )
     parser.add_argument(
         "--nodes",
@@ -68,8 +68,9 @@ def main():
 
     core = None
     try:
+        hosts = args.hosts if args.hosts is not None else load_hosts({})
         core = Core(
-            args.hosts,
+            hosts,
             args.sim_envs,
             args.zenoh_config,
             args.router_port,

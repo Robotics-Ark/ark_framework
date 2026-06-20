@@ -109,7 +109,7 @@ class Core(Spinner):
         return names
 
     def launch_nodes(self, nodes_config: dict) -> None:
-        qr = self._session.declare_querier("executor/run_node")
+        qr = self._session.declare_querier("_ark/executor/run_node")
         for env_name in self._all_env_names():
             for node_name, spec in nodes_config.items():
                 module = spec["main"].split(":")[0]
