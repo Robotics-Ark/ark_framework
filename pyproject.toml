@@ -26,6 +26,7 @@ dependencies = [
   "protobuf",
   "Pillow>=9.0",
   "matplotlib",
+  "loguru>=0.7",
 ]
 
 # Simulator backends are optional — install only what you use:
