@@ -60,6 +60,7 @@ class Host(ABC):
         stdout: _FILE = subprocess.PIPE,
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
+        env_vars: dict[str, str] | None = None,
     ) -> subprocess.Popen: ...
 
     def _env_python(self, env: str) -> str:
@@ -73,6 +74,7 @@ class Host(ABC):
         stdout: _FILE = subprocess.PIPE,
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
+        env_vars: dict[str, str] | None = None,
     ) -> subprocess.Popen:
         python = self._env_python(env)
         if isinstance(args, str):
@@ -82,7 +84,10 @@ class Host(ABC):
             if args_list and args_list[0] in ("python", "python3"):
                 args_list = args_list[1:]
             full_args = [python] + args_list
-        return self.run(full_args, stdout=stdout, stderr=stderr, log_file=log_file)
+        return self.run(full_args, stdout=stdout, stderr=stderr, log_file=log_file, env_vars=env_vars)
+
+    def __repr__(self) -> str:
+        return f"Host(name={self.name!r}, os={self.os!r})"
 
 
 class LocalHost(Host):
@@ -102,17 +107,20 @@ class LocalHost(Host):
         stdout: _FILE = subprocess.PIPE,
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
+        env_vars: dict[str, str] | None = None,
     ) -> subprocess.Popen:
+        env = {**os.environ, **(env_vars or {})}
         if log_file:
             f = open(log_file, "w")
             return subprocess.Popen(
-                args, shell=isinstance(args, str), stdout=f, stderr=f
+                args, shell=isinstance(args, str), stdout=f, stderr=f, env=env
             )
         return subprocess.Popen(
             args,
             shell=isinstance(args, str),
             stdout=stdout,
             stderr=stderr,
+            env=env,
         )
 
 
@@ -165,8 +173,12 @@ class ExternalHost(Host):
         stdout: _FILE = subprocess.PIPE,
         stderr: _FILE = subprocess.PIPE,
         log_file: str = "",
+        env_vars: dict[str, str] | None = None,
     ) -> subprocess.Popen:
         cmd = shlex.join(args) if isinstance(args, list) else args
+        if env_vars:
+            prefix = " ".join(f"{k}={shlex.quote(v)}" for k, v in env_vars.items())
+            cmd = f"{prefix} {cmd}"
         if log_file:
             cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
             return subprocess.Popen(
