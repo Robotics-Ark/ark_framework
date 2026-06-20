@@ -62,3 +62,4 @@ where = ["src"]
 
 [project.scripts]
 ark = "ark.scripts.core:main"
+ark-network-check = "ark.scripts.network_check:main"
