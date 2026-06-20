@@ -1,0 +1,7 @@
+pybullet_envs:
+  n_envs: 2
+  simulator: ark.sims:PybulletSim
+
+mujoco_envs:
+  n_envs: 3
+  simulator: ark.sims:MujocoSim

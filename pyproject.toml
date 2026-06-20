@@ -1,30 +1,66 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ark"
-version = "0.1"
-dependencies = [
-    "lcm",
-    "colorlog",
-    "opencv-python",
-    "gymnasium",
-    "matplotlib",
-    "pandas",
-    "numpy==1.24.3",
-    "PyYAML",
-    "typer",
-    "graphviz",
-    "scipy",
-    "pybullet; sys_platform == 'linux'"
+version = "1.0.0"
+requires-python = ">=3.12"
+description = "The Ark framework."
+
+authors = [
+  { name = "Christopher E. Mower" }
 ]
 
-[project.optional-dependencies]
-test = ["pytest"]
+maintainers = [
+  { name = "Christopher E. Mower" },
+  { name = "Refinath S N" },
+  { name = "Abhineet Kumar" },
+]
 
-[tool.setuptools.packages]
-find = {include = ["ark", "arktypes", "arktypes.*"]}
+dependencies = [
+  "numpy",
+  "PyYAML>=6.0",
+  "scipy",
+  "gymnasium",
+  "protobuf",
+  "Pillow>=9.0",
+  "matplotlib",
+  "loguru>=0.7",
+]
+
+# Simulator backends are optional — install only what you use:
+#
+#   pip install -e ".[pybullet]"   — PyBullet backend
+#   pip install -e ".[mujoco]"     — MuJoCo backend
+#   pip install -e ".[newton]"     — Newton backend (requires NVIDIA Warp + GPU)
+#   pip install -e ".[sim]"        — all simulator backends
+#
+[project.optional-dependencies]
+pybullet = [
+  "pybullet",
+  "pybullet_utils",
+]
+mujoco = [
+  "mujoco",
+]
+newton = [
+  "warp-lang",
+  "newton",
+]
+sim = [
+  "ark[pybullet]",
+  "ark[mujoco]",
+  "ark[newton]",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.scripts]
-ark = "ark.cli:main"
+ark = "ark.scripts.core:main"
+ark-network-check = "ark.scripts.network_check:main"
+ark-debug-channel = "ark.scripts.debug_channel:main"
