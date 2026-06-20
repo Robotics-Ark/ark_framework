@@ -195,7 +195,10 @@ class ExternalHost(Host):
             cmd = f"{prefix} {cmd}"
         if log_file:
             if pid_file:
-                cmd = f"echo $$ > {shlex.quote(pid_file)}; exec {cmd} > {shlex.quote(log_file)} 2>&1"
+                # `exec VAR=val cmd` is invalid in bash — exec doesn't process env assignments.
+                # Use `exec env VAR=val cmd` so the env utility handles them instead.
+                exec_cmd = f"exec env {cmd}" if env_vars else f"exec {cmd}"
+                cmd = f"echo $$ > {shlex.quote(pid_file)}; {exec_cmd} > {shlex.quote(log_file)} 2>&1"
             else:
                 cmd = f"{cmd} > {shlex.quote(log_file)} 2>&1"
             return subprocess.Popen(
