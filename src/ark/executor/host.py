@@ -126,8 +126,18 @@ class LocalHost(Host):
 
 class ExternalHost(Host):
 
-    def __init__(self, name: str, ssh_alias: str, conda_path: str):
+    def __init__(
+        self,
+        name: str,
+        ssh_alias: str,
+        conda_path: str,
+        ssh_tunnel: bool = False,
+        router_ip: str | None = None,
+    ):
         self.ssh_alias = self._ensure_ssh_alias(ssh_alias)
+        self.ssh_tunnel = ssh_tunnel
+        self.router_ip = router_ip
+        self.router_addr: str | None = None  # set at runtime by Core
 
         self._os = ""
         if not (self._check_unix() or self._check_windows()):
@@ -207,6 +217,8 @@ def load_hosts(config: dict) -> dict[str, Host]:
             name=name,
             ssh_alias=spec["ssh_alias"],
             conda_path=spec["conda_path"],
+            ssh_tunnel=spec.get("ssh_tunnel", False),
+            router_ip=spec.get("router_ip", None),
         )
 
     return hosts

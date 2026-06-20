@@ -3,7 +3,7 @@ import json
 import subprocess
 import threading
 from dataclasses import dataclass, asdict
-from ark.executor.host import Host
+from ark.executor.host import Host, ExternalHost
 from ark.executor.messages import (
     RunRequest,
     RunNodeRequest,
@@ -25,14 +25,8 @@ class _ProcessEntry:
 
 class Executor:
 
-    def __init__(
-        self,
-        hosts: dict[str, Host],
-        session: zenoh.Session,
-        env_vars: dict[str, str] | None = None,
-    ):
+    def __init__(self, hosts: dict[str, Host], session: zenoh.Session):
         self._hosts = hosts
-        self._env_vars: dict[str, str] = env_vars or {}
         self._processes: dict[str, _ProcessEntry] = {}
         self._node_ids: set[tuple[str, str]] = set()
         self._lock = threading.Lock()
@@ -85,12 +79,14 @@ class Executor:
         with query:
             try:
                 req = RunRequest.from_json(query.payload)
-                proc = self._hosts[req.host].run(
+                host = self._hosts[req.host]
+                router = {"ARK_ZENOH_ROUTER": host.router_addr} if isinstance(host, ExternalHost) and host.router_addr else None
+                proc = host.run(
                     req.command,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
-                    env_vars=self._env_vars,
+                    env_vars=router,
                 )
                 proc_id = f"{req.env_name}/{req.id}"
                 with self._lock:
@@ -134,13 +130,15 @@ class Executor:
                     *[f"{k}:={v}" for k, v in req.parameters.items()],
                     *[f"{f}--{t}" for f, t in req.channel_remaps.items()],
                 ]
-                proc = self._hosts[req.host].run_in_env(
+                host = self._hosts[req.host]
+                router = {"ARK_ZENOH_ROUTER": host.router_addr} if isinstance(host, ExternalHost) and host.router_addr else None
+                proc = host.run_in_env(
                     req.conda_env,
                     args,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
-                    env_vars=self._env_vars,
+                    env_vars=router,
                 )
                 with self._lock:
                     self._processes[proc_id] = _ProcessEntry(

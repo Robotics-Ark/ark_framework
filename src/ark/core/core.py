@@ -1,5 +1,4 @@
 import os
-import socket
 import shutil
 import subprocess
 import time
@@ -23,39 +22,50 @@ class Core(Spinner):
         router_port: int = 7447,
     ):
         super().__init__()
-        self._router_proc, router_env = self._start_router(hosts, router_port)
+        self._managed_procs = self._start_router(hosts, router_port)
         self._session = load_session(zenoh_config)
         self._sim_env_param_servers = self._init_sim_env_param_servers(sim_envs)
         self._reset_coordinator = ResetCoordinator(self._session)
-        self._executor = Executor(hosts, self._session, env_vars=router_env)
+        self._executor = Executor(hosts, self._session)
         log.info("core initialized")
 
-    def _start_router(
-        self, hosts: dict[str, Host], port: int
-    ) -> tuple[subprocess.Popen | None, dict[str, str]]:
-        if not any(isinstance(h, ExternalHost) for h in hosts.values()):
-            return None, {}
+    def _start_router(self, hosts: dict[str, Host], port: int) -> list[subprocess.Popen]:
+        external_hosts = [h for h in hosts.values() if isinstance(h, ExternalHost)]
+        if not external_hosts:
+            return []
         if shutil.which("zenohd") is None:
-            raise RuntimeError(
-                "External hosts detected but 'zenohd' not found in PATH."
-            )
-        ip = self._local_ip()
-        router_addr = f"{ip}:{port}"
-        os.environ["ARK_ZENOH_ROUTER"] = router_addr
-        proc = subprocess.Popen(
+            raise RuntimeError("External hosts detected but 'zenohd' not found in PATH.")
+
+        router = subprocess.Popen(
             ["zenohd"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        log.info("started zenoh router at %s (pid %d)" % (router_addr, proc.pid))
-        time.sleep(1.0)  # wait for the router to start
-        return proc, {"ARK_ZENOH_ROUTER": router_addr}
+        log.info("started zenoh router (pid %d)" % router.pid)
+        time.sleep(1.0)
 
-    @staticmethod
-    def _local_ip() -> str:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            return s.getsockname()[0]
+        os.environ["ARK_ZENOH_ROUTER"] = f"127.0.0.1:{port}"
+
+        procs = [router]
+        for host in external_hosts:
+            if host.ssh_tunnel:
+                tunnel = subprocess.Popen(
+                    ["ssh", "-N",
+                     "-o", "ExitOnForwardFailure=yes",
+                     "-o", "ServerAliveInterval=30",
+                     "-R", f"{port}:127.0.0.1:{port}",
+                     host.ssh_alias],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                host.router_addr = f"127.0.0.1:{port}"
+                log.info("opened reverse tunnel to '%s' on port %d (pid %d)" % (host.name, port, tunnel.pid))
+                procs.append(tunnel)
+            elif host.router_ip:
+                host.router_addr = f"{host.router_ip}:{port}"
+                log.info("host '%s' will connect directly via %s" % (host.name, host.router_addr))
+
+        return procs
 
     def _init_sim_env_param_servers(
         self, sim_envs: dict[str, dict]
@@ -76,16 +86,20 @@ class Core(Spinner):
 
         return ps
 
+    @staticmethod
+    def _stop_proc(proc: subprocess.Popen) -> None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
     def close(self):
         for ps in self._sim_env_param_servers.values():
             ps.close()
         self._reset_coordinator.close()
         self._executor.close()
         self._session.close()
-        if self._router_proc is not None:
-            self._router_proc.terminate()
-            try:
-                self._router_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._router_proc.kill()
+        for proc in self._managed_procs:
+            self._stop_proc(proc)
         log.info("core closed")
