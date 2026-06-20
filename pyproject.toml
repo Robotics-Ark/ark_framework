@@ -25,6 +25,33 @@ dependencies = [
   "gymnasium",
   "protobuf",
   "Pillow>=9.0",
+  "matplotlib",
+  "loguru>=0.7",
+]
+
+# Simulator backends are optional — install only what you use:
+#
+#   pip install -e ".[pybullet]"   — PyBullet backend
+#   pip install -e ".[mujoco]"     — MuJoCo backend
+#   pip install -e ".[newton]"     — Newton backend (requires NVIDIA Warp + GPU)
+#   pip install -e ".[sim]"        — all simulator backends
+#
+[project.optional-dependencies]
+pybullet = [
+  "pybullet",
+  "pybullet_utils",
+]
+mujoco = [
+  "mujoco",
+]
+newton = [
+  "warp-lang",
+  "newton",
+]
+sim = [
+  "ark[pybullet]",
+  "ark[mujoco]",
+  "ark[newton]",
 ]
 
 [tool.setuptools]
@@ -35,3 +62,5 @@ where = ["src"]
 
 [project.scripts]
 ark = "ark.scripts.core:main"
+ark-network-check = "ark.scripts.network_check:main"
+ark-debug-channel = "ark.scripts.debug_channel:main"

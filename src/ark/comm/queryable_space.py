@@ -46,13 +46,12 @@ class QueryableSpace:
     ):
         codec = space_codec.get(space)
         self._enc_space = codec.encode(space)
-        self._qr = session.declare_queryable(
-            channel.full_name / role / "get_space", self._on_query
-        )
+        self._key = str(channel.full_name / role / "get_space")
+        self._qr = session.declare_queryable(self._key, self._on_query)
 
     def _on_query(self, query: zenoh.Query) -> None:
         with query:
-            query.reply(query.key_expr, self._enc_space)
+            query.reply(self._key, self._enc_space)
 
     def undeclare(self) -> None:
         self._qr.undeclare()

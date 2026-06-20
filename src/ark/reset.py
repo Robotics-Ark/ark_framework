@@ -1,8 +1,6 @@
 import zenoh
-import warnings
 import threading
-from abc import ABC, abstractmethod
-from google.protobuf.struct_pb2 import Value
+from google.protobuf.struct_pb2 import Value, Struct
 
 
 def encode_seed(seed: int | None) -> bytes:
@@ -20,124 +18,48 @@ def decode_seed(data: bytes) -> int | None:
     return int(value.number_value) if value.HasField("number_value") else None
 
 
-class ResetBase(ABC):
+def encode_initiate_reset(env_name: str, seed: int | None) -> bytes:
+    """Encode an initiate reset request into bytes."""
+    s = Struct()
+    s.fields["env_name"].string_value = env_name
+    if seed is not None:
+        s.fields["seed"].number_value = seed
+    return s.SerializeToString()
+
+
+def decode_initiate_reset(data: bytes) -> tuple[str, int | None]:
+    """Decode bytes into an initiate reset request."""
+    s = Struct()
+    s.ParseFromString(data)
+    env_name = s.fields["env_name"].string_value
+    seed = (
+        int(s.fields["seed"].number_value)
+        if s.fields["seed"].HasField("number_value")
+        else None
+    )
+    return env_name, seed
+
+
+class ResetObject:
 
     def __init__(self, env_name: str, session: zenoh.Session):
         self._env_name = env_name
         self._session = session
-        self._reset_channel = f"_ark/{env_name}/reset"
-        self._register_channel = f"{self._reset_channel}/register"
-        self._deregister_channel = f"{self._reset_channel}/deregister"
-        self._initiate_channel = f"{self._reset_channel}/initiate"
-        self._completed_channel = f"{self._reset_channel}/completed"
-
-    @abstractmethod
-    def reset(self, seed: int | None = None):
-        """Reset the internal state of the object.
-
-        Parameters:
-        -----------
-        seed: int | None
-            An optional seed for random number generation.
-        """
-
-    @abstractmethod
-    def close(self):
-        """Clean up resources and close any open connections or subscriptions."""
-
-
-class ResetCoordinator(ResetBase):
-
-    def __init__(self, env_name: str, session: zenoh.Session):
-        super().__init__(env_name, session)
-        self._members: set[str] = set()
-        self._completed: set[str] = set()
-        self._mutex = threading.Lock()
-        self._reg_qr = self._session.declare_queryable(
-            self._register_channel, self._on_register
+        self._object_id = self._register_reset_object()
+        self._reset_initiate_sub = self._session.declare_subscriber(
+            f"_ark/reset/{self._env_name}/initiate_reset", self._on_initiate_reset
         )
-        self._dereg_sub = self._session.declare_subscriber(
-            self._deregister_channel, self._on_deregister
-        )
-        self._init_pub = self._session.declare_publisher(self._initiate_channel)
-        self._completed_sub = self._session.declare_subscriber(
-            self._completed_channel, self._on_completed
+        self._acknowledge_reset_completion_pub = self._session.declare_publisher(
+            f"_ark/reset/{self._env_name}/reset_completed"
         )
 
-    def _on_register(self, query: zenoh.Query) -> None:
-        with self._mutex:
-            new_member_name = f"reset{len(self._members)}"
-            self._members.add(new_member_name)
-        with query:
-            query.reply(query.key_expr, new_member_name.encode("utf-8"))
-
-    def _on_deregister(self, sample: zenoh.Sample) -> None:
-        member_name = sample.payload.to_string()
-        with self._mutex:
-            if member_name not in self._members:
-                warnings.warn(
-                    f"Deregistration request from unknown member: {member_name!r}"
-                )
-                return
-            self._members.remove(member_name)
-            self._completed.discard(member_name)
-
-    def _initiate_reset(self, seed: int | None = None) -> None:
-        with self._mutex:
-            self._completed.clear()
-            self._init_pub.put(encode_seed(seed))
-
-    def _on_completed(self, sample: zenoh.Sample) -> None:
-        member_name = sample.payload.to_string()
-        if member_name not in self._members:
-            warnings.warn(
-                f"Reset completion acknowledgement from unknown member: {member_name!r}"
-            )
-            return
-
-        with self._mutex:
-            if member_name in self._completed:
-                raise ValueError(
-                    f"Duplicate reset completion acknowledgement from member: {member_name!r}"
-                )
-            self._completed.add(member_name)
-
-    def _block_until_complete(self) -> None:
-        completed = False
-        while not completed:
-            with self._mutex:
-                completed = self._completed == self._members
-
-    def reset(self, seed: int | None = None):
-        self._initiate_reset(seed)
-        self._block_until_complete()
-
-    def close(self):
-        self._reg_qr.undeclare()
-        self._init_pub.undeclare()
-        self._completed_sub.undeclare()
-
-
-class ResetObject(ResetBase):
-
-    def __init__(self, env_name: str, session: zenoh.Session):
-        super().__init__(env_name, session)
-        self._reset_object_name: bytes = self._register_reset_object()
-        self._init_sub = self._session.declare_subscriber(
-            self._initiate_channel, self._on_initiate_reset
-        )
-        self._completed_pub = self._session.declare_publisher(self._completed_channel)
-        self._dereg_pub = self._session.declare_publisher(self._deregister_channel)
-
-    def _register_reset_object(self) -> bytes:
-        if hasattr(self, "_reset_object_name"):
-            raise RuntimeError("Reset object is already registered.")
+    def _register_reset_object(self) -> str:
+        qr = self._session.declare_querier("_ark/reset/register_reset_object")
         try:
-            qr = self._session.declare_querier(self._register_channel)
-            for reply in qr.get():
+            for reply in qr.get(payload=self._env_name.encode("utf-8")):
                 if reply.ok is None:
                     continue
-                return bytes(reply.ok.payload)
+                return reply.ok.payload.to_string()
             else:
                 raise RuntimeError(
                     "No reply received from reset registration queryable."
@@ -145,18 +67,128 @@ class ResetObject(ResetBase):
         finally:
             qr.undeclare()
 
-    def _on_initiate_reset(self, sample: zenoh.Sample) -> None:
-        self.reset(decode_seed(bytes(sample.payload)))
+    def reset(self, _seed: int | None = None):
+        """Reset the object state. Override this method in subclasses."""
+        pass
+
+    def _on_initiate_reset(self, sample: zenoh.Sample):
+        seed = decode_seed(sample.payload.to_bytes())
+        self.reset(seed)
         self._acknowledge_reset_completion()
 
-    def _acknowledge_reset_completion(self) -> None:
-        self._completed_pub.put(self._reset_object_name)
+    def _acknowledge_reset_completion(self):
+        self._acknowledge_reset_completion_pub.put(self._object_id.encode("utf-8"))
 
-    def _deregister(self) -> None:
-        self._dereg_pub.put(self._reset_object_name)
+
+class ResetGroup:
+
+    def __init__(self, env_name: str, session: zenoh.Session):
+        self._env_name = env_name
+        self._session = session
+        self._reset_objects = set()
+        self._lock = threading.Lock()
+        self._completed_reset_objects = set()
+        self._initiate_reset_pub = self._session.declare_publisher(
+            f"_ark/reset/{self._env_name}/initiate_reset"
+        )
+        self._completed_reset_sub = self._session.declare_subscriber(
+            f"_ark/reset/{self._env_name}/reset_completed", self._on_reset_completed
+        )
+
+    def add_reset_object(self) -> str:
+        new_object_id = f"reset_object_{len(self._reset_objects)}"
+        self._reset_objects.add(new_object_id)
+        return new_object_id
+
+    def reset(self, seed: int | None = None):
+        """Initiate a reset for all registered reset objects."""
+        with self._lock:
+            self._completed_reset_objects.clear()
+        self._initiate_reset_pub.put(encode_seed(seed))
+        self._block_until_complete()
+
+    def _on_reset_completed(self, sample: zenoh.Sample):
+        object_id = sample.payload.to_string()
+        with self._lock:
+            self._completed_reset_objects.add(object_id)
+
+    def _block_until_complete(self):
+        while True:
+            with self._lock:
+                if self._completed_reset_objects == self._reset_objects:
+                    break
+
+
+class ResetCoordinator:
+
+    def __init__(self, session: zenoh.Session):
+        self._session = session
+        self._lock = threading.Lock()
+        self._reset_groups: dict[str, ResetGroup] = {}  # key: env_name
+        self._register_reset_object_qr = self._session.declare_queryable(
+            "_ark/reset/register_reset_object", self._on_register_reset_object
+        )
+        self._initiate_reset_qr = self._session.declare_queryable(
+            "_ark/reset/initiate_reset", self._on_initiate_reset
+        )
+
+    def _register_new_object(self, env_name: str) -> str:
+        with self._lock:
+            if env_name not in self._reset_groups:
+                self._reset_groups[env_name] = ResetGroup(env_name, self._session)
+            object_id = self._reset_groups[env_name].add_reset_object()
+        return object_id
+
+    def _on_register_reset_object(self, query: zenoh.Query) -> None:
+        with query:
+            env_name = query.payload.to_string()
+            object_id = self._register_new_object(env_name)
+            query.reply(query.key_expr, object_id.encode("utf-8"))
+
+    def _on_initiate_reset(self, query: zenoh.Query) -> None:
+        with query:
+            env_name, seed = decode_initiate_reset(query.payload.to_bytes())
+            with self._lock:
+                if env_name not in self._reset_groups:
+                    query.reply_err(
+                        f"No reset group found for environment '{env_name}'.".encode(
+                            "utf-8"
+                        )
+                    )
+                    return
+                reset_group = self._reset_groups[env_name]
+            reset_group.reset(seed)
+            query.reply(query.key_expr, b"Reset completed.")
 
     def close(self):
-        self._deregister()
-        self._init_sub.undeclare()
-        self._completed_pub.undeclare()
-        self._dereg_pub.undeclare()
+        self._register_reset_object_qr.undeclare()
+        self._initiate_reset_qr.undeclare()
+
+
+class EnvReset:
+
+    def __init__(self, env_name: str, session: zenoh.Session):
+        self._env_name = env_name
+        self._session = session
+        self._reset_initiate_qr = self._session.declare_querier(
+            "_ark/reset/initiate_reset"
+        )
+
+    def reset(self, seed: int | None = None):
+        """Initiate a reset for the environment."""
+        payload = encode_initiate_reset(self._env_name, seed)
+        for reply in self._reset_initiate_qr.get(payload=payload):
+            if reply.ok is not None:
+                if reply.ok.payload.to_string() == "success":
+                    return
+            elif reply.err is not None:
+                raise RuntimeError(
+                    f"Error initiating reset for environment '{self._env_name}': {reply.err.to_string()}"
+                )
+        else:
+            raise RuntimeError(
+                f"No reply received from reset initiation queryable for environment '{self._env_name}'."
+            )
+
+    def close(self):
+        self._reset_initiate_qr.undeclare()

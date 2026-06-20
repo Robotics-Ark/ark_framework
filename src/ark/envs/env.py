@@ -1,4 +1,5 @@
 import zenoh
+from contextlib import contextmanager
 from typing import Any
 from gymnasium import Env
 from enum import IntEnum
@@ -11,14 +12,18 @@ from ark.comm.channel import ChannelName
 from ark.noise import NOISE_TYPE
 from ark.comm.listener import ReadyWhen, NSampleListener, TSampleListener
 
+_COMPUTING_CHANNEL = "_ark/{env_name}/computing"
+_COMPUTING_TRUE = bytes([1])
+_COMPUTING_FALSE = bytes([0])
+
 
 class ListenerType(IntEnum):
     NSAMPLE = 1
     TSAMPLE = 2
 
 
-@dataclass
-class InboundChannelSpec(frozen=True, slots=True):
+@dataclass(frozen=True, slots=True)
+class InboundChannelSpec:
     channel_name: ChannelName | str
     window_length: int | float = 1
     listener_type: ListenerType = ListenerType.NSAMPLE
@@ -58,8 +63,8 @@ class InboundChannelSpec(frozen=True, slots=True):
             raise ValueError(f"Invalid listener_type: {self.listener_type}")
 
 
-@dataclass
-class ActionChannelSpec(frozen=True, slots=True):
+@dataclass(frozen=True, slots=True)
+class ActionChannelSpec:
     channel_name: ChannelName | str
     check: bool = False
     noise: NOISE_TYPE = None
@@ -121,16 +126,7 @@ def ensure_action_channels(channels: ACTION_CHANNEL_TYPE) -> list[ActionChannelS
 
 class ArkEnv(Env):
 
-    def __init__(
-        self,
-        env_name: str,
-        parameters: dict[str, PARAM_TYPE],
-        step_duration: float | None,
-        session: zenoh.Session,
-        observation_channels: INBOUND_CHANNEL_TYPE,
-        action_channels: ACTION_CHANNEL_TYPE,
-        state_channels: INBOUND_CHANNEL_TYPE = [],
-    ):
+    def __init__(self, env_name: str, session: zenoh.Session):
         super().__init__()
         try:
             self._sim = parameters["sim"]
@@ -142,6 +138,7 @@ class ArkEnv(Env):
         )
         self._session = session
         self._reset_coordinator = ResetCoordinator(self._env_name, self._session)
+
         self._node = Node(
             env_name,
             "env",
@@ -179,6 +176,21 @@ class ArkEnv(Env):
             ch.channel_name: ch.init_publisher(self._node)
             for ch in self._action_channels
         }
+
+        # Broadcast sim state so Clock instances can subscribe rather than poll.
+        # The executor republishes this channel when hot-swapping sim ↔ real.
+        self._sim_pub = session.declare_publisher(f"_ark/{env_name}/sim")
+        self._sim_pub.put(bytes([int(self._sim)]))
+
+        # Compute mode: signals SimulatorNode to pace at 1x real-time
+        # while the policy is running (reduces sim2real gap for slow policies).
+        # Only relevant in sim mode; publish False initially to prime the channel.
+        self._computing_pub = None
+        if self._sim:
+            self._computing_pub = session.declare_publisher(
+                _COMPUTING_CHANNEL.format(env_name=env_name)
+            )
+            self._computing_pub.put(_COMPUTING_FALSE)
 
     def _init_inbound_channels(
         self, channels: INBOUND_CHANNEL_TYPE
@@ -223,7 +235,42 @@ class ArkEnv(Env):
     def get_info(self) -> dict:
         return {}
 
+    # ------------------------------------------------------------------
+    # Compute mode
+    # ------------------------------------------------------------------
+
+    def _set_computing(self, computing: bool):
+        if self._computing_pub is not None:
+            self._computing_pub.put(_COMPUTING_TRUE if computing else _COMPUTING_FALSE)
+
+    @contextmanager
+    def compute(self):
+        """Context manager for explicit compute-mode control.
+
+        Signals the SimulatorNode to pace at 1x real-time while the block
+        executes, so simulated time advances at the same rate as reality
+        during policy inference::
+
+            with env.compute():
+                action = policy(obs)   # VLA or diffusion policy
+
+        For standard RL libraries (SB3, CleanRL, …) compute mode is handled
+        automatically in step() / reset() — no explicit wrapping needed.
+        The automatic mode is disabled inside an explicit compute() block to
+        avoid double-signalling.
+        """
+        self._set_computing(True)
+        try:
+            yield
+        finally:
+            self._set_computing(False)
+
+    # ------------------------------------------------------------------
+    # Gymnasium interface
+    # ------------------------------------------------------------------
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
+        self._set_computing(False)  # exit compute mode if somehow still active
         super().reset(seed=seed, options=options)
         self._reset_coordinator.reset(seed)
         if self._step_hz:
@@ -232,7 +279,11 @@ class ArkEnv(Env):
             self.observation_space.seed(seed)
             self.action_space.seed(seed)
             self.state_space.seed(seed)
-        return self.get_observation(), self.get_info()
+        obs, info = self.get_observation(), self.get_info()
+        self._set_computing(
+            True
+        )  # sim goes real-time while policy computes first action
+        return obs, info
 
     def _apply_action(self, action: dict[str, Any]):
         for ch_name in self.action_space.keys():
@@ -245,11 +296,16 @@ class ArkEnv(Env):
             self._action_publishers[ch_name].publish(act)
 
     def step(self, action: dict[str, Any]):
+        self._set_computing(False)  # switch sim back to free-running
         self._apply_action(action)
         if self._rate:
             self._rate.sleep()
+        obs = self.get_observation()
+        self._set_computing(
+            True
+        )  # sim goes real-time while policy computes next action
         return (
-            self.get_observation(),
+            obs,
             self.get_reward(),
             self.get_terminated(),
             self.get_truncated(),
@@ -257,6 +313,10 @@ class ArkEnv(Env):
         )
 
     def close(self):
+        self._set_computing(False)
+        if self._computing_pub is not None:
+            self._computing_pub.undeclare()
+        self._sim_pub.undeclare()
         self._reset_coordinator.close()
         self._node.close()
         self._session.close()

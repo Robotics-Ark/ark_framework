@@ -1,11 +1,10 @@
 import ast
 import sys
-import signal
-import threading
 import zenoh
 from pathlib import Path
 from typing import Callable
 from gymnasium import Space
+from .base import Spinner
 from .reset import ResetObject
 from .comm.end_point import EndPoint
 from .comm.publisher import Publisher
@@ -16,13 +15,13 @@ from .comm.queryable_space import query_space
 from .parameters import ParameterServer, PARAM_TYPE
 from .time import Rate, Stepper, Clock, Time
 from .comm.stamped_sample import StampedSample
-from .comm.default_z_session import default_session
+from .comm.zenoh_session import default_session
 from .comm.channel import Channel, ChannelName
 from .noise import NOISE_TYPE
 from .comm.listener import NSampleListener, TSampleListener, ReadyWhen
 
 
-class Node(ResetObject):
+class Node(ResetObject, Spinner):
 
     def __init__(
         self,
@@ -36,6 +35,7 @@ class Node(ResetObject):
         self._node_name = node_name
         self._channel_remaps = channel_remaps
         self._session = session
+        self._sim = bool(parameters.get("sim", False))
         self._param_server = ParameterServer(
             f"{self._env_name}/{self._node_name}/parameters",
             parameters,
@@ -44,12 +44,21 @@ class Node(ResetObject):
         self._end_points = {}
         self._steppers = []
         self._clock = Clock(self._env_name, self._session)
-        self._stop_event = threading.Event()
-        super().__init__(env_name, session)
+        ResetObject.__init__(self, env_name, session)
+        Spinner.__init__(self)
 
-    def reset(self, seed: int | None = None):
+    def reset(self, _seed: int | None = None):
+        """Reset the node's state."""
         for stepper in self._steppers:
             stepper.reset()
+
+    def _noise(self, noise: NOISE_TYPE) -> NOISE_TYPE:
+        """Strip noise when running on real hardware.
+
+        Real sensors and actuators already have physical noise; adding
+        simulated noise on top would corrupt the measurements.
+        """
+        return noise if self._sim else None
 
     def _add_end_point(self, channel_name: ChannelName | str, end_point: EndPoint):
         if channel_name in self._end_points:
@@ -89,7 +98,11 @@ class Node(ResetObject):
         noise: NOISE_TYPE = None,
     ) -> Publisher:
         pub = Publisher(
-            self._resolve_channel(channel_name), space, self._session, check, noise
+            self._resolve_channel(channel_name),
+            space,
+            self._session,
+            check,
+            self._noise(noise),
         )
         self._add_end_point(channel_name, pub)
         return pub
@@ -108,7 +121,7 @@ class Node(ResetObject):
             callback,
             self._session,
             check,
-            noise,
+            self._noise(noise),
         )
         self._add_end_point(channel_name, sub)
         return sub
@@ -128,7 +141,7 @@ class Node(ResetObject):
             space,
             self._session,
             check,
-            noise,
+            self._noise(noise),
             ready_when,
         )
         self._add_end_point(channel_name, listener)
@@ -149,7 +162,7 @@ class Node(ResetObject):
             space,
             self._session,
             check,
-            noise,
+            self._noise(noise),
             ready_when,
         )
         self._add_end_point(channel_name, listener)
@@ -174,8 +187,8 @@ class Node(ResetObject):
             self._session,
             check_req,
             check_res,
-            req_noise,
-            res_noise,
+            self._noise(req_noise),
+            self._noise(res_noise),
         )
         self._add_end_point(channel_name, queryable)
         return queryable
@@ -197,8 +210,8 @@ class Node(ResetObject):
             self._session,
             check_req,
             check_res,
-            req_noise,
-            res_noise,
+            self._noise(req_noise),
+            self._noise(res_noise),
         )
         self._add_end_point(channel_name, querier)
         return querier
@@ -210,11 +223,6 @@ class Node(ResetObject):
         stepper = Stepper(self._clock, hz, callback)
         self._steppers.append(stepper)
         return stepper
-
-    def spin(self):
-        signal.signal(signal.SIGINT, lambda *_: self._stop_event.set())
-        signal.signal(signal.SIGTERM, lambda *_: self._stop_event.set())
-        self._stop_event.wait()
 
     def now(self) -> Time:
         return self._clock.now()
