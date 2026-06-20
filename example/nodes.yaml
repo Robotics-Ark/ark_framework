@@ -1,5 +1,5 @@
 talker:
-  host: mycluster
+  host: localhost
   conda_env: ark
   main: ark.examples.scripts.talker:main
   param:
