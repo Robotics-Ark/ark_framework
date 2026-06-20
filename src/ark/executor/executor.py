@@ -1,10 +1,8 @@
+import zenoh
 import json
 import subprocess
 import threading
 from dataclasses import dataclass, asdict
-
-import zenoh
-
 from ark.executor.host import Host
 from ark.executor.messages import (
     RunRequest,
@@ -14,6 +12,7 @@ from ark.executor.messages import (
     ProcessInfo,
     RunReply,
 )
+from ark.logging import log
 
 
 @dataclass
@@ -26,10 +25,15 @@ class _ProcessEntry:
 
 class Executor:
 
-    def __init__(self, hosts: dict[str, Host], session: zenoh.Session):
+    def __init__(
+        self,
+        hosts: dict[str, Host],
+        session: zenoh.Session,
+        env_vars: dict[str, str] | None = None,
+    ):
         self._hosts = hosts
+        self._env_vars: dict[str, str] = env_vars or {}
         self._processes: dict[str, _ProcessEntry] = {}
-        self._env_names: set[str] = set()
         self._node_ids: set[tuple[str, str]] = set()
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -46,6 +50,13 @@ class Executor:
         self._qr_kill_env = self._session.declare_queryable(
             "executor/kill_env", self._on_kill_env
         )
+        log.info(
+            "executor initialized with hosts:\n"
+            + "\n".join(
+                "%d: %s" % (i, str(h))
+                for i, h in enumerate(self._hosts.values(), start=1)
+            )
+        )
 
     def _check_node_unique(self, env_name: str, node_name: str) -> None:
         nodes_in_env = [n for e, n in self._node_ids if e == env_name]
@@ -61,8 +72,6 @@ class Executor:
             return None
         if entry.is_node:
             self._node_ids.discard((entry.env_name, entry.node_name))
-        if not any(e.env_name == entry.env_name for e in self._processes.values()):
-            self._env_names.discard(entry.env_name)
         return entry
 
     def _terminate(self, proc: subprocess.Popen) -> None:
@@ -81,17 +90,25 @@ class Executor:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
+                    env_vars=self._env_vars,
                 )
                 proc_id = f"{req.env_name}/{req.id}"
                 with self._lock:
-                    self._env_names.add(req.env_name)
                     self._processes[proc_id] = _ProcessEntry(
                         proc=proc, env_name=req.env_name, is_node=False
                     )
                 query.reply(query.key_expr, RunReply(success=True).to_json())
+                log.info(
+                    "Started process '%s' in env '%s' on host '%s'"
+                    % (proc_id, req.env_name, req.host)
+                )
             except Exception as e:
                 query.reply(
                     query.key_expr, RunReply(success=False, error=str(e)).to_json()
+                )
+                log.error(
+                    "Failed to start process in env '%s' on host '%s': %s"
+                    % (req.env_name, req.host, str(e))
                 )
 
     def _on_run_node(self, query: zenoh.Query) -> None:
@@ -106,7 +123,6 @@ class Executor:
                 with self._lock:
                     self._check_node_unique(req.env_name, req.node_name)
                     self._node_ids.add(node_key)
-                    self._env_names.add(req.env_name)
                     reserved = True
 
                 args = [
@@ -124,6 +140,7 @@ class Executor:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     log_file=req.log_file,
+                    env_vars=self._env_vars,
                 )
                 with self._lock:
                     self._processes[proc_id] = _ProcessEntry(
@@ -133,18 +150,16 @@ class Executor:
                         node_name=req.node_name,
                     )
                 query.reply(query.key_expr, RunReply(success=True).to_json())
+                log.info("Started node '%s' on host '%s'" % (proc_id, req.host))
 
             except Exception as e:
                 if reserved:
                     with self._lock:
                         self._node_ids.discard(node_key)
-                        if not any(
-                            p.env_name == req.env_name for p in self._processes.values()
-                        ):
-                            self._env_names.discard(req.env_name)
                 query.reply(
                     query.key_expr, RunReply(success=False, error=str(e)).to_json()
                 )
+                log.error("Failed to start node '%s': %s" % (proc_id, str(e)))
 
     def _on_list(self, query: zenoh.Query) -> None:
         with query:
@@ -162,6 +177,7 @@ class Executor:
                     for proc_id, entry in self._processes.items()
                 ]
             query.reply(query.key_expr, json.dumps(info).encode())
+        log.debug("request to list processes received, %d processes listed" % len(info))
 
     def _on_kill(self, query: zenoh.Query) -> None:
         with query:
@@ -173,6 +189,7 @@ class Executor:
                     raise ValueError(f"No process with id '{req.id}'")
                 self._terminate(entry.proc)
                 query.reply(query.key_expr, RunReply(success=True).to_json())
+                log.info("Killed process '%s' in env '%s'" % (req.id, entry.env_name))
             except Exception as e:
                 query.reply(
                     query.key_expr, RunReply(success=False, error=str(e)).to_json()
@@ -194,6 +211,7 @@ class Executor:
                 for entry in entries:
                     self._terminate(entry.proc)
                 query.reply(query.key_expr, RunReply(success=True).to_json())
+                log.info("Killed all processes in env '%s'" % req.env_name)
             except Exception as e:
                 query.reply(
                     query.key_expr, RunReply(success=False, error=str(e)).to_json()
@@ -204,16 +222,12 @@ class Executor:
             with self._lock:
                 for proc_id, entry in self._processes.items():
                     if entry.proc.poll() is not None:
-                        print(
-                            f"[Executor] Process '{proc_id}' exited "
-                            f"(code {entry.proc.returncode}) — shutting down"
+                        log.info(
+                            "Process '%s' exited (code %d) — shutting down"
+                            % (proc_id, entry.proc.returncode)
                         )
                         self._stop_event.set()
                         return
-
-    def spin(self) -> None:
-        self._stop_event.wait()
-        self.close()
 
     def close(self) -> None:
         if self._closed:
@@ -223,7 +237,6 @@ class Executor:
         with self._lock:
             procs = [entry.proc for entry in self._processes.values()]
             self._processes.clear()
-            self._env_names.clear()
             self._node_ids.clear()
         for proc in procs:
             self._terminate(proc)
@@ -232,4 +245,3 @@ class Executor:
         self._qr_list.undeclare()
         self._qr_kill.undeclare()
         self._qr_kill_env.undeclare()
-        self._session.close()
