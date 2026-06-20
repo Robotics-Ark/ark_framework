@@ -94,6 +94,7 @@ class Clock:
         # wait_until are safe to call regardless of the current mode.
         self._sim_time: Time | None = None
         self._sim_time_cv = threading.Condition()
+        self._reset_epoch: int = 0  # incremented whenever time jumps backwards
 
         # Sim-time subscription is always active; it becomes meaningful
         # as soon as a SimulatorNode starts publishing.
@@ -128,6 +129,8 @@ class Clock:
     def _on_time_sample(self, sample: zenoh.Sample) -> None:
         t = Time.from_bytes(bytes(sample.payload))
         with self._sim_time_cv:
+            if self._sim_time is not None and t.nanosec < self._sim_time.nanosec:
+                self._reset_epoch += 1
             self._sim_time = t
             self._sim_time_cv.notify_all()
 
@@ -140,12 +143,17 @@ class Clock:
     def wall_now(self) -> Time:
         return Time(nanosec=time.time_ns())
 
-    def wait_until(self, target: Time) -> None:
+    def wait_until(self, target: Time) -> bool:
+        """Wait until sim time reaches target. Returns False if a time reset occurred."""
         if not self.sim:
             raise RuntimeError("Simulated time is not enabled.")
         with self._sim_time_cv:
+            epoch = self._reset_epoch
             while self._sim_time is None or self._sim_time < target:
                 self._sim_time_cv.wait()
+                if self._reset_epoch != epoch:
+                    return False
+            return True
 
 
 class Sleep:
@@ -153,20 +161,22 @@ class Sleep:
     def __init__(self, clock: Clock):
         self._clock = clock
 
-    def _wall_sleep(self, dur: Time) -> None:
+    def _wall_sleep(self, dur: Time) -> bool:
         time.sleep(dur.sec)
+        return True
 
-    def _sim_sleep(self, dur: Time) -> None:
+    def _sim_sleep(self, dur: Time) -> bool:
         now = self._clock.now()
-        self._clock.wait_until(now + dur)
+        return self._clock.wait_until(now + dur)
 
-    def __call__(self, dur: Time) -> None:
+    def __call__(self, dur: Time) -> bool:
+        """Returns False if a sim-time reset interrupted the sleep."""
         if dur.nanosec <= 0:
-            return
+            return True
         if self._clock.sim:
-            self._sim_sleep(dur)
+            return self._sim_sleep(dur)
         else:
-            self._wall_sleep(dur)
+            return self._wall_sleep(dur)
 
 
 class Rate:
@@ -186,7 +196,11 @@ class Rate:
 
         remaining = self._next - now
         if remaining.nanosec > 0:
-            self._sleep(remaining)
+            reached = self._sleep(remaining)
+            if not reached:
+                # Sim time reset — recalculate deadline from scratch next call.
+                self._next = None
+                return
             self._next += self._time_step
         else:
             self._next = now + self._time_step
