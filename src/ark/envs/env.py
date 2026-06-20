@@ -1,4 +1,3 @@
-import struct
 import zenoh
 from contextlib import contextmanager
 from typing import Any
@@ -14,7 +13,7 @@ from ark.noise import NOISE_TYPE
 from ark.comm.listener import ReadyWhen, NSampleListener, TSampleListener
 
 _COMPUTING_CHANNEL = "_ark/{env_name}/computing"
-_COMPUTING_TRUE  = bytes([1])
+_COMPUTING_TRUE = bytes([1])
 _COMPUTING_FALSE = bytes([0])
 
 
@@ -127,16 +126,7 @@ def ensure_action_channels(channels: ACTION_CHANNEL_TYPE) -> list[ActionChannelS
 
 class ArkEnv(Env):
 
-    def __init__(
-        self,
-        env_name: str,
-        parameters: dict[str, PARAM_TYPE],
-        step_duration: float | None,
-        session: zenoh.Session,
-        observation_channels: INBOUND_CHANNEL_TYPE,
-        action_channels: ACTION_CHANNEL_TYPE,
-        state_channels: INBOUND_CHANNEL_TYPE = [],
-    ):
+    def __init__(self, env_name: str, session: zenoh.Session):
         super().__init__()
         try:
             self._sim = parameters["sim"]
@@ -148,6 +138,7 @@ class ArkEnv(Env):
         )
         self._session = session
         self._reset_coordinator = ResetCoordinator(self._env_name, self._session)
+
         self._node = Node(
             env_name,
             "env",
@@ -289,7 +280,9 @@ class ArkEnv(Env):
             self.action_space.seed(seed)
             self.state_space.seed(seed)
         obs, info = self.get_observation(), self.get_info()
-        self._set_computing(True)   # sim goes real-time while policy computes first action
+        self._set_computing(
+            True
+        )  # sim goes real-time while policy computes first action
         return obs, info
 
     def _apply_action(self, action: dict[str, Any]):
@@ -308,7 +301,9 @@ class ArkEnv(Env):
         if self._rate:
             self._rate.sleep()
         obs = self.get_observation()
-        self._set_computing(True)   # sim goes real-time while policy computes next action
+        self._set_computing(
+            True
+        )  # sim goes real-time while policy computes next action
         return (
             obs,
             self.get_reward(),

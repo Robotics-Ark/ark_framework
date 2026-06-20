@@ -35,6 +35,18 @@ def parse_args():
         required=True,
         help="Path to the hosts configuration file.",
     )
+    parser.add_argument(
+        "--nodes",
+        type=lambda p: load_yaml(path(p)) if p else None,
+        default=None,
+        help="Path to nodes.yaml — launch a node network in every env at startup.",
+    )
+    parser.add_argument(
+        "--real_env",
+        type=str,
+        default=None,
+        help="Name for a real-hardware env (sim=False). E.g. --real_env real.",
+    )
     return parser.parse_args()
 
 
@@ -49,7 +61,9 @@ def main():
 
     core = None
     try:
-        core = Core(args.hosts, args.sim_envs, args.zenoh_config, args.router_port)
+        core = Core(args.hosts, args.sim_envs, args.zenoh_config, args.router_port, args.real_env)
+        if args.nodes:
+            core.launch_nodes(args.nodes)
         core.spin()
     except Exception as e:
         print(f"Core failed with exception: {e}")

@@ -1,0 +1,17 @@
+talker:
+  host: mycluster
+  conda_env: ark
+  main: ark.examples.scripts.talker:main
+  param:
+    hz: 1.0
+    max_count: 100
+    hello_word: amazing
+  remap:
+    chatter: mychatter
+
+listener:
+  host: localhost
+  conda_env: ark
+  main: ark.examples.scripts.listener:main
+  remap:
+    chatter: mychatter

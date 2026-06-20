@@ -128,10 +128,15 @@ class Executor:
                     self._node_ids.add(node_key)
                     reserved = True
 
+                script = req.script.split(":")[0]
+                script_args = (
+                    ["-m", script] if "/" not in script and not script.endswith(".py")
+                    else [script]
+                )
                 args = [
                     "python",
                     "-u",
-                    req.script,
+                    *script_args,
                     f"env_name:={req.env_name}",
                     f"node_name:={req.node_name}",
                     *[f"{k}:={v}" for k, v in req.parameters.items()],
